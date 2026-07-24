@@ -67,8 +67,15 @@ Ces conventions sont **impératives**. Toute contribution doit les respecter.
 ### Base de données
 
 - MariaDB, configurée via `DATABASE_URL` (voir `.env` / `.env.local`).
-- Migrations Doctrine obligatoires pour tout changement de schéma
-  (`php bin/console make:migration` puis `doctrine:migrations:migrate`).
+- Migrations Doctrine obligatoires pour tout changement de schéma.
+- **Attention MariaDB 10.4 (XAMPP)** : `make:migration` échoue à l'introspection
+  (`Unknown column 'i_c.TABLE_NAME'`) car `information_schema.CHECK_CONSTRAINTS`
+  n'a pas encore la colonne `TABLE_NAME` sur cette version. Contournement pour
+  générer une migration :
+  1. `php bin/console doctrine:migrations:generate` (crée une migration vide) ;
+  2. `php bin/console doctrine:schema:create --dump-sql` (DDL depuis le mapping,
+     sans introspection) — copier le SQL dans le `up()` ;
+  3. `php bin/console doctrine:migrations:migrate` (l'exécution n'introspecte pas).
 
 ---
 
