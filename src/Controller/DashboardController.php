@@ -27,15 +27,6 @@ class DashboardController extends AbstractController
         return new RedirectResponse($redirection->urlPour($this->getUser()));
     }
 
-    #[Route('/caisse', name: 'app_caisse', methods: ['GET'])]
-    public function caisse(): Response
-    {
-        return $this->render('dashboard/espace.html.twig', [
-            'titre' => 'Caisse',
-            'sous_titre' => 'Espace caissier',
-        ]);
-    }
-
     #[Route('/pilotage', name: 'app_pilotage', methods: ['GET'])]
     public function pilotage(): Response
     {

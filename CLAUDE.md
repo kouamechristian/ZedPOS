@@ -134,6 +134,21 @@ php bin/console doctrine:migrations:migrate
   Ces informations sont **strictement réservées à `ROLE_GERANT`** (jamais un caissier) :
   page sous `access_control ^/admin` + garde `is_granted('ROLE_GERANT')` dans le template.
 
+### Interface de caisse tactile (`/caisse`)
+
+- Plein écran, sans navigation, réservée à `ROLE_CAISSIER`. 3 colonnes : familles +
+  grille de touches produits (≥ 92 px) à gauche, ticket au centre (total très gros),
+  pavé de règlement à droite (Espèces, Wave, Orange Money, MTN MoMo, Moov Money).
+- Deux modes commutables : **BOULANGERIE** (un appui = +1 unité, aucune étape) et
+  **FASTFOOD** (un appui ouvre un panneau variantes + commentaire libre avant ajout).
+- Tout l'état du ticket vit **côté client** dans le contrôleur Stimulus
+  `assets/controllers/caisse_controller.js` : aucun rechargement pendant la commande,
+  ajout d'article instantané. Seul l'**encaissement** appelle le serveur
+  (`POST /caisse/encaisser`, JSON) qui **recalcule tous les prix côté serveur**
+  (jamais de confiance au client), crée la Vente/lignes/règlement dans la session
+  de caisse ouverte (créée à la volée), et renvoie le numéro de ticket.
+- « Mise en attente » : tickets mémorisés côté client, repris en un appui.
+
 ### Données de démonstration (fixtures)
 
 ```bash
