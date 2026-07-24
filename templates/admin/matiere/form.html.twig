@@ -1,0 +1,23 @@
+{% extends 'admin/base.html.twig' %}
+{% form_theme form 'admin/_form_theme.html.twig' %}
+
+{% block page_title %}{{ titre }}{% endblock %}
+
+{% block admin_content %}
+<div class="max-w-2xl bg-white rounded-xl shadow-sm p-6">
+    {{ form_start(form) }}
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-5">
+        <div class="sm:col-span-2">{{ form_row(form.nom) }}</div>
+        {{ form_row(form.uniteStock) }}
+        {{ form_row(form.fournisseur) }}
+        {{ form_row(form.stockActuel) }}
+        {{ form_row(form.stockMini) }}
+        {{ form_row(form.coutMoyenPondere) }}
+    </div>
+    <div class="mt-6 flex items-center gap-3">
+        <button class="rounded-lg bg-slate-800 text-white px-4 py-2 text-sm font-semibold hover:bg-slate-700">Enregistrer</button>
+        <a href="{{ path('admin_matiere_index') }}" class="rounded-lg border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50">Annuler</a>
+    </div>
+    {{ form_end(form) }}
+</div>
+{% endblock %}

@@ -116,6 +116,18 @@ php bin/console doctrine:migrations:migrate
 
 **Commande de test : `php bin/phpunit`**
 
+### Back-office gérant (`/admin`)
+
+- Réservé à `ROLE_GERANT` (donc aussi la dirigeante par hiérarchie). Layout Twig +
+  Tailwind avec navigation latérale, contrôleurs sous `src/Controller/Admin/`.
+- CRUD : Familles, Articles (filtre famille + recherche + activation), Matières
+  premières, Fournisseurs. Onglet « Fiche technique » sur l'article (ajout/retrait
+  de matières premières) via **Turbo Frame** — aucune dépendance JS lourde.
+- Formulaires stylés par un thème Tailwind : `templates/admin/_form_theme.html.twig`
+  (il fait `{% use 'form_div_layout.html.twig' %}` pour pouvoir appeler `parent()`).
+- Montants saisis en FCFA / unités entières et convertis en centimes / millièmes
+  par des transformateurs de formulaire (jamais de float persisté).
+
 ### Données de démonstration (fixtures)
 
 ```bash

@@ -1,0 +1,39 @@
+{% extends 'admin/base.html.twig' %}
+{% import 'admin/_macros.html.twig' as fmt %}
+
+{% block page_title %}Clôtures de caisse{% endblock %}
+
+{% block admin_content %}
+<div class="bg-white rounded-xl shadow-sm overflow-hidden">
+    <table class="w-full text-sm">
+        <thead class="text-left text-slate-500 bg-slate-50">
+            <tr>
+                <th class="px-5 py-3 font-medium">Caissier</th>
+                <th class="px-5 py-3 font-medium">Ouverture</th>
+                <th class="px-5 py-3 font-medium">Clôture</th>
+                <th class="px-5 py-3 font-medium text-right">Fond de caisse</th>
+                <th class="px-5 py-3 font-medium">Statut</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for session in sessions %}
+                <tr class="border-t border-slate-100 hover:bg-slate-50">
+                    <td class="px-5 py-3 font-medium text-slate-800">{{ session.utilisateur.nom }}</td>
+                    <td class="px-5 py-3 text-slate-600">{{ session.ouvertureAt|date('d/m/Y H:i') }}</td>
+                    <td class="px-5 py-3 text-slate-600">{{ session.clotureAt ? session.clotureAt|date('d/m/Y H:i') : '—' }}</td>
+                    <td class="px-5 py-3 text-right">{{ fmt.fcfa(session.fondCaisse) }}</td>
+                    <td class="px-5 py-3">
+                        {% if session.statut.value == 'OUVERTE' %}
+                            <span class="inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-800">Ouverte</span>
+                        {% else %}
+                            <span class="inline-flex rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-600">Clôturée</span>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="5" class="px-5 py-6 text-center text-slate-400">Aucune session de caisse.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

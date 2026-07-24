@@ -36,7 +36,11 @@ class MatierePremiere
     #[ORM\Column(options: ['default' => 0])]
     private int $coutMoyenPondere = 0;
 
-    public function __construct(string $nom, string $uniteStock)
+    #[ORM\ManyToOne(targetEntity: Fournisseur::class, inversedBy: 'matieres')]
+    #[ORM\JoinColumn(nullable: true)]
+    private ?Fournisseur $fournisseur = null;
+
+    public function __construct(string $nom = '', string $uniteStock = '')
     {
         $this->nom = $nom;
         $this->uniteStock = $uniteStock;
@@ -106,5 +110,22 @@ class MatierePremiere
         $this->coutMoyenPondere = $coutMoyenPondere;
 
         return $this;
+    }
+
+    public function getFournisseur(): ?Fournisseur
+    {
+        return $this->fournisseur;
+    }
+
+    public function setFournisseur(?Fournisseur $fournisseur): self
+    {
+        $this->fournisseur = $fournisseur;
+
+        return $this;
+    }
+
+    public function __toString(): string
+    {
+        return $this->nom;
     }
 }

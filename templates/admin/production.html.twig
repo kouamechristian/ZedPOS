@@ -1,0 +1,37 @@
+{% extends 'admin/base.html.twig' %}
+{% import 'admin/_macros.html.twig' as fmt %}
+
+{% block page_title %}Production — Fiches techniques{% endblock %}
+
+{% block admin_content %}
+<div class="bg-white rounded-xl shadow-sm overflow-hidden">
+    <table class="w-full text-sm">
+        <thead class="text-left text-slate-500 bg-slate-50">
+            <tr>
+                <th class="px-5 py-3 font-medium">Article fabriqué</th>
+                <th class="px-5 py-3 font-medium text-right">Composants</th>
+                <th class="px-5 py-3 font-medium text-right">Coût matières</th>
+                <th class="px-5 py-3 font-medium text-right">Prix de vente</th>
+                <th class="px-5 py-3 font-medium text-right">Marge</th>
+                <th class="px-5 py-3 font-medium text-right"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for fiche in fiches %}
+                <tr class="border-t border-slate-100 hover:bg-slate-50">
+                    <td class="px-5 py-3 font-medium text-slate-800">{{ fiche.article.nom }}</td>
+                    <td class="px-5 py-3 text-right text-slate-600">{{ fiche.composants }}</td>
+                    <td class="px-5 py-3 text-right">{{ fmt.fcfa(fiche.cout_matieres) }}</td>
+                    <td class="px-5 py-3 text-right">{{ fmt.fcfa(fiche.article.prixVenteTtc) }}</td>
+                    <td class="px-5 py-3 text-right font-semibold {{ fiche.marge >= 0 ? 'text-green-700' : 'text-red-600' }}">{{ fmt.fcfa(fiche.marge) }}</td>
+                    <td class="px-5 py-3 text-right">
+                        <a href="{{ path('admin_article_show', {id: fiche.article.id}) }}" class="text-xs font-medium text-slate-600 hover:text-slate-900 hover:underline">Voir la fiche</a>
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="6" class="px-5 py-6 text-center text-slate-400">Aucune fiche technique. Créez-en depuis un article.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

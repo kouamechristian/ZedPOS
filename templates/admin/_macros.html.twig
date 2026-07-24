@@ -1,0 +1,15 @@
+{# Formatage cohérent des montants (centimes → FCFA), quantités (millièmes → unités) et pourcentages (points de base). #}
+
+{% macro fcfa(centimes) %}{{ (centimes / 100)|number_format(0, ',', ' ') }} FCFA{% endmacro %}
+
+{% macro unites(millimes) %}{{ (millimes / 1000)|number_format((millimes % 1000 == 0) ? 0 : 3, ',', ' ') }}{% endmacro %}
+
+{% macro pourcent(bp) %}{{ (bp / 100)|number_format((bp % 100 == 0) ? 0 : 2, ',', ' ') }} %{% endmacro %}
+
+{% macro badge(actif) %}
+    {% if actif %}
+        <span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">Actif</span>
+    {% else %}
+        <span class="inline-flex items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-600">Inactif</span>
+    {% endif %}
+{% endmacro %}

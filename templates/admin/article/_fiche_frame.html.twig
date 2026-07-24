@@ -1,0 +1,68 @@
+{% import 'admin/_macros.html.twig' as fmt %}
+{% form_theme ligne_form 'admin/_form_theme.html.twig' %}
+
+<turbo-frame id="fiche_technique">
+    {% set fiche = article.ficheTechnique %}
+    {% set lignes = fiche ? fiche.lignes : [] %}
+    {% set total = lignes|reduce((acc, l) => acc + (l.matierePremiere.coutMoyenPondere * l.quantite / 1000), 0) %}
+
+    <table class="w-full text-sm">
+        <thead class="text-left text-slate-500 bg-slate-50">
+            <tr>
+                <th class="px-4 py-2 font-medium rounded-l-lg">Matière première</th>
+                <th class="px-4 py-2 font-medium text-right">Quantité</th>
+                <th class="px-4 py-2 font-medium text-right">Perte</th>
+                <th class="px-4 py-2 font-medium text-right">Coût matière</th>
+                <th class="px-4 py-2 font-medium text-right rounded-r-lg"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ligne in lignes %}
+                <tr class="border-b border-slate-100">
+                    <td class="px-4 py-2.5 font-medium text-slate-800">{{ ligne.matierePremiere.nom }}</td>
+                    <td class="px-4 py-2.5 text-right">{{ fmt.unites(ligne.quantite) }} {{ ligne.matierePremiere.uniteStock }}</td>
+                    <td class="px-4 py-2.5 text-right text-slate-600">{{ fmt.pourcent(ligne.pourcentagePerte) }}</td>
+                    <td class="px-4 py-2.5 text-right">{{ fmt.fcfa((ligne.matierePremiere.coutMoyenPondere * ligne.quantite / 1000)|round) }}</td>
+                    <td class="px-4 py-2.5 text-right">
+                        <form method="post" action="{{ path('admin_article_fiche_remove', {id: article.id, ligneId: ligne.id}) }}" data-turbo-confirm="Retirer cette matière première ?">
+                            <input type="hidden" name="_token" value="{{ csrf_token('retirer_ligne_' ~ ligne.id) }}">
+                            <button class="text-xs font-medium text-red-600 hover:text-red-800 hover:underline">Retirer</button>
+                        </form>
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="5" class="px-4 py-5 text-center text-slate-400">Aucune matière première. Ajoutez-en ci-dessous.</td></tr>
+            {% endfor %}
+        </tbody>
+        {% if lignes|length > 0 %}
+            <tfoot>
+                <tr class="border-t-2 border-slate-200 font-semibold">
+                    <td class="px-4 py-2.5" colspan="3">Coût matières total</td>
+                    <td class="px-4 py-2.5 text-right">{{ fmt.fcfa(total|round) }}</td>
+                    <td></td>
+                </tr>
+            </tfoot>
+        {% endif %}
+    </table>
+
+    <div class="mt-5 border-t border-slate-100 pt-5">
+        <h3 class="text-sm font-semibold text-slate-700 mb-3">Ajouter une matière première</h3>
+        {{ form_start(ligne_form) }}
+        <div class="flex flex-wrap items-end gap-3">
+            <div class="flex-1 min-w-48">
+                <label class="block text-xs font-medium text-slate-500 mb-1">Matière première</label>
+                {{ form_widget(ligne_form.matierePremiere) }}
+            </div>
+            <div class="w-36">
+                <label class="block text-xs font-medium text-slate-500 mb-1">Quantité</label>
+                {{ form_widget(ligne_form.quantite) }}
+            </div>
+            <div class="w-28">
+                <label class="block text-xs font-medium text-slate-500 mb-1">Perte (%)</label>
+                {{ form_widget(ligne_form.pourcentagePerte) }}
+            </div>
+            <button class="rounded-lg bg-slate-800 text-white px-4 py-2 text-sm font-semibold hover:bg-slate-700">Ajouter</button>
+        </div>
+        {{ form_end(ligne_form) }}
+    </div>
+</turbo-frame>

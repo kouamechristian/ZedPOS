@@ -1,0 +1,46 @@
+{% extends 'admin/base.html.twig' %}
+{% import 'admin/_macros.html.twig' as fmt %}
+
+{% block page_title %}Ventes récentes{% endblock %}
+
+{% block admin_content %}
+<div class="bg-white rounded-xl shadow-sm overflow-hidden">
+    <table class="w-full text-sm">
+        <thead class="text-left text-slate-500 bg-slate-50">
+            <tr>
+                <th class="px-5 py-3 font-medium">N°</th>
+                <th class="px-5 py-3 font-medium">Date</th>
+                <th class="px-5 py-3 font-medium">Mode</th>
+                <th class="px-5 py-3 font-medium">Caissier</th>
+                <th class="px-5 py-3 font-medium text-right">Total TTC</th>
+                <th class="px-5 py-3 font-medium">Statut</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for vente in ventes %}
+                <tr class="border-t border-slate-100 hover:bg-slate-50">
+                    <td class="px-5 py-2.5 font-mono text-xs text-slate-600">{{ vente.numero }}</td>
+                    <td class="px-5 py-2.5 text-slate-600">{{ vente.createdAt|date('d/m/Y H:i') }}</td>
+                    <td class="px-5 py-2.5">
+                        <span class="inline-flex rounded-full px-2 py-0.5 text-xs {{ vente.mode.value == 'BOULANGERIE' ? 'bg-amber-100 text-amber-800' : 'bg-orange-100 text-orange-800' }}">
+                            {{ vente.mode.value == 'BOULANGERIE' ? 'Boulangerie' : 'Fast-food' }}
+                        </span>
+                    </td>
+                    <td class="px-5 py-2.5 text-slate-600">{{ vente.sessionCaisse.utilisateur.nom }}</td>
+                    <td class="px-5 py-2.5 text-right font-medium">{{ fmt.fcfa(vente.totalTtc) }}</td>
+                    <td class="px-5 py-2.5">
+                        {% if vente.statut.value == 'VALIDEE' %}
+                            <span class="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-800">Validée</span>
+                        {% else %}
+                            <span class="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-800">Annulée</span>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="6" class="px-5 py-6 text-center text-slate-400">Aucune vente.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+<p class="mt-3 text-xs text-slate-400">100 dernières ventes.</p>
+{% endblock %}

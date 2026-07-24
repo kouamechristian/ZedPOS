@@ -1,0 +1,35 @@
+{% extends 'admin/base.html.twig' %}
+{% import 'admin/_macros.html.twig' as fmt %}
+
+{% block page_title %}Pertes{% endblock %}
+
+{% block admin_content %}
+<div class="bg-white rounded-xl shadow-sm overflow-hidden">
+    <table class="w-full text-sm">
+        <thead class="text-left text-slate-500 bg-slate-50">
+            <tr>
+                <th class="px-5 py-3 font-medium">Date</th>
+                <th class="px-5 py-3 font-medium">Motif</th>
+                <th class="px-5 py-3 font-medium">Élément</th>
+                <th class="px-5 py-3 font-medium text-right">Quantité</th>
+                <th class="px-5 py-3 font-medium text-right">Valorisation</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for perte in pertes %}
+                <tr class="border-t border-slate-100 hover:bg-slate-50">
+                    <td class="px-5 py-3 text-slate-600">{{ perte.createdAt|date('d/m/Y H:i') }}</td>
+                    <td class="px-5 py-3">{{ perte.motif.value|replace({'_': ' '})|capitalize }}</td>
+                    <td class="px-5 py-3 text-slate-600">
+                        {{ perte.matierePremiere ? perte.matierePremiere.nom : (perte.article ? perte.article.nom : '—') }}
+                    </td>
+                    <td class="px-5 py-3 text-right">{{ fmt.unites(perte.quantite) }}</td>
+                    <td class="px-5 py-3 text-right font-medium">{{ fmt.fcfa(perte.valorisation) }}</td>
+                </tr>
+            {% else %}
+                <tr><td colspan="5" class="px-5 py-8 text-center text-slate-400">Aucune perte enregistrée.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

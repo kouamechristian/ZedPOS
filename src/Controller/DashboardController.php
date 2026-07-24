@@ -36,15 +36,6 @@ class DashboardController extends AbstractController
         ]);
     }
 
-    #[Route('/admin', name: 'app_admin', methods: ['GET'])]
-    public function admin(): Response
-    {
-        return $this->render('dashboard/espace.html.twig', [
-            'titre' => 'Administration',
-            'sous_titre' => 'Espace gérant',
-        ]);
-    }
-
     #[Route('/pilotage', name: 'app_pilotage', methods: ['GET'])]
     public function pilotage(): Response
     {

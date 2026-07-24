@@ -1,0 +1,38 @@
+{% extends 'admin/base.html.twig' %}
+{% import 'admin/_macros.html.twig' as fmt %}
+
+{% block page_title %}Utilisateurs{% endblock %}
+
+{% block admin_content %}
+<div class="bg-white rounded-xl shadow-sm overflow-hidden">
+    <table class="w-full text-sm">
+        <thead class="text-left text-slate-500 bg-slate-50">
+            <tr>
+                <th class="px-5 py-3 font-medium">Nom</th>
+                <th class="px-5 py-3 font-medium">E-mail</th>
+                <th class="px-5 py-3 font-medium">Rôles</th>
+                <th class="px-5 py-3 font-medium">Statut</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for utilisateur in utilisateurs %}
+                <tr class="border-t border-slate-100 hover:bg-slate-50">
+                    <td class="px-5 py-3 font-medium text-slate-800">{{ utilisateur.nom }}</td>
+                    <td class="px-5 py-3 text-slate-600">{{ utilisateur.email }}</td>
+                    <td class="px-5 py-3">
+                        {% for role in utilisateur.roles %}
+                            {% if role != 'ROLE_USER' %}
+                                <span class="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">{{ role|replace({'ROLE_': ''})|capitalize }}</span>
+                            {% endif %}
+                        {% endfor %}
+                    </td>
+                    <td class="px-5 py-3">{{ fmt.badge(utilisateur.actif) }}</td>
+                </tr>
+            {% else %}
+                <tr><td colspan="4" class="px-5 py-6 text-center text-slate-400">Aucun utilisateur.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+<p class="mt-3 text-xs text-slate-400">Gestion complète des comptes via la commande <code class="bg-slate-100 px-1 rounded">app:creer-utilisateur</code>.</p>
+{% endblock %}

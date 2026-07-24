@@ -1,0 +1,52 @@
+{% extends 'admin/base.html.twig' %}
+{% import 'admin/_macros.html.twig' as fmt %}
+
+{% block page_title %}Stock — Matières premières{% endblock %}
+
+{% block page_actions %}
+    <a href="{{ path('admin_fournisseur_index') }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50">Fournisseurs</a>
+    <a href="{{ path('admin_matiere_new') }}" class="rounded-lg bg-slate-800 text-white px-3 py-2 text-sm font-semibold hover:bg-slate-700">+ Nouvelle matière</a>
+{% endblock %}
+
+{% block admin_content %}
+<div class="bg-white rounded-xl shadow-sm overflow-hidden">
+    <table class="w-full text-sm">
+        <thead class="text-left text-slate-500 bg-slate-50">
+            <tr>
+                <th class="px-5 py-3 font-medium">Matière première</th>
+                <th class="px-5 py-3 font-medium">Fournisseur</th>
+                <th class="px-5 py-3 font-medium text-right">Stock actuel</th>
+                <th class="px-5 py-3 font-medium text-right">Seuil</th>
+                <th class="px-5 py-3 font-medium text-right">Coût / unité</th>
+                <th class="px-5 py-3 font-medium text-right">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for matiere in matieres %}
+                {% set alerte = matiere.stockActuel < matiere.stockMini %}
+                <tr class="border-t border-slate-100 hover:bg-slate-50">
+                    <td class="px-5 py-3 font-medium text-slate-800">{{ matiere.nom }}</td>
+                    <td class="px-5 py-3 text-slate-600">{{ matiere.fournisseur ? matiere.fournisseur.nom : '—' }}</td>
+                    <td class="px-5 py-3 text-right {{ alerte ? 'text-red-600 font-semibold' : '' }}">
+                        {{ fmt.unites(matiere.stockActuel) }} {{ matiere.uniteStock }}
+                        {% if alerte %}<span class="ml-1 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-700">seuil</span>{% endif %}
+                    </td>
+                    <td class="px-5 py-3 text-right text-slate-500">{{ fmt.unites(matiere.stockMini) }}</td>
+                    <td class="px-5 py-3 text-right">{{ fmt.fcfa(matiere.coutMoyenPondere) }}</td>
+                    <td class="px-5 py-3">
+                        <div class="flex items-center justify-end gap-2">
+                            <a href="{{ path('admin_matiere_edit', {id: matiere.id}) }}" class="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-medium hover:bg-slate-100">Modifier</a>
+                            <form method="post" action="{{ path('admin_matiere_delete', {id: matiere.id}) }}" data-turbo-confirm="Supprimer cette matière première ?">
+                                <input type="hidden" name="_token" value="{{ csrf_token('supprimer_matiere_' ~ matiere.id) }}">
+                                <button class="rounded-md border border-red-300 text-red-700 px-2.5 py-1 text-xs font-medium hover:bg-red-50">Supprimer</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="6" class="px-5 py-6 text-center text-slate-400">Aucune matière première.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

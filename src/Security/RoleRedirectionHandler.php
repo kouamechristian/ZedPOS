@@ -38,7 +38,7 @@ class RoleRedirectionHandler implements AuthenticationSuccessHandlerInterface
 
         $route = match (true) {
             \in_array(RoleUtilisateur::DIRIGEANTE->value, $roles, true) => 'app_pilotage',
-            \in_array(RoleUtilisateur::GERANT->value, $roles, true) => 'app_admin',
+            \in_array(RoleUtilisateur::GERANT->value, $roles, true) => 'admin_dashboard',
             \in_array(RoleUtilisateur::COMPTABLE->value, $roles, true) => 'app_comptabilite',
             \in_array(RoleUtilisateur::CAISSIER->value, $roles, true) => 'app_caisse',
             default => 'app_login',
