@@ -87,6 +87,26 @@ class AdminSmokeTest extends WebTestCase
         ];
     }
 
+    public function testCaissierNePeutPasVoirLesCouts(): void
+    {
+        // Un caissier ne doit jamais accéder au back-office (donc jamais aux coûts/marges).
+        $caissier = new Utilisateur('caissier@test.ci', 'Caissier Test');
+        $caissier->setRoles(['ROLE_CAISSIER'])->setCodePin('x');
+        $this->em->persist($caissier);
+        $this->em->flush();
+
+        $this->client->loginUser($caissier);
+        $this->client->request('GET', '/admin/articles');
+        $this->assertResponseStatusCodeSame(403);
+    }
+
+    public function testColonneCoutMargeVisiblePourLeGerant(): void
+    {
+        $crawler = $this->client->request('GET', '/admin/articles');
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorTextContains('thead', 'Coût / Marge');
+    }
+
     public function testFiltreArticleParRecherche(): void
     {
         $crawler = $this->client->request('GET', '/admin/articles?q=Baguette');

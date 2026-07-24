@@ -127,6 +127,12 @@ php bin/console doctrine:migrations:migrate
   (il fait `{% use 'form_div_layout.html.twig' %}` pour pouvoir appeler `parent()`).
 - Montants saisis en FCFA / unités entières et convertis en centimes / millièmes
   par des transformateurs de formulaire (jamais de float persisté).
+- **Coût / marge** : `App\Service\CalculateurCoutMatiere` calcule le coût de revient
+  (Σ quantité × coût moyen matière, ajusté du % de perte : coût / (1 − perte)), la
+  marge brute et le taux de marge. Colonne « Coût / Marge » sur la liste des articles,
+  badge rouge si la marge passe sous le seuil (`app.seuil_marge_bp`, défaut 6000 = 60 %).
+  Ces informations sont **strictement réservées à `ROLE_GERANT`** (jamais un caissier) :
+  page sous `access_control ^/admin` + garde `is_granted('ROLE_GERANT')` dans le template.
 
 ### Données de démonstration (fixtures)
 

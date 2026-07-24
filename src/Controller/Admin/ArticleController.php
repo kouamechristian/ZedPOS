@@ -9,6 +9,7 @@ use App\Form\ArticleType;
 use App\Form\LigneFicheTechniqueType;
 use App\Repository\ArticleRepository;
 use App\Repository\FamilleProduitRepository;
+use App\Service\CalculateurCoutMatiere;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bridge\Doctrine\Attribute\MapEntity;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -23,8 +24,12 @@ use Symfony\Component\Security\Http\Attribute\IsGranted;
 class ArticleController extends AbstractController
 {
     #[Route('', name: 'admin_article_index', methods: ['GET'])]
-    public function index(Request $request, ArticleRepository $articles, FamilleProduitRepository $familles): Response
-    {
+    public function index(
+        Request $request,
+        ArticleRepository $articles,
+        FamilleProduitRepository $familles,
+        CalculateurCoutMatiere $calculateur,
+    ): Response {
         $familleId = $request->query->get('famille');
         $famille = $familleId ? $familles->find($familleId) : null;
         $recherche = $request->query->get('q');
@@ -35,8 +40,16 @@ class ArticleController extends AbstractController
             default => null,
         };
 
+        $resultats = $articles->rechercher($famille, $recherche, $actif);
+
+        $couts = [];
+        foreach ($resultats as $article) {
+            $couts[$article->getId()] = $calculateur->calculer($article);
+        }
+
         return $this->render('admin/article/index.html.twig', [
-            'articles' => $articles->rechercher($famille, $recherche, $actif),
+            'articles' => $resultats,
+            'couts' => $couts,
             'familles' => $familles->findBy([], ['position' => 'ASC']),
             'famille_active' => $famille,
             'recherche' => $recherche,

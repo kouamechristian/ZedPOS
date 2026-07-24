@@ -34,6 +34,7 @@ class FicheTechnique
         $this->article = $article;
         $this->lignes = new ArrayCollection();
         $this->createdAt = new \DateTimeImmutable();
+        $article->setFicheTechnique($this);
     }
 
     public function getId(): ?int

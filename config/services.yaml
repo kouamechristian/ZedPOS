@@ -7,6 +7,8 @@
 # Put parameters here that don't need to change on each machine where the app is deployed
 # https://symfony.com/doc/current/best_practices.html#use-parameters-for-application-configuration
 parameters:
+    # Seuil d'alerte de marge, en points de base (6000 = 60 %).
+    app.seuil_marge_bp: 6000
 
 services:
     # default configuration for services in *this* file
@@ -22,6 +24,11 @@ services:
     # Contournement de l'introspection MariaDB 10.4 (voir src/Doctrine/DBAL).
     App\Doctrine\DBAL\MariaDbCompatMiddleware:
         tags: ['doctrine.middleware']
+
+    # Seuil de marge paramétrable pour le calculateur de coût.
+    App\Service\CalculateurCoutMatiere:
+        arguments:
+            $seuilMargeParDefautBp: '%app.seuil_marge_bp%'
 
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones

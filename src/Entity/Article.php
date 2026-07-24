@@ -163,4 +163,11 @@ class Article
     {
         return $this->ficheTechnique;
     }
+
+    public function setFicheTechnique(?FicheTechnique $ficheTechnique): self
+    {
+        $this->ficheTechnique = $ficheTechnique;
+
+        return $this;
+    }
 }

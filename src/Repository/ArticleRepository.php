@@ -27,6 +27,13 @@ class ArticleRepository extends ServiceEntityRepository
         $qb = $this->createQueryBuilder('a')
             ->leftJoin('a.familleProduit', 'f')
             ->addSelect('f')
+            // Chargement de la fiche technique pour le calcul de coût/marge (évite le N+1).
+            ->leftJoin('a.ficheTechnique', 'ft')
+            ->addSelect('ft')
+            ->leftJoin('ft.lignes', 'ftl')
+            ->addSelect('ftl')
+            ->leftJoin('ftl.matierePremiere', 'mp')
+            ->addSelect('mp')
             ->orderBy('f.position', 'ASC')
             ->addOrderBy('a.positionCaisse', 'ASC');
 

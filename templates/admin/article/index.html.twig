@@ -46,6 +46,9 @@
                 <th class="px-5 py-3 font-medium">Famille</th>
                 <th class="px-5 py-3 font-medium text-right">Prix TTC</th>
                 <th class="px-5 py-3 font-medium">TVA</th>
+                {% if is_granted('ROLE_GERANT') %}
+                    <th class="px-5 py-3 font-medium text-right">Coût / Marge</th>
+                {% endif %}
                 <th class="px-5 py-3 font-medium">Statut</th>
                 <th class="px-5 py-3 font-medium text-right">Actions</th>
             </tr>
@@ -62,6 +65,24 @@
                     <td class="px-5 py-3 text-slate-600">{{ article.familleProduit ? article.familleProduit.nom : '—' }}</td>
                     <td class="px-5 py-3 text-right font-medium">{{ fmt.fcfa(article.prixVenteTtc) }}</td>
                     <td class="px-5 py-3 text-slate-600">{{ fmt.pourcent(article.tauxTva) }}</td>
+                    {% if is_granted('ROLE_GERANT') %}
+                        {% set cout = couts[article.id] %}
+                        <td class="px-5 py-3 text-right">
+                            {% if cout and cout.calculable %}
+                                <div class="text-slate-500">Revient {{ fmt.fcfa(cout.coutRevient) }}</div>
+                                <div class="mt-0.5 flex items-center justify-end gap-2">
+                                    <span class="font-medium {{ cout.margeBrute < 0 ? 'text-red-600' : 'text-slate-800' }}">{{ fmt.fcfa(cout.margeBrute) }}</span>
+                                    <span class="text-xs text-slate-500">{{ cout.tauxMargePourcent|number_format(1, ',', ' ') }} %</span>
+                                    {% if cout.sousSeuil %}
+                                        <span class="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700"
+                                              title="Marge sous le seuil de {{ cout.seuilPourcent|number_format(0, ',', ' ') }} %">Marge basse</span>
+                                    {% endif %}
+                                </div>
+                            {% else %}
+                                <span class="text-slate-400">—</span>
+                            {% endif %}
+                        </td>
+                    {% endif %}
                     <td class="px-5 py-3">{{ fmt.badge(article.actif) }}</td>
                     <td class="px-5 py-3">
                         <div class="flex items-center justify-end gap-2">
@@ -76,7 +97,7 @@
                     </td>
                 </tr>
             {% else %}
-                <tr><td colspan="6" class="px-5 py-6 text-center text-slate-400">Aucun article ne correspond aux filtres.</td></tr>
+                <tr><td colspan="{{ is_granted('ROLE_GERANT') ? 7 : 6 }}" class="px-5 py-6 text-center text-slate-400">Aucun article ne correspond aux filtres.</td></tr>
             {% endfor %}
         </tbody>
     </table>
