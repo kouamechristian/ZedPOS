@@ -28,9 +28,13 @@ class Utilisateur implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(type: Types::JSON)]
     private array $roles = [];
 
-    /** Code PIN de caisse, haché (jamais stocké en clair). */
-    #[ORM\Column]
-    private string $codePin;
+    /** Mot de passe haché pour la connexion classique (dirigeante, gérant, comptable). */
+    #[ORM\Column(nullable: true)]
+    private ?string $motDePasse = null;
+
+    /** Code PIN de caisse haché, pour la connexion rapide des caissiers (jamais en clair). */
+    #[ORM\Column(nullable: true)]
+    private ?string $codePin = null;
 
     #[ORM\Column(length: 120)]
     private string $nom;
@@ -92,22 +96,38 @@ class Utilisateur implements UserInterface, PasswordAuthenticatedUserInterface
     }
 
     /**
-     * Le mot de passe stocké est le code PIN haché.
+     * Mot de passe haché utilisé par la connexion classique. Null pour les
+     * caissiers, qui s'authentifient au code PIN.
      */
-    public function getPassword(): string
+    public function getPassword(): ?string
     {
-        return $this->codePin;
+        return $this->motDePasse;
     }
 
-    public function getCodePin(): string
+    public function getMotDePasse(): ?string
+    {
+        return $this->motDePasse;
+    }
+
+    /**
+     * @param string|null $motDePasse Mot de passe déjà haché
+     */
+    public function setMotDePasse(?string $motDePasse): self
+    {
+        $this->motDePasse = $motDePasse;
+
+        return $this;
+    }
+
+    public function getCodePin(): ?string
     {
         return $this->codePin;
     }
 
     /**
-     * @param string $codePin Code PIN déjà haché
+     * @param string|null $codePin Code PIN déjà haché
      */
-    public function setCodePin(string $codePin): self
+    public function setCodePin(?string $codePin): self
     {
         $this->codePin = $codePin;
 

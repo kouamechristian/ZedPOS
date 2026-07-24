@@ -10,6 +10,12 @@ security:
                 class: App\Entity\Utilisateur
                 property: email
 
+    # Hiérarchie des rôles : DIRIGEANTE > GERANT > CAISSIER.
+    # COMPTABLE est un rôle autonome (connexion classique, accès comptabilité).
+    role_hierarchy:
+        ROLE_GERANT: [ROLE_CAISSIER]
+        ROLE_DIRIGEANTE: [ROLE_GERANT]
+
     firewalls:
         dev:
             # Ensure dev tools and static assets are always allowed
@@ -19,16 +25,29 @@ security:
             lazy: true
             provider: app_user_provider
 
-            # Activate different ways to authenticate:
-            # https://symfony.com/doc/current/security.html#the-firewall
+            # Connexion rapide caissier par code PIN (pavé numérique /caisse/login).
+            custom_authenticators:
+                - App\Security\CaisseAuthenticator
 
-            # https://symfony.com/doc/current/security/impersonating_user.html
-            # switch_user: true
+            # Connexion classique email / mot de passe (dirigeante, gérant, comptable).
+            form_login:
+                login_path: app_login
+                check_path: app_login
+                enable_csrf: true
+                success_handler: App\Security\RoleRedirectionHandler
+
+            logout:
+                path: app_logout
+                target: app_login
 
     # Note: Only the *first* matching rule is applied
     access_control:
-        # - { path: ^/admin, roles: ROLE_ADMIN }
-        # - { path: ^/profile, roles: ROLE_USER }
+        - { path: ^/login$, roles: PUBLIC_ACCESS }
+        - { path: ^/caisse/login$, roles: PUBLIC_ACCESS }
+        - { path: ^/caisse, roles: ROLE_CAISSIER }
+        - { path: ^/admin, roles: ROLE_GERANT }
+        - { path: ^/pilotage, roles: ROLE_DIRIGEANTE }
+        - { path: ^/comptabilite, roles: ROLE_COMPTABLE }
 
 when@test:
     security:

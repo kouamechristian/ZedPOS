@@ -67,15 +67,31 @@ Ces conventions sont **impératives**. Toute contribution doit les respecter.
 ### Base de données
 
 - MariaDB, configurée via `DATABASE_URL` (voir `.env` / `.env.local`).
-- Migrations Doctrine obligatoires pour tout changement de schéma.
-- **Attention MariaDB 10.4 (XAMPP)** : `make:migration` échoue à l'introspection
-  (`Unknown column 'i_c.TABLE_NAME'`) car `information_schema.CHECK_CONSTRAINTS`
-  n'a pas encore la colonne `TABLE_NAME` sur cette version. Contournement pour
-  générer une migration :
-  1. `php bin/console doctrine:migrations:generate` (crée une migration vide) ;
-  2. `php bin/console doctrine:schema:create --dump-sql` (DDL depuis le mapping,
-     sans introspection) — copier le SQL dans le `up()` ;
-  3. `php bin/console doctrine:migrations:migrate` (l'exécution n'introspecte pas).
+- Migrations Doctrine obligatoires pour tout changement de schéma
+  (`php bin/console make:migration` puis `doctrine:migrations:migrate`).
+- **Compatibilité MariaDB 10.4 (XAMPP)** : cette version n'a pas la colonne
+  `information_schema.CHECK_CONSTRAINTS.TABLE_NAME` attendue par l'introspection
+  de Doctrine DBAL 4, ce qui casserait `make:migration` et `migrate`. Un middleware
+  DBAL (`src/Doctrine/DBAL/`) substitue une plateforme MariaDB corrigée : ne pas le
+  retirer tant que le serveur reste en 10.4.
+
+### Sécurité et rôles
+
+- **Rôles** : `ROLE_DIRIGEANTE` > `ROLE_GERANT` > `ROLE_CAISSIER` (hiérarchie) ;
+  `ROLE_COMPTABLE` est autonome. Voir l'enum `App\Enum\RoleUtilisateur`.
+- **Deux connexions** sur le même pare-feu `main` :
+  - classique e-mail / mot de passe (`/login`) pour dirigeante, gérant, comptable ;
+  - code PIN 4 chiffres sur pavé numérique (`/caisse/login`) pour les caissiers,
+    via `App\Security\CaisseAuthenticator`.
+- `Utilisateur` porte **deux identifiants distincts** : `motDePasse` (connexion
+  classique, = `getPassword()`) et `codePin` (caisse) — les deux hachés.
+- Redirection post-connexion par rôle (`App\Security\RoleRedirectionHandler`) :
+  caissier → `/caisse`, gérant → `/admin`, dirigeante → `/pilotage`,
+  comptable → `/comptabilite`.
+- Chaque connexion / déconnexion / échec est tracé dans `JournalAudit`
+  (`App\EventSubscriber\AuditConnexionSubscriber`).
+- Créer un compte : `php bin/console app:creer-utilisateur <email> <nom>
+  --role=GERANT --mot-de-passe=…` (ou `--role=CAISSIER --code-pin=1234`).
 
 ---
 

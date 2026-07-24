@@ -19,5 +19,9 @@ services:
     App\:
         resource: '../src/'
 
+    # Contournement de l'introspection MariaDB 10.4 (voir src/Doctrine/DBAL).
+    App\Doctrine\DBAL\MariaDbCompatMiddleware:
+        tags: ['doctrine.middleware']
+
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones

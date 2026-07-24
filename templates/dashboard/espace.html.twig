@@ -1,0 +1,28 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}{{ titre }} — ZedPOS{% endblock %}
+
+{% block body %}
+<div class="min-h-screen bg-slate-100">
+    <header class="bg-white shadow">
+        <div class="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div>
+                <h1 class="text-xl font-bold text-slate-800">{{ titre }}</h1>
+                <p class="text-sm text-slate-500">{{ sous_titre }}</p>
+            </div>
+            <div class="flex items-center gap-4 text-sm">
+                {% if app.user %}
+                    <span class="text-slate-600">{{ app.user.nom }} ({{ app.user.email }})</span>
+                {% endif %}
+                <a href="{{ path('app_logout') }}" class="rounded-lg bg-slate-800 text-white px-3 py-1.5 hover:bg-slate-700 transition">
+                    Déconnexion
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-4 py-10">
+        <p class="text-slate-600">Bienvenue dans l'espace <strong>{{ titre }}</strong>.</p>
+    </main>
+</div>
+{% endblock %}

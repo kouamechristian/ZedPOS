@@ -1,0 +1,65 @@
+<?php
+
+namespace App\Controller;
+
+use App\Security\RoleRedirectionHandler;
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\RedirectResponse;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Routing\Attribute\Route;
+
+/**
+ * Pages d'accueil des différents espaces (protégées par access_control dans security.yaml).
+ * Ce sont pour l'instant des points d'atterrissage minimaux après connexion.
+ */
+class DashboardController extends AbstractController
+{
+    /**
+     * Racine : redirige vers l'espace du rôle, ou vers la connexion si anonyme.
+     */
+    #[Route('/', name: 'app_home', methods: ['GET'])]
+    public function home(RoleRedirectionHandler $redirection): RedirectResponse
+    {
+        if (null === $this->getUser()) {
+            return $this->redirectToRoute('app_login');
+        }
+
+        return new RedirectResponse($redirection->urlPour($this->getUser()));
+    }
+
+    #[Route('/caisse', name: 'app_caisse', methods: ['GET'])]
+    public function caisse(): Response
+    {
+        return $this->render('dashboard/espace.html.twig', [
+            'titre' => 'Caisse',
+            'sous_titre' => 'Espace caissier',
+        ]);
+    }
+
+    #[Route('/admin', name: 'app_admin', methods: ['GET'])]
+    public function admin(): Response
+    {
+        return $this->render('dashboard/espace.html.twig', [
+            'titre' => 'Administration',
+            'sous_titre' => 'Espace gérant',
+        ]);
+    }
+
+    #[Route('/pilotage', name: 'app_pilotage', methods: ['GET'])]
+    public function pilotage(): Response
+    {
+        return $this->render('dashboard/espace.html.twig', [
+            'titre' => 'Pilotage',
+            'sous_titre' => 'Espace dirigeante',
+        ]);
+    }
+
+    #[Route('/comptabilite', name: 'app_comptabilite', methods: ['GET'])]
+    public function comptabilite(): Response
+    {
+        return $this->render('dashboard/espace.html.twig', [
+            'titre' => 'Comptabilité',
+            'sous_titre' => 'Espace comptable',
+        ]);
+    }
+}

@@ -22,6 +22,20 @@ class UtilisateurRepository extends ServiceEntityRepository implements PasswordU
     }
 
     /**
+     * Utilisateurs actifs disposant d'un code PIN (candidats à la connexion caisse).
+     *
+     * @return Utilisateur[]
+     */
+    public function findActifsAvecCodePin(): array
+    {
+        return $this->createQueryBuilder('u')
+            ->andWhere('u.actif = true')
+            ->andWhere('u.codePin IS NOT NULL')
+            ->getQuery()
+            ->getResult();
+    }
+
+    /**
      * Réhache automatiquement le code PIN lorsque nécessaire.
      */
     public function upgradePassword(PasswordAuthenticatedUserInterface $user, string $newHashedPassword): void
