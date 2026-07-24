@@ -115,3 +115,20 @@ php bin/console doctrine:migrations:migrate
 ```
 
 **Commande de test : `php bin/phpunit`**
+
+### Données de démonstration (fixtures)
+
+```bash
+# Charge 7 familles, 43 articles, 23 matières, 14 fiches, 4 comptes
+# et ~30 jours de ventes historiques réalistes (pics 5-9h / 18-21h).
+php -d memory_limit=1G bin/console doctrine:fixtures:load --no-interaction --no-debug
+```
+
+Comptes créés (mots de passe de démo, à ne pas utiliser en production) :
+
+| Rôle | Identifiant | Secret |
+|------|-------------|--------|
+| Dirigeante | `aya.kone@zedpos.ci` | mot de passe `dirigeante123` |
+| Gérant | `koffi.nguessan@zedpos.ci` | mot de passe `gerant123` |
+| Caissier | `fatou.traore@zedpos.ci` | code PIN `1234` |
+| Caissier | `yao.kouassi@zedpos.ci` | code PIN `5678` |
