@@ -149,6 +149,23 @@ php bin/console doctrine:migrations:migrate
   de caisse ouverte (créée à la volée), et renvoie le numéro de ticket.
 - « Mise en attente » : tickets mémorisés côté client, repris en un appui.
 
+### API d'encaissement (`/api/vente`)
+
+- `POST /api/vente` (ROLE_CAISSIER) : reçoit `{uuid, mode, lignes, remise?, reglements}`.
+  Crée la Vente **en transaction**, recalcule HT/TVA/TTC côté serveur, numérote
+  chronologiquement (`Vaammjj-00001`). Service : `App\Service\EncaissementService`.
+  - **Idempotence stricte** sur l'`uuid` (généré côté client) : rejouer la requête
+    renvoie la vente existante (HTTP 200) sans créer de doublon ; création = 201.
+  - **Paiement mixte** : plusieurs `reglements` ; l'électronique ne peut dépasser le
+    total, le total réglé doit le couvrir. **Rendu de monnaie** = excédent (espèces).
+  - **Remise** en `POURCENTAGE` ou `VALEUR`, plafonnée par rôle (**caissier 0 %,
+    gérant 10 %**) ; **motif obligatoire au-delà de 500 FCFA**.
+- `POST /api/vente/{uuid}/annuler` (**ROLE_GERANT**) : motif obligatoire, **jamais de
+  suppression** (statut → `ANNULEE`, motif conservé).
+- Montants toujours en centimes ; erreurs métier via `EncaissementException` (code HTTP).
+- La `Vente` accepte désormais un UUID client au constructeur et porte `remise`,
+  `motifRemise`, `rendu`, `motifAnnulation`.
+
 ### Données de démonstration (fixtures)
 
 ```bash

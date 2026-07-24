@@ -44,6 +44,9 @@ security:
     access_control:
         - { path: ^/login$, roles: PUBLIC_ACCESS }
         - { path: ^/caisse/login$, roles: PUBLIC_ACCESS }
+        # L'API d'encaissement exige au minimum un caissier ; l'annulation exige
+        # ROLE_GERANT (contrôlé au niveau du contrôleur).
+        - { path: ^/api, roles: ROLE_CAISSIER }
         - { path: ^/caisse, roles: ROLE_CAISSIER }
         - { path: ^/admin, roles: ROLE_GERANT }
         - { path: ^/pilotage, roles: ROLE_DIRIGEANTE }
