@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Ticket {{ ticket.numero }}</title>
+    {% import 'admin/_macros.html.twig' as fmt %}
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Courier New', ui-monospace, monospace; font-size: 12px; color: #000; background: #e5e7eb; }
+        .barre { max-width: 80mm; margin: 10px auto 0; display: flex; gap: 8px; }
+        .barre button { flex: 1; padding: 8px; font: inherit; cursor: pointer; border: 1px solid #334155; background: #0f172a; color: #fff; border-radius: 6px; }
+        .barre button.secondaire { background: #fff; color: #0f172a; }
+        .ticket { width: 80mm; background: #fff; margin: 10px auto; padding: 4mm; }
+        .center { text-align: center; }
+        .bold { font-weight: bold; }
+        .big { font-size: 16px; }
+        .muted { color: #333; }
+        .row { display: flex; justify-content: space-between; gap: 8px; }
+        .row .g { flex: 1; overflow: hidden; }
+        .row .d { white-space: nowrap; text-align: right; }
+        .sep { border-top: 1px dashed #000; margin: 5px 0; }
+        .commentaire { font-size: 10px; padding-left: 10px; font-style: italic; }
+        .total .d, .total .g { font-size: 16px; font-weight: bold; }
+        .qr { width: 28mm; height: 28mm; border: 1px dashed #64748b; margin: 8px auto; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 9px; color: #64748b; }
+        @media print {
+            body { background: #fff; }
+            .barre { display: none; }
+            .ticket { width: auto; margin: 0; padding: 0; }
+            @page { size: 80mm auto; margin: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="barre">
+        <button type="button" onclick="window.print()">Imprimer</button>
+        <button type="button" class="secondaire" onclick="window.close()">Fermer</button>
+    </div>
+
+    <div class="ticket">
+        <div class="center bold big">{{ ticket.raisonSociale }}</div>
+        <div class="center">{{ ticket.adresse }}</div>
+        {% if ticket.ncc %}<div class="center">NCC : {{ ticket.ncc }}</div>{% endif %}
+        {% if ticket.telephone %}<div class="center">Tél : {{ ticket.telephone }}</div>{% endif %}
+
+        <div class="sep"></div>
+        <div>Ticket : {{ ticket.numero }}</div>
+        <div>Date&nbsp;&nbsp; : {{ ticket.dateHeure|date('d/m/Y H:i') }}</div>
+        <div>Caisse : {{ ticket.caissier }}</div>
+        <div class="sep"></div>
+
+        {% for ligne in ticket.lignes %}
+            <div class="row">
+                <span class="g">{{ (ligne.quantiteMillimes / 1000)|number_format((ligne.quantiteMillimes % 1000) ? 3 : 0, ',', ' ') }} × {{ ligne.nom }}</span>
+                <span class="d">{{ fmt.fcfa(ligne.montant) }}</span>
+            </div>
+            {% if ligne.commentaire %}<div class="commentaire">{{ ligne.commentaire }}</div>{% endif %}
+        {% endfor %}
+
+        <div class="sep"></div>
+        {% if ticket.remise > 0 %}
+            <div class="row"><span class="g">Remise</span><span class="d">− {{ fmt.fcfa(ticket.remise) }}</span></div>
+        {% endif %}
+        <div class="row total"><span class="g">TOTAL</span><span class="d">{{ fmt.fcfa(ticket.totalTtc) }}</span></div>
+
+        <div class="sep"></div>
+        <div class="muted">Ventilation TVA</div>
+        {% for tva in ticket.ventilationTva %}
+            <div class="row">
+                <span class="g">TVA {{ (tva.tauxBp / 100)|number_format((tva.tauxBp % 100) ? 2 : 0, ',', ' ') }} % — base {{ fmt.fcfa(tva.base) }}</span>
+                <span class="d">{{ fmt.fcfa(tva.montant) }}</span>
+            </div>
+        {% endfor %}
+        <div class="row"><span class="g">Total HT</span><span class="d">{{ fmt.fcfa(ticket.totalHt) }}</span></div>
+        <div class="row"><span class="g">Total TVA</span><span class="d">{{ fmt.fcfa(ticket.totalTva) }}</span></div>
+
+        <div class="sep"></div>
+        {% for reglement in ticket.reglements %}
+            <div class="row"><span class="g">{{ reglement.libelle }}</span><span class="d">{{ fmt.fcfa(reglement.montant) }}</span></div>
+        {% endfor %}
+        {% if ticket.rendu > 0 %}
+            <div class="row bold"><span class="g">Rendu</span><span class="d">{{ fmt.fcfa(ticket.rendu) }}</span></div>
+        {% endif %}
+
+        {# Emplacement réservé au futur QR code de facture normalisée (RNE / DGI). #}
+        <div class="qr">QR RNE/DGI<br>(à venir)</div>
+
+        {% if ticket.pied %}<div class="center">{{ ticket.pied }}</div>{% endif %}
+    </div>
+
+    {% if auto %}
+    <script>
+        window.addEventListener('load', function () { window.print(); });
+    </script>
+    {% endif %}
+</body>
+</html>

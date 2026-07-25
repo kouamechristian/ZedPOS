@@ -166,6 +166,22 @@ php bin/console doctrine:migrations:migrate
 - La `Vente` accepte désormais un UUID client au constructeur et porte `remise`,
   `motifRemise`, `rendu`, `motifAnnulation`.
 
+### Ticket de caisse et impression
+
+- **Vue HTML 80 mm** imprimable via `window.print()` (CSS `@media print`, `@page size: 80mm`) :
+  `GET /caisse/ticket/{uuid}` → `templates/ticket/ticket.html.twig`. En-tête (raison
+  sociale, adresse Abengourou, NCC, n° ticket, date/heure, caissier), lignes, total,
+  ventilation TVA, règlement(s), rendu, **pied paramétrable** et **emplacement réservé
+  au futur QR code RNE/DGI**.
+- Infos boutique **paramétrables via `.env`** (`TICKET_RAISON_SOCIALE`, `TICKET_ADRESSE`,
+  `TICKET_NCC`, `TICKET_TELEPHONE`, `TICKET_PIED`) → service `App\Service\ParametresTicket`.
+- `App\Service\TicketBuilder` construit un `TicketData` (indépendant du support) partagé
+  par la vue HTML et l'ESC/POS ; `App\Service\ImpressionService` prépare la commande
+  **ESC/POS** (texte ASCII + coupe papier + ouverture tiroir), exposée en base64 par
+  `GET /caisse/ticket/{uuid}/escpos` pour un futur pont d'impression local.
+- **Impression automatique** après encaissement via un iframe caché (`?auto=1`), avec
+  la case **« Imprimer le ticket »** (décochable) dans l'écran de caisse.
+
 ### Données de démonstration (fixtures)
 
 ```bash

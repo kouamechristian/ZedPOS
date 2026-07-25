@@ -116,7 +116,12 @@ class CaisseController extends AbstractController
                 $em->persist($vente);
                 $em->flush();
 
-                return $this->json(['ok' => true, 'numero' => $vente->getNumero(), 'total' => $totalTtc]);
+                return $this->json([
+                    'ok' => true,
+                    'uuid' => (string) $vente->getUuid(),
+                    'numero' => $vente->getNumero(),
+                    'total' => $totalTtc,
+                ]);
             } catch (UniqueConstraintViolationException) {
                 $em->clear();
                 $session = $this->sessionOuverte($em, $sessions);

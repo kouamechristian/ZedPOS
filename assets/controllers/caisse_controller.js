@@ -9,9 +9,9 @@ export default class extends Controller {
     static targets = [
         'modeBtn', 'onglet', 'grille', 'ticket', 'total', 'reglement',
         'encaisser', 'attente', 'panneau', 'panneauNom', 'panneauQte',
-        'panneauCommentaire', 'confirmation',
+        'panneauCommentaire', 'confirmation', 'imprimer', 'impression',
     ];
-    static values = { mode: String, encaisserUrl: String, token: String };
+    static values = { mode: String, encaisserUrl: String, ticketBase: String, token: String };
 
     connect() {
         this.lignes = [];        // { cle, articleId, nom, prix, quantite, commentaire }
@@ -160,6 +160,9 @@ export default class extends Controller {
             const data = await reponse.json();
             if (data.ok) {
                 this.notifier(`Vente ${data.numero} encaissée`, false);
+                if (this.imprimerTarget.checked && data.uuid) {
+                    this.imprimerTicket(data.uuid);
+                }
                 this.reinitialiser();
             } else {
                 this.notifier(data.erreur || 'Erreur lors de l\'encaissement', true);
@@ -176,6 +179,12 @@ export default class extends Controller {
         this.reglement = null;
         this.reglementTargets.forEach((r) => this.marquer(r, false));
         this.rendreTicket();
+    }
+
+    // Charge le ticket (en mode auto-impression) dans l'iframe caché : celui-ci
+    // déclenche window.print() une fois rendu — sans quitter l'écran de caisse.
+    imprimerTicket(uuid) {
+        this.impressionTarget.src = this.ticketBaseValue.replace('__UUID__', uuid) + '?auto=1';
     }
 
     // ----- Mise en attente -----

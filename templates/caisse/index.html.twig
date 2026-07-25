@@ -24,6 +24,7 @@
      data-controller="caisse"
      data-caisse-mode-value="BOULANGERIE"
      data-caisse-encaisser-url-value="{{ path('app_caisse_encaisser') }}"
+     data-caisse-ticket-base-value="{{ path('app_caisse_ticket', {uuid: '__UUID__'}) }}"
      data-caisse-token-value="{{ csrf_token('caisse') }}">
 
     {# ---- Barre supérieure : modes + tickets en attente + verrouillage ---- #}
@@ -111,6 +112,10 @@
             </div>
 
             <div class="mt-auto grid gap-2">
+                <label class="flex items-center gap-2 text-sm text-slate-600 px-1 select-none">
+                    <input type="checkbox" data-caisse-target="imprimer" checked class="h-4 w-4 rounded border-slate-300">
+                    Imprimer le ticket
+                </label>
                 <button type="button"
                         class="rounded-xl bg-green-600 text-white text-lg font-bold py-4 hover:bg-green-500 disabled:opacity-40"
                         data-action="caisse#encaisser" data-caisse-target="encaisser">Encaisser</button>
@@ -154,5 +159,8 @@
 
     {# ---- Bandeau de confirmation d'encaissement ---- #}
     <div data-caisse-target="confirmation" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-30 rounded-xl bg-slate-900 text-white px-6 py-3 shadow-lg font-semibold"></div>
+
+    {# ---- Iframe caché : impression automatique du ticket après encaissement ---- #}
+    <iframe data-caisse-target="impression" title="Impression du ticket" class="hidden" aria-hidden="true"></iframe>
 </div>
 {% endblock %}
