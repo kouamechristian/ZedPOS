@@ -44,6 +44,13 @@
         </div>
     </header>
 
+    {% set sousSeuil = alertesStock.matieresSousSeuil %}
+    {% if sousSeuil is not empty %}
+        <div class="shrink-0 bg-amber-400 text-amber-950 px-4 py-1.5 text-sm font-semibold">
+            ⚠ Stock bas : {{ sousSeuil|length }} matière(s) sous le seuil ({% for matiere in sousSeuil|slice(0, 5) %}{{ matiere.nom }}{{ not loop.last ? ', ' }}{% endfor %}{% if sousSeuil|length > 5 %}…{% endif %})
+        </div>
+    {% endif %}
+
     <div class="flex-1 grid grid-cols-[1fr_380px_260px] min-h-0">
 
         {# ---- Colonne gauche : familles + grille produits ---- #}

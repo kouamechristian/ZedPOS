@@ -1,0 +1,29 @@
+{% extends 'admin/base.html.twig' %}
+{% form_theme form 'admin/_form_theme.html.twig' %}
+
+{% block page_title %}Saisir une perte{% endblock %}
+
+{% block page_actions %}
+    <a href="{{ path('admin_pertes') }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50">← Synthèse</a>
+{% endblock %}
+
+{% block admin_content %}
+<div class="max-w-xl bg-white rounded-xl shadow-sm p-6">
+    <p class="text-sm text-slate-500 mb-4">Sélectionnez une <strong>matière première</strong> ou un <strong>article</strong>, la quantité perdue et le motif. La valorisation est calculée automatiquement au coût moyen pondéré.</p>
+
+    {{ form_start(form) }}
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-5">
+        {{ form_row(form.matierePremiere) }}
+        {{ form_row(form.article) }}
+        {{ form_row(form.quantite) }}
+        {{ form_row(form.motif) }}
+    </div>
+    {{ form_row(form.commentaire) }}
+
+    <div class="mt-6 flex items-center gap-3">
+        <button class="rounded-xl bg-red-600 text-white px-5 py-3 text-base font-bold hover:bg-red-500">Enregistrer la perte</button>
+        <a href="{{ path('admin_pertes') }}" class="rounded-lg border border-slate-300 px-4 py-3 text-sm hover:bg-slate-50">Annuler</a>
+    </div>
+    {{ form_end(form) }}
+</div>
+{% endblock %}

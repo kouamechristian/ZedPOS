@@ -166,6 +166,20 @@ php bin/console doctrine:migrations:migrate
 - La `Vente` accepte désormais un UUID client au constructeur et porte `remise`,
   `motifRemise`, `rendu`, `motifAnnulation`.
 
+### Module Pertes et alertes de seuil
+
+- **Saisie rapide** `/admin/pertes/saisie` (`PerteType`) : matière OU article, quantité,
+  motif (casse, périmé, invendu, erreur de production, personnel, offert), commentaire.
+- `App\Service\ValorisationService` valorise automatiquement au **coût moyen pondéré**
+  (matière) ou au **coût de revient** (article avec fiche). `App\Service\PerteService`
+  crée la `Perte` valorisée + un `MouvementStock` **PERTE** et décrémente le stock
+  (matière toujours, article seulement si `suiviStock`).
+- **Synthèse mensuelle** `/admin/pertes?mois=YYYY-MM` : total valorisé, ventilation par
+  motif, top 5 des produits les plus perdus, détail du mois.
+- **Alertes de seuil** : `App\Service\AlerteStockService` liste les matières sous
+  `stockMini` (exposé en **variable globale Twig `alertesStock`**) → bandeau ambre
+  affiché dans le back-office et sur l'écran de caisse.
+
 ### Déstockage automatique (stock ↔ ventes)
 
 - `App\EventListener\DestockageVenteListener` (Doctrine `postPersist` + `preUpdate`

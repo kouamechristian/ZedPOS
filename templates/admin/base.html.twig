@@ -49,6 +49,16 @@
         </header>
 
         <main class="flex-1 p-6 min-w-0">
+            {% set sousSeuil = alertesStock.matieresSousSeuil %}
+            {% if sousSeuil is not empty %}
+                <div class="mb-4 rounded-lg bg-amber-50 border border-amber-300 px-4 py-3 text-sm text-amber-900">
+                    <span class="font-semibold">⚠ Stock bas :</span>
+                    {{ sousSeuil|length }} matière(s) sous le seuil —
+                    {% for matiere in sousSeuil|slice(0, 4) %}{{ matiere.nom }}{{ not loop.last ? ', ' }}{% endfor %}{% if sousSeuil|length > 4 %}…{% endif %}
+                    <a href="{{ path('admin_matiere_index') }}" class="ml-1 font-medium underline">voir le stock</a>
+                </div>
+            {% endif %}
+
             {% for type, messages in app.flashes(['success', 'error']) %}
                 {% for message in messages %}
                     <div class="mb-4 rounded-lg px-4 py-3 text-sm {{ type == 'success' ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-red-50 border border-red-200 text-red-800' }}">

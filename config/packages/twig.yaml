@@ -1,5 +1,8 @@
 twig:
     file_name_pattern: '*.twig'
+    globals:
+        # Bandeau d'alerte de stock disponible dans tous les templates.
+        alertesStock: '@App\Service\AlerteStockService'
 
 when@test:
     twig:

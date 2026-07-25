@@ -4,7 +4,6 @@ namespace App\Controller\Admin;
 
 use App\Repository\ArticleRepository;
 use App\Repository\FicheTechniqueRepository;
-use App\Repository\PerteRepository;
 use App\Repository\SessionCaisseRepository;
 use App\Repository\UtilisateurRepository;
 use App\Repository\VenteRepository;
@@ -84,14 +83,6 @@ class DashboardController extends AbstractController
         }
 
         return $this->render('admin/production.html.twig', ['fiches' => $lignes]);
-    }
-
-    #[Route('/pertes', name: 'admin_pertes', methods: ['GET'])]
-    public function pertes(PerteRepository $pertes): Response
-    {
-        return $this->render('admin/pertes.html.twig', [
-            'pertes' => $pertes->findBy([], ['createdAt' => 'DESC'], 100),
-        ]);
     }
 
     #[Route('/clotures', name: 'admin_clotures', methods: ['GET'])]
