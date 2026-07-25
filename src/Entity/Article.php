@@ -50,6 +50,20 @@ class Article
     #[ORM\OneToOne(mappedBy: 'article', targetEntity: FicheTechnique::class)]
     private ?FicheTechnique $ficheTechnique = null;
 
+    /**
+     * Suivi de stock direct de l'article (ex. boissons revendues sans fiche technique).
+     */
+    #[ORM\Column(options: ['default' => false])]
+    private bool $suiviStock = false;
+
+    /** Stock courant, en millièmes d'unité (pour les articles suivis en stock). */
+    #[ORM\Column(type: Types::BIGINT, options: ['default' => 0])]
+    private int $stockActuel = 0;
+
+    /** Seuil d'alerte, en millièmes d'unité. */
+    #[ORM\Column(type: Types::BIGINT, options: ['default' => 0])]
+    private int $stockMini = 0;
+
     public function __construct(string $nom, int $prixVenteTtc, string $unite)
     {
         $this->nom = $nom;
@@ -167,6 +181,42 @@ class Article
     public function setFicheTechnique(?FicheTechnique $ficheTechnique): self
     {
         $this->ficheTechnique = $ficheTechnique;
+
+        return $this;
+    }
+
+    public function isSuiviStock(): bool
+    {
+        return $this->suiviStock;
+    }
+
+    public function setSuiviStock(bool $suiviStock): self
+    {
+        $this->suiviStock = $suiviStock;
+
+        return $this;
+    }
+
+    public function getStockActuel(): int
+    {
+        return $this->stockActuel;
+    }
+
+    public function setStockActuel(int $stockActuel): self
+    {
+        $this->stockActuel = $stockActuel;
+
+        return $this;
+    }
+
+    public function getStockMini(): int
+    {
+        return $this->stockMini;
+    }
+
+    public function setStockMini(int $stockMini): self
+    {
+        $this->stockMini = $stockMini;
 
         return $this;
     }

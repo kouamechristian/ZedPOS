@@ -20,10 +20,13 @@ class SecurityTest extends WebTestCase
         $this->client = static::createClient();
         $this->em = static::getContainer()->get(EntityManagerInterface::class);
 
-        // Base de test propre : on vide l'audit (FK) puis les utilisateurs.
+        // Base de test propre (indépendante de l'ordre d'exécution des tests).
         $connection = $this->em->getConnection();
-        $connection->executeStatement('DELETE FROM journal_audit');
-        $connection->executeStatement('DELETE FROM utilisateur');
+        $connection->executeStatement('SET FOREIGN_KEY_CHECKS = 0');
+        foreach (['ligne_fiche_technique', 'fiche_technique', 'ligne_vente', 'reglement', 'vente', 'session_caisse', 'mouvement_stock', 'perte', 'article', 'matiere_premiere', 'fournisseur', 'famille_produit', 'journal_audit', 'utilisateur'] as $table) {
+            $connection->executeStatement('DELETE FROM '.$table);
+        }
+        $connection->executeStatement('SET FOREIGN_KEY_CHECKS = 1');
     }
 
     private function creerUtilisateur(string $email, string $role, ?string $motDePasse = null, ?string $codePin = null): void

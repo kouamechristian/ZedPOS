@@ -166,6 +166,23 @@ php bin/console doctrine:migrations:migrate
 - La `Vente` accepte désormais un UUID client au constructeur et porte `remise`,
   `motifRemise`, `rendu`, `motifAnnulation`.
 
+### Déstockage automatique (stock ↔ ventes)
+
+- `App\EventListener\DestockageVenteListener` (Doctrine `postPersist` + `preUpdate`
+  → travail exécuté en `postFlush` avec garde de ré-entrance, car l'id de la vente
+  n'existe qu'après l'INSERT).
+- À la **création** d'une vente : pour chaque ligne, si l'article a une fiche
+  technique, chaque matière première est décrémentée de
+  `quantité vendue × quantité fiche × 1/(1 − perte)` ; sinon, si l'article est
+  **suivi en stock** (`Article.suiviStock`, ex. boissons), son stock est décrémenté
+  directement. Un `MouvementStock` **SORTIE_VENTE** (quantité signée) est créé par
+  décrément, avec `source = vente`.
+- À l'**annulation** : les mouvements **inverses** (ENTREE) sont générés et le stock
+  restauré.
+- Le stock **peut devenir négatif** (une vente n'est jamais bloquée) mais **journalise
+  une alerte** (`logger->warning`). `Article` porte désormais `suiviStock`,
+  `stockActuel`, `stockMini`.
+
 ### Ticket de caisse et impression
 
 - **Vue HTML 80 mm** imprimable via `window.print()` (CSS `@media print`, `@page size: 80mm`) :
