@@ -27,14 +27,7 @@ class DashboardController extends AbstractController
         return new RedirectResponse($redirection->urlPour($this->getUser()));
     }
 
-    #[Route('/pilotage', name: 'app_pilotage', methods: ['GET'])]
-    public function pilotage(): Response
-    {
-        return $this->render('dashboard/espace.html.twig', [
-            'titre' => 'Pilotage',
-            'sous_titre' => 'Espace dirigeante',
-        ]);
-    }
+    // L'espace de pilotage est servi par App\Controller\Pilotage\TableauDeBordController.
 
     #[Route('/comptabilite', name: 'app_comptabilite', methods: ['GET'])]
     public function comptabilite(): Response

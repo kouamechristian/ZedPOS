@@ -2,26 +2,25 @@
 
 namespace App\EventSubscriber;
 
-use App\Entity\JournalAudit;
 use App\Entity\Utilisateur;
-use Doctrine\ORM\EntityManagerInterface;
+use App\Enum\ActionAudit;
+use App\Service\AuditLogger;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
-use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Security\Http\Authenticator\Passport\Badge\UserBadge;
 use Symfony\Component\Security\Http\Event\LoginFailureEvent;
 use Symfony\Component\Security\Http\Event\LoginSuccessEvent;
 use Symfony\Component\Security\Http\Event\LogoutEvent;
 
 /**
- * Trace dans le JournalAudit chaque connexion, déconnexion et échec de connexion.
+ * Trace dans le journal d'audit chaque connexion, déconnexion et échec de connexion.
+ *
+ * L'utilisateur et la requête proviennent de l'événement de sécurité : au moment
+ * de la connexion, le jeton n'est pas encore (ou plus) disponible dans le contexte
+ * de sécurité que consulterait {@see AuditLogger} par défaut.
  */
 class AuditConnexionSubscriber implements EventSubscriberInterface
 {
-    public const ACTION_CONNEXION = 'CONNEXION';
-    public const ACTION_DECONNEXION = 'DECONNEXION';
-    public const ACTION_ECHEC_CONNEXION = 'ECHEC_CONNEXION';
-
-    public function __construct(private readonly EntityManagerInterface $em)
+    public function __construct(private readonly AuditLogger $audit)
     {
     }
 
@@ -38,8 +37,8 @@ class AuditConnexionSubscriber implements EventSubscriberInterface
     {
         $utilisateur = $event->getUser();
 
-        $this->enregistrer(
-            self::ACTION_CONNEXION,
+        $this->audit->connexion(
+            ActionAudit::CONNEXION,
             $utilisateur instanceof Utilisateur ? $utilisateur : null,
             $event->getRequest(),
             ['identifiant' => $utilisateur->getUserIdentifier(), 'firewall' => $event->getFirewallName()],
@@ -50,8 +49,8 @@ class AuditConnexionSubscriber implements EventSubscriberInterface
     {
         $utilisateur = $event->getToken()?->getUser();
 
-        $this->enregistrer(
-            self::ACTION_DECONNEXION,
+        $this->audit->connexion(
+            ActionAudit::DECONNEXION,
             $utilisateur instanceof Utilisateur ? $utilisateur : null,
             $event->getRequest(),
             $utilisateur instanceof Utilisateur ? ['identifiant' => $utilisateur->getUserIdentifier()] : null,
@@ -63,8 +62,8 @@ class AuditConnexionSubscriber implements EventSubscriberInterface
         $badge = $event->getPassport()?->getBadge(UserBadge::class);
         $identifiant = $badge instanceof UserBadge ? $badge->getUserIdentifier() : null;
 
-        $this->enregistrer(
-            self::ACTION_ECHEC_CONNEXION,
+        $this->audit->connexion(
+            ActionAudit::ECHEC_CONNEXION,
             null,
             $event->getRequest(),
             [
@@ -72,24 +71,5 @@ class AuditConnexionSubscriber implements EventSubscriberInterface
                 'raison' => $event->getException()->getMessageKey(),
             ],
         );
-    }
-
-    /**
-     * @param array<string, mixed>|null $apres
-     */
-    private function enregistrer(string $action, ?Utilisateur $utilisateur, ?Request $request, ?array $apres): void
-    {
-        $entree = new JournalAudit(
-            action: $action,
-            entite: 'Utilisateur',
-            entiteId: $utilisateur?->getId(),
-            utilisateur: $utilisateur,
-            avant: null,
-            apres: $apres,
-            ip: $request?->getClientIp(),
-        );
-
-        $this->em->persist($entree);
-        $this->em->flush();
     }
 }

@@ -95,6 +95,9 @@ class Vente
         int $totalTtc,
         ?Uuid $uuid = null,
     ) {
+        // Une journée clôturée (Z passé) n'accepte plus aucune vente.
+        $sessionCaisse->garantirOuverte();
+
         $this->sessionCaisse = $sessionCaisse;
         $this->mode = $mode;
         $this->numero = $numero;
@@ -174,9 +177,14 @@ class Vente
     /**
      * Annule la vente. Seule mutation autorisée après création : le statut
      * passe à ANNULEE, les montants restent intacts pour la traçabilité.
+     *
+     * Impossible une fois la session de caisse clôturée : le rapport Z a déjà
+     * arrêté les chiffres de la journée.
      */
     public function annuler(?string $motif = null): self
     {
+        $this->sessionCaisse->garantirOuverte();
+
         if (StatutVente::ANNULEE === $this->statut) {
             throw new \LogicException('Cette vente est déjà annulée.');
         }

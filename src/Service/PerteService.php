@@ -19,6 +19,7 @@ class PerteService
     public function __construct(
         private readonly EntityManagerInterface $em,
         private readonly ValorisationService $valorisation,
+        private readonly AuditLogger $audit,
     ) {
     }
 
@@ -59,6 +60,7 @@ class PerteService
         }
 
         $this->em->flush();
+        $this->audit->perteSaisie($perte, $commentaire);
 
         return $perte;
     }

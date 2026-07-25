@@ -1,0 +1,144 @@
+{% extends 'pilotage/base.html.twig' %}
+
+{% block page_title %}Journal d'audit{% endblock %}
+
+{% macro valeurs(donnees) %}
+    {% if donnees is empty %}
+        <span class="text-slate-300">—</span>
+    {% else %}
+        <dl class="space-y-0.5">
+            {% for cle, valeur in donnees %}
+                <div class="flex gap-1.5">
+                    <dt class="text-slate-400">{{ cle }} :</dt>
+                    <dd class="font-medium text-slate-700 break-all">
+                        {%- if valeur is null -%}<span class="text-slate-300">null</span>
+                        {%- elseif valeur is same as(true) -%}oui
+                        {%- elseif valeur is same as(false) -%}non
+                        {%- elseif valeur is iterable -%}{{ valeur|join(', ') }}
+                        {%- else -%}{{ valeur }}
+                        {%- endif -%}
+                    </dd>
+                </div>
+            {% endfor %}
+        </dl>
+    {% endif %}
+{% endmacro %}
+
+{% block pilotage_content %}
+{% import _self as rendu %}
+
+{# ---- Filtres ---- #}
+<form method="get" class="bg-white rounded-xl shadow-sm p-4 mb-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-5 items-end">
+    <div>
+        <label for="du" class="block text-sm font-medium text-slate-700 mb-1">Du</label>
+        <input type="date" id="du" name="du" value="{{ filtres.du }}"
+               class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400">
+    </div>
+    <div>
+        <label for="au" class="block text-sm font-medium text-slate-700 mb-1">Au</label>
+        <input type="date" id="au" name="au" value="{{ filtres.au }}"
+               class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400">
+    </div>
+    <div>
+        <label for="utilisateur" class="block text-sm font-medium text-slate-700 mb-1">Utilisateur</label>
+        <select id="utilisateur" name="utilisateur"
+                class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400">
+            <option value="">— Tous —</option>
+            {% for auteur in auteurs %}
+                <option value="{{ auteur.id }}" {{ filtres.utilisateur == auteur.id ? 'selected' }}>{{ auteur.nom }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div>
+        <label for="action" class="block text-sm font-medium text-slate-700 mb-1">Type d'action</label>
+        <select id="action" name="action"
+                class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400">
+            <option value="">— Toutes —</option>
+            {% for famille, groupe in actionsParFamille %}
+                <optgroup label="{{ famille }}">
+                    {% for action in groupe %}
+                        <option value="{{ action.value }}" {{ filtres.action == action.value ? 'selected' }}>{{ action.libelle }}</option>
+                    {% endfor %}
+                </optgroup>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="flex gap-2">
+        <button class="flex-1 rounded-lg bg-slate-900 text-white px-4 py-2 text-sm font-semibold hover:bg-slate-700">Filtrer</button>
+        <a href="{{ path('pilotage_audit') }}" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50">Réinitialiser</a>
+    </div>
+</form>
+
+<div class="mb-3 flex items-baseline justify-between text-sm text-slate-500">
+    <span>{{ resultat.total }} entrée{{ resultat.total > 1 ? 's' }}</span>
+    <span>Page {{ resultat.page }} / {{ resultat.pages }}</span>
+</div>
+
+{# ---- Entrées ---- #}
+<div class="bg-white rounded-xl shadow-sm overflow-hidden">
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead class="text-left text-slate-500 bg-slate-50">
+                <tr>
+                    <th class="px-4 py-3 font-medium whitespace-nowrap">Horodatage</th>
+                    <th class="px-4 py-3 font-medium">Utilisateur</th>
+                    <th class="px-4 py-3 font-medium">Action</th>
+                    <th class="px-4 py-3 font-medium">Entité</th>
+                    <th class="px-4 py-3 font-medium">Avant</th>
+                    <th class="px-4 py-3 font-medium">Après</th>
+                    <th class="px-4 py-3 font-medium whitespace-nowrap">IP</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entree in resultat.entrees %}
+                    {% set action = libelles[entree.action]|default(null) %}
+                    <tr class="border-t border-slate-100 align-top hover:bg-slate-50">
+                        <td class="px-4 py-3 whitespace-nowrap tabular-nums text-slate-600">{{ entree.createdAt|date('d/m/Y H:i:s') }}</td>
+                        <td class="px-4 py-3 font-medium text-slate-800">{{ entree.utilisateur ? entree.utilisateur.nom : '—' }}</td>
+                        <td class="px-4 py-3">
+                            <span class="inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap
+                                         {{ action and action.sensible ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700' }}">
+                                {{ action ? action.libelle : entree.action }}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3 text-slate-600 whitespace-nowrap">
+                            {{ entree.entite }}{% if entree.entiteId %} <span class="text-slate-400">#{{ entree.entiteId }}</span>{% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-xs">{{ rendu.valeurs(entree.avant) }}</td>
+                        <td class="px-4 py-3 text-xs">{{ rendu.valeurs(entree.apres) }}</td>
+                        <td class="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">{{ entree.ip ?: '—' }}</td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="7" class="px-4 py-8 text-center text-slate-400">Aucune entrée pour ces critères.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{# ---- Pagination ---- #}
+{% if resultat.pages > 1 %}
+    {% set base = filtres|filter(v => v is not null) %}
+    <nav class="mt-5 flex items-center justify-center gap-2 text-sm">
+        {% if resultat.page > 1 %}
+            <a href="{{ path('pilotage_audit', base|merge({page: resultat.page - 1})) }}"
+               class="rounded-lg border border-slate-300 bg-white px-3 py-2 font-medium hover:bg-slate-50">← Précédent</a>
+        {% endif %}
+
+        {% for numero in max(1, resultat.page - 2)..min(resultat.pages, resultat.page + 2) %}
+            <a href="{{ path('pilotage_audit', base|merge({page: numero})) }}"
+               class="rounded-lg px-3 py-2 font-medium {{ numero == resultat.page ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white hover:bg-slate-50' }}">{{ numero }}</a>
+        {% endfor %}
+
+        {% if resultat.page < resultat.pages %}
+            <a href="{{ path('pilotage_audit', base|merge({page: resultat.page + 1})) }}"
+               class="rounded-lg border border-slate-300 bg-white px-3 py-2 font-medium hover:bg-slate-50">Suivant →</a>
+        {% endif %}
+    </nav>
+{% endif %}
+
+<p class="mt-6 text-xs text-slate-400">
+    Le journal d'audit est <strong>inaltérable</strong> : les entrées sont ajoutées automatiquement
+    et ne peuvent être ni modifiées ni supprimées depuis l'application.
+</p>
+{% endblock %}

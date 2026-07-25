@@ -37,7 +37,15 @@ export default class extends Controller {
 
     soumettre() {
         this.inputTarget.value = this.code;
-        this.formTarget.submit();
+
+        // `requestSubmit()` et non `submit()` : la méthode native `submit()`
+        // n'émet pas d'événement `submit`, donc Turbo ne peut pas l'intercepter
+        // et le navigateur rechargerait la page entière (spinner compris).
+        if (typeof this.formTarget.requestSubmit === 'function') {
+            this.formTarget.requestSubmit();
+        } else {
+            this.formTarget.submit();
+        }
     }
 
     render() {

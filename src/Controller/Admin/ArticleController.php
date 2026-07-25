@@ -5,10 +5,13 @@ namespace App\Controller\Admin;
 use App\Entity\Article;
 use App\Entity\FicheTechnique;
 use App\Entity\LigneFicheTechnique;
+use App\Controller\Trait\ReponseFormulaire;
 use App\Form\ArticleType;
 use App\Form\LigneFicheTechniqueType;
 use App\Repository\ArticleRepository;
 use App\Repository\FamilleProduitRepository;
+use App\Security\Permission;
+use App\Service\AuditLogger;
 use App\Service\CalculateurCoutMatiere;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bridge\Doctrine\Attribute\MapEntity;
@@ -23,6 +26,8 @@ use Symfony\Component\Security\Http\Attribute\IsGranted;
 #[IsGranted('ROLE_GERANT')]
 class ArticleController extends AbstractController
 {
+    use ReponseFormulaire;
+
     #[Route('', name: 'admin_article_index', methods: ['GET'])]
     public function index(
         Request $request,
@@ -42,9 +47,13 @@ class ArticleController extends AbstractController
 
         $resultats = $articles->rechercher($famille, $recherche, $actif);
 
+        // Les coûts ne sont même pas calculés pour qui n'a pas le droit de les voir :
+        // rien ne peut alors fuiter par le gabarit.
         $couts = [];
-        foreach ($resultats as $article) {
-            $couts[$article->getId()] = $calculateur->calculer($article);
+        if ($this->isGranted(Permission::ARTICLE_VOIR_COUT)) {
+            foreach ($resultats as $article) {
+                $couts[$article->getId()] = $calculateur->calculer($article);
+            }
         }
 
         return $this->render('admin/article/index.html.twig', [
@@ -61,18 +70,29 @@ class ArticleController extends AbstractController
     public function new(Request $request, EntityManagerInterface $em): Response
     {
         $article = new Article('', 0, 'pièce');
-        $form = $this->createForm(ArticleType::class, $article);
+        $peutFixerPrix = $this->isGranted(Permission::ARTICLE_MODIFIER_PRIX, $article);
+
+        $form = $this->createForm(ArticleType::class, $article, ['modifier_prix' => $peutFixerPrix]);
         $form->handleRequest($request);
 
         if ($form->isSubmitted() && $form->isValid()) {
+            // Sans habilitation sur le prix, l'article naît à 0 FCFA : on le force
+            // inactif pour qu'il ne parte pas gratuitement en caisse. Créer puis
+            // recréer un article ne permet donc pas de contourner la règle de prix.
+            if (!$peutFixerPrix) {
+                $article->setActif(false);
+                $this->addFlash('success', 'Article créé sans prix : il reste inactif jusqu\'à ce que la dirigeante fixe son prix de vente.');
+            } else {
+                $this->addFlash('success', 'Article « '.$article->getNom().' » créé.');
+            }
+
             $em->persist($article);
             $em->flush();
-            $this->addFlash('success', 'Article « '.$article->getNom().' » créé.');
 
             return $this->redirectToRoute('admin_article_show', ['id' => $article->getId()], Response::HTTP_SEE_OTHER);
         }
 
-        return $this->render('admin/article/form.html.twig', ['form' => $form, 'titre' => 'Nouvel article']);
+        return $this->rendreFormulaire('admin/article/form.html.twig', $form, ['titre' => 'Nouvel article']);
     }
 
     #[Route('/{id}', name: 'admin_article_show', requirements: ['id' => '\d+'], methods: ['GET'])]
@@ -85,19 +105,29 @@ class ArticleController extends AbstractController
     }
 
     #[Route('/{id}/modifier', name: 'admin_article_edit', methods: ['GET', 'POST'])]
-    public function edit(Request $request, Article $article, EntityManagerInterface $em): Response
+    public function edit(Request $request, Article $article, EntityManagerInterface $em, AuditLogger $audit): Response
     {
-        $form = $this->createForm(ArticleType::class, $article);
+        // Relevé avant liaison du formulaire : ensuite l'entité porte le nouveau prix.
+        $ancienPrix = $article->getPrixVenteTtc();
+
+        $form = $this->createForm(ArticleType::class, $article, [
+            'modifier_prix' => $this->isGranted(Permission::ARTICLE_MODIFIER_PRIX, $article),
+        ]);
         $form->handleRequest($request);
 
         if ($form->isSubmitted() && $form->isValid()) {
             $em->flush();
+
+            if ($article->getPrixVenteTtc() !== $ancienPrix) {
+                $audit->prixModifie($article, $ancienPrix, $article->getPrixVenteTtc());
+            }
+
             $this->addFlash('success', 'Article mis à jour.');
 
             return $this->redirectToRoute('admin_article_show', ['id' => $article->getId()], Response::HTTP_SEE_OTHER);
         }
 
-        return $this->render('admin/article/form.html.twig', ['form' => $form, 'titre' => 'Modifier l\'article', 'article' => $article]);
+        return $this->rendreFormulaire('admin/article/form.html.twig', $form, ['titre' => 'Modifier l\'article', 'article' => $article]);
     }
 
     #[Route('/{id}/basculer', name: 'admin_article_toggle', methods: ['POST'])]

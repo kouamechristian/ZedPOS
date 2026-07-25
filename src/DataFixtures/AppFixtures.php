@@ -8,14 +8,17 @@ use App\Entity\FicheTechnique;
 use App\Entity\LigneFicheTechnique;
 use App\Entity\LigneVente;
 use App\Entity\MatierePremiere;
+use App\Entity\MouvementCaisse;
 use App\Entity\MouvementStock;
 use App\Entity\Reglement;
 use App\Entity\SessionCaisse;
 use App\Entity\Utilisateur;
 use App\Entity\Vente;
+use App\Enum\CategorieDepense;
 use App\Enum\ModeReglement;
 use App\Enum\ModeVente;
 use App\Enum\RoleUtilisateur;
+use App\Enum\TypeMouvementCaisse;
 use App\Enum\TypeMouvementStock;
 use Doctrine\Bundle\FixturesBundle\Fixture;
 use Doctrine\Persistence\ObjectManager;
@@ -352,18 +355,19 @@ class AppFixtures extends Fixture
             $jour = $aujourdhui->modify(\sprintf('-%d days', $jourOffset));
             $estAujourdhui = 0 === $jourOffset;
 
-            // Une session de caisse par caissier et par jour.
+            // Une session de caisse par caissier et par jour. Elle reste ouverte
+            // le temps de générer les ventes : une session clôturée les refuserait.
             $sessions = [];
-            foreach ($caissierIds as $caissierId) {
+            $especes = [];
+            $sorties = [];
+            foreach ($caissierIds as $index => $caissierId) {
                 $session = new SessionCaisse($manager->getReference(Utilisateur::class, $caissierId), 30000 * 100);
                 $this->fixerDate($session, 'createdAt', $jour->setTime(5, 0));
                 $this->fixerDate($session, 'ouvertureAt', $jour->setTime(5, 0));
-                if (!$estAujourdhui) {
-                    $session->cloturer();
-                    $this->fixerDate($session, 'clotureAt', $jour->setTime(21, 45));
-                }
                 $manager->persist($session);
-                $sessions[] = $session;
+                $sessions[$index] = $session;
+                $especes[$index] = 0;
+                $sorties[$index] = 0;
             }
 
             $facteur = mt_rand(80, 115) / 100;
@@ -381,7 +385,8 @@ class AppFixtures extends Fixture
 
                     [$totalHt, $totalTva, $totalTtc] = $this->calculerTotaux($lignes);
                     $numero = \sprintf('V%s-%05d', $jour->format('ymd'), ++$this->numeroSeq);
-                    $session = $sessions[array_rand($sessions)];
+                    $indexSession = array_rand($sessions);
+                    $session = $sessions[$indexSession];
 
                     $vente = new Vente($session, $mode, $numero, $totalHt, $totalTva, $totalTtc);
                     $this->fixerDate($vente, 'createdAt', $moment);
@@ -399,14 +404,69 @@ class AppFixtures extends Fixture
                     [$modeReglement, $reference] = $this->choisirReglement();
                     $reglement = new Reglement($vente, $modeReglement, $totalTtc, $reference);
                     $this->fixerDate($reglement, 'createdAt', $moment);
+                    if (ModeReglement::ESPECES === $modeReglement) {
+                        $especes[$indexSession] += $totalTtc;
+                    }
 
                     $manager->persist($vente);
+                }
+            }
+
+            // Quelques dépenses réglées en espèces depuis le tiroir.
+            foreach ($sessions as $index => $session) {
+                foreach ($this->depensesDuJour() as [$categorie, $montant, $libelle]) {
+                    $mouvement = new MouvementCaisse(
+                        $session,
+                        $session->getUtilisateur(),
+                        TypeMouvementCaisse::DEPENSE,
+                        $montant,
+                        $categorie,
+                        $libelle,
+                    );
+                    $this->fixerDate($mouvement, 'createdAt', $jour->setTime(mt_rand(9, 17), mt_rand(0, 59)));
+                    $manager->persist($mouvement);
+                    $sorties[$index] += $montant;
+                }
+            }
+
+            // Clôture Z en fin de journée, une fois toutes les écritures passées.
+            if (!$estAujourdhui) {
+                foreach ($sessions as $index => $session) {
+                    $theorique = $session->getFondCaisse() + $especes[$index] - $sorties[$index];
+                    // La caisse tombe juste 3 fois sur 4 ; sinon petit écart justifié.
+                    $ecart = mt_rand(1, 4) > 3 ? mt_rand(-5, 5) * 10000 : 0;
+                    $session->cloturer(
+                        $theorique,
+                        max(0, $theorique + $ecart),
+                        0 !== $ecart ? ($ecart > 0 ? 'Excédent constaté au comptage' : 'Manquant constaté au comptage') : null,
+                    );
+                    $this->fixerDate($session, 'clotureAt', $jour->setTime(21, 45));
                 }
             }
 
             $manager->flush();
             $manager->clear();
         }
+    }
+
+    /**
+     * Dépenses de caisse plausibles pour une journée (0 à 2 lignes).
+     *
+     * @return list<array{0: CategorieDepense, 1: int, 2: string}>
+     */
+    private function depensesDuJour(): array
+    {
+        $catalogue = [
+            [CategorieDepense::TRANSPORT, 200000, 'Course taxi livraison'],
+            [CategorieDepense::APPROVISIONNEMENT, 750000, "Sacs d'emballage"],
+            [CategorieDepense::ENTRETIEN, 150000, 'Produits de nettoyage'],
+            [CategorieDepense::PETIT_EQUIPEMENT, 350000, 'Ustensiles'],
+            [CategorieDepense::DIVERS, 100000, 'Divers'],
+        ];
+
+        shuffle($catalogue);
+
+        return \array_slice($catalogue, 0, mt_rand(0, 2));
     }
 
     private function choisirMode(int $heure): ModeVente

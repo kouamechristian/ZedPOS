@@ -8,6 +8,7 @@ use App\Entity\Utilisateur;
 use App\Entity\Vente;
 use App\Enum\StatutVente;
 use App\Repository\VenteRepository;
+use App\Service\SessionCaisseService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -29,7 +30,7 @@ class VenteApiTest extends WebTestCase
 
         $connexion = $this->em->getConnection();
         $connexion->executeStatement('SET FOREIGN_KEY_CHECKS = 0');
-        foreach (['ligne_fiche_technique', 'fiche_technique', 'ligne_vente', 'reglement', 'vente', 'session_caisse', 'mouvement_stock', 'perte', 'article', 'matiere_premiere', 'fournisseur', 'famille_produit', 'journal_audit', 'utilisateur'] as $table) {
+        foreach (['ligne_fiche_technique', 'fiche_technique', 'ligne_vente', 'reglement', 'vente', 'mouvement_caisse', 'session_caisse', 'mouvement_stock', 'perte', 'article', 'matiere_premiere', 'fournisseur', 'famille_produit', 'journal_audit', 'utilisateur'] as $table) {
             $connexion->executeStatement('DELETE FROM '.$table);
         }
         $connexion->executeStatement('SET FOREIGN_KEY_CHECKS = 1');
@@ -56,6 +57,11 @@ class VenteApiTest extends WebTestCase
         $this->em->flush();
         $this->articleA = $a->getId();
         $this->articleB = $b->getId();
+
+        // Une vente exige une session ouverte pour l'encaisseur (caissier ou gérant).
+        $sessions = static::getContainer()->get(SessionCaisseService::class);
+        $sessions->ouvrir($this->caissier, 3000000);
+        $sessions->ouvrir($this->gerant, 3000000);
     }
 
     /**

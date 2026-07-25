@@ -12,6 +12,7 @@
                 <th class="px-5 py-3 font-medium">E-mail</th>
                 <th class="px-5 py-3 font-medium">Rôles</th>
                 <th class="px-5 py-3 font-medium">Statut</th>
+                <th class="px-5 py-3"></th>
             </tr>
         </thead>
         <tbody>
@@ -27,12 +28,26 @@
                         {% endfor %}
                     </td>
                     <td class="px-5 py-3">{{ fmt.badge(utilisateur.actif) }}</td>
+                    <td class="px-5 py-3 text-right">
+                        {# Activer / désactiver un compte est réservé à la dirigeante. #}
+                        {% if is_granted('ROLE_DIRIGEANTE') and utilisateur != app.user %}
+                            <form method="post" action="{{ path('admin_utilisateur_toggle', {id: utilisateur.id}) }}">
+                                <input type="hidden" name="_token" value="{{ csrf_token('basculer_utilisateur_' ~ utilisateur.id) }}">
+                                <button class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium hover:bg-slate-100">
+                                    {{ utilisateur.actif ? 'Désactiver' : 'Activer' }}
+                                </button>
+                            </form>
+                        {% endif %}
+                    </td>
                 </tr>
             {% else %}
-                <tr><td colspan="4" class="px-5 py-6 text-center text-slate-400">Aucun utilisateur.</td></tr>
+                <tr><td colspan="5" class="px-5 py-6 text-center text-slate-400">Aucun utilisateur.</td></tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
-<p class="mt-3 text-xs text-slate-400">Gestion complète des comptes via la commande <code class="bg-slate-100 px-1 rounded">app:creer-utilisateur</code>.</p>
+<p class="mt-3 text-xs text-slate-400">
+    Création de comptes via la commande <code class="bg-slate-100 px-1 rounded">app:creer-utilisateur</code>.
+    Créations et changements de statut sont tracés au journal d'audit.
+</p>
 {% endblock %}

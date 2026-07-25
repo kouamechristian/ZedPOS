@@ -9,7 +9,6 @@ use App\Entity\Utilisateur;
 use App\Entity\Vente;
 use App\Enum\ModeReglement;
 use App\Enum\ModeVente;
-use App\Enum\StatutSessionCaisse;
 use App\Enum\StatutVente;
 use App\Repository\ArticleRepository;
 use App\Repository\SessionCaisseRepository;
@@ -34,6 +33,8 @@ class EncaissementService
         private readonly VenteRepository $ventes,
         private readonly ArticleRepository $articles,
         private readonly SessionCaisseRepository $sessions,
+        private readonly AuditLogger $audit,
+        private readonly NotificateurDirigeante $notificateur,
     ) {
     }
 
@@ -89,13 +90,18 @@ class EncaissementService
             throw new EncaissementException("Conflit d'enregistrement, veuillez réessayer.", 409);
         }
 
+        // Toute remise consentie est tracée, quel qu'en soit le montant.
+        if ($remise > 0) {
+            $this->audit->remiseAccordee($vente);
+        }
+
         return new ResultatEncaissement($vente, $rendu, false);
     }
 
     /**
      * Annule une vente (jamais de suppression). Réservée au gérant (contrôlé au contrôleur).
      */
-    public function annuler(Uuid $uuid, string $motif): Vente
+    public function annuler(Uuid $uuid, string $motif, ?Utilisateur $auteur = null): Vente
     {
         $vente = $this->ventes->findOneBy(['uuid' => $uuid])
             ?? throw new EncaissementException('Vente introuvable.', 404);
@@ -107,8 +113,19 @@ class EncaissementService
             throw new EncaissementException('Cette vente est déjà annulée.', 409);
         }
 
-        $vente->annuler(trim($motif));
+        try {
+            // Refusé si la session de caisse est clôturée : le Z a arrêté la journée.
+            $vente->annuler(trim($motif));
+        } catch (\DomainException $e) {
+            throw new EncaissementException($e->getMessage(), 409);
+        }
+
         $this->em->flush();
+
+        $motif = trim($motif);
+        $this->audit->venteAnnulee($vente, $motif);
+        // Une annulation ne reste jamais entre le gérant et la caisse.
+        $this->notificateur->venteAnnulee($vente, $motif, $auteur);
 
         return $vente;
     }
@@ -244,19 +261,14 @@ class EncaissementService
         return [$prepares, $sommeTotale - $netTtc];
     }
 
+    /**
+     * Une vente exige une session de caisse ouverte : le fond de caisse doit avoir
+     * été saisi. Aucune création implicite — sinon l'ouverture serait contournable.
+     */
     private function sessionOuverte(Utilisateur $utilisateur): SessionCaisse
     {
-        $session = $this->sessions->findOneBy(
-            ['utilisateur' => $utilisateur, 'statut' => StatutSessionCaisse::OUVERTE],
-            ['ouvertureAt' => 'DESC'],
-        );
-
-        if (null === $session) {
-            $session = new SessionCaisse($utilisateur, 0);
-            $this->em->persist($session);
-        }
-
-        return $session;
+        return $this->sessions->ouvertePour($utilisateur)
+            ?? throw new EncaissementException('Aucune session de caisse ouverte : saisissez votre fond de caisse.', 409);
     }
 
     private function genererNumero(): string

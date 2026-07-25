@@ -4,6 +4,7 @@ namespace App\Controller\Admin;
 
 use App\Entity\Fournisseur;
 use App\Form\FournisseurType;
+use App\Controller\Trait\ReponseFormulaire;
 use App\Repository\FournisseurRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -16,6 +17,8 @@ use Symfony\Component\Security\Http\Attribute\IsGranted;
 #[IsGranted('ROLE_GERANT')]
 class FournisseurController extends AbstractController
 {
+    use ReponseFormulaire;
+
     #[Route('', name: 'admin_fournisseur_index', methods: ['GET'])]
     public function index(FournisseurRepository $fournisseurs): Response
     {
@@ -39,8 +42,7 @@ class FournisseurController extends AbstractController
             return $this->redirectToRoute('admin_fournisseur_index', [], Response::HTTP_SEE_OTHER);
         }
 
-        return $this->render('admin/fournisseur/form.html.twig', [
-            'form' => $form,
+        return $this->rendreFormulaire('admin/fournisseur/form.html.twig', $form, [
             'titre' => 'Nouveau fournisseur',
         ]);
     }
@@ -58,8 +60,7 @@ class FournisseurController extends AbstractController
             return $this->redirectToRoute('admin_fournisseur_index', [], Response::HTTP_SEE_OTHER);
         }
 
-        return $this->render('admin/fournisseur/form.html.twig', [
-            'form' => $form,
+        return $this->rendreFormulaire('admin/fournisseur/form.html.twig', $form, [
             'titre' => 'Modifier le fournisseur',
         ]);
     }

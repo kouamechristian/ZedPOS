@@ -1,1 +1,29 @@
 @import "tailwindcss";
+
+/*
+ * Barre de progression Turbo.
+ *
+ * Turbo l'injecte lui-même, mais seulement après 500 ms d'attente et dans un bleu
+ * discret. On la rend plus visible et aux couleurs de l'application : c'est le
+ * seul retour visuel pendant une navigation, puisqu'il n'y a plus de spinner
+ * navigateur.
+ */
+.turbo-progress-bar {
+    height: 3px;
+    background: linear-gradient(90deg, #0f172a, #38bdf8);
+    box-shadow: 0 0 8px rgba(56, 189, 248, 0.6);
+}
+
+/* Un frame est un élément inconnu du navigateur : sans cela il resterait inline. */
+turbo-frame {
+    display: block;
+}
+
+/*
+ * Un Turbo Frame en cours de chargement s'estompe légèrement : l'utilisateur voit
+ * que la zone se rafraîchit, sans que la page entière bouge.
+ */
+turbo-frame[busy] {
+    opacity: 0.55;
+    transition: opacity 120ms ease-in;
+}

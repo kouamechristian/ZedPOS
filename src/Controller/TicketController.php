@@ -3,6 +3,7 @@
 namespace App\Controller;
 
 use App\Repository\VenteRepository;
+use App\Security\Permission;
 use App\Service\ImpressionService;
 use App\Service\TicketBuilder;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -45,6 +46,11 @@ class TicketController extends AbstractController
         ]);
     }
 
+    /**
+     * Charge la vente et vérifie que l'utilisateur a le droit de la consulter :
+     * un caissier ne doit pas pouvoir ouvrir le ticket d'un collègue, même en
+     * connaissant son uuid.
+     */
     private function vente(string $uuid, VenteRepository $ventes): \App\Entity\Vente
     {
         try {
@@ -53,6 +59,9 @@ class TicketController extends AbstractController
             throw $this->createNotFoundException('Ticket introuvable.');
         }
 
-        return $ventes->findOneBy(['uuid' => $identifiant]) ?? throw $this->createNotFoundException('Ticket introuvable.');
+        $vente = $ventes->findOneBy(['uuid' => $identifiant]) ?? throw $this->createNotFoundException('Ticket introuvable.');
+        $this->denyAccessUnlessGranted(Permission::VENTE_VOIR, $vente);
+
+        return $vente;
     }
 }

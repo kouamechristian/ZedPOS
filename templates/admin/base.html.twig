@@ -21,7 +21,8 @@
             <span class="text-lg font-bold text-white">ZedPOS</span>
             <span class="ml-1 text-xs text-slate-400">Back-office</span>
         </div>
-        <nav class="flex-1 p-3 space-y-1 text-sm">
+        {# Préchargement au survol : la page suivante est déjà en mémoire au clic. #}
+        <nav class="flex-1 p-3 space-y-1 text-sm" data-turbo-prefetch="true">
             {% for item in nav %}
                 {% set actif = current starts with item.match %}
                 <a href="{{ path(item.route) }}"

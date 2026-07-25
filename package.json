@@ -1,0 +1,9 @@
+{
+    "name": "zedpos",
+    "private": true,
+    "type": "module",
+    "description": "Modules ES de ZedPOS servis par AssetMapper (aucun bundler, aucune dépendance npm). package.json sert uniquement à exécuter les tests unitaires JavaScript avec le lanceur intégré de Node.",
+    "scripts": {
+        "test": "node --test \"tests/js/*.test.js\""
+    }
+}

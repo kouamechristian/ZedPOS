@@ -4,6 +4,19 @@
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>{% block title %}ZedPOS{% endblock %}</title>
+
+        {# --- Hotwire Turbo 8 -------------------------------------------------
+           morph      : un rafraîchissement de la même page ne remplace que les
+                        nœuds modifiés, au lieu de tout reconstruire — le focus,
+                        la sélection et l'état du DOM sont préservés.
+           preserve   : la position de défilement est conservée au rafraîchissement.
+           Le préchargement au survol est actif par défaut dans Turbo 8 ; les
+           conteneurs de navigation le rendent explicite via data-turbo-prefetch. #}
+        <meta name="turbo-refresh-method" content="morph">
+        <meta name="turbo-refresh-scroll" content="preserve">
+        <meta name="turbo-prefetch" content="true">
+        <meta name="view-transition" content="same-origin">
+        {% block turbo_meta %}{% endblock %}
         <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 128 128%22><text y=%221.2em%22 font-size=%2296%22>⚫️</text><text y=%221.3em%22 x=%220.2em%22 font-size=%2276%22 fill=%22%23fff%22>sf</text></svg>">
         {% block stylesheets %}
         {% endblock %}

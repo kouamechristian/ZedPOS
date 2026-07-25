@@ -12,7 +12,11 @@
                 <th class="px-5 py-3 font-medium">Ouverture</th>
                 <th class="px-5 py-3 font-medium">Clôture</th>
                 <th class="px-5 py-3 font-medium text-right">Fond de caisse</th>
+                <th class="px-5 py-3 font-medium text-right">Théorique</th>
+                <th class="px-5 py-3 font-medium text-right">Compté</th>
+                <th class="px-5 py-3 font-medium text-right">Écart</th>
                 <th class="px-5 py-3 font-medium">Statut</th>
+                <th class="px-5 py-3"></th>
             </tr>
         </thead>
         <tbody>
@@ -21,17 +25,34 @@
                     <td class="px-5 py-3 font-medium text-slate-800">{{ session.utilisateur.nom }}</td>
                     <td class="px-5 py-3 text-slate-600">{{ session.ouvertureAt|date('d/m/Y H:i') }}</td>
                     <td class="px-5 py-3 text-slate-600">{{ session.clotureAt ? session.clotureAt|date('d/m/Y H:i') : '—' }}</td>
-                    <td class="px-5 py-3 text-right">{{ fmt.fcfa(session.fondCaisse) }}</td>
+                    <td class="px-5 py-3 text-right tabular-nums">{{ fmt.fcfa(session.fondCaisse) }}</td>
+                    <td class="px-5 py-3 text-right tabular-nums text-slate-600">{{ session.theorique is not null ? fmt.fcfa(session.theorique) : '—' }}</td>
+                    <td class="px-5 py-3 text-right tabular-nums text-slate-600">{{ session.montantCompte is not null ? fmt.fcfa(session.montantCompte) : '—' }}</td>
+                    <td class="px-5 py-3 text-right tabular-nums font-semibold">
+                        {% if session.ecart is null %}
+                            <span class="text-slate-400">—</span>
+                        {% elseif session.ecart == 0 %}
+                            <span class="text-green-600">0 FCFA</span>
+                        {% else %}
+                            <span class="{{ session.ecart > 0 ? 'text-amber-600' : 'text-red-600' }}"
+                                  title="{{ session.commentaireCloture }}">
+                                {{ session.ecart > 0 ? '+' }}{{ fmt.fcfa(session.ecart) }}
+                            </span>
+                        {% endif %}
+                    </td>
                     <td class="px-5 py-3">
-                        {% if session.statut.value == 'OUVERTE' %}
+                        {% if session.estOuverte %}
                             <span class="inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-800">Ouverte</span>
                         {% else %}
                             <span class="inline-flex rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-600">Clôturée</span>
                         {% endif %}
                     </td>
+                    <td class="px-5 py-3 text-right">
+                        <a href="{{ path('admin_cloture', {id: session.id}) }}" class="font-medium text-slate-700 underline hover:text-slate-900">Rapport</a>
+                    </td>
                 </tr>
             {% else %}
-                <tr><td colspan="5" class="px-5 py-6 text-center text-slate-400">Aucune session de caisse.</td></tr>
+                <tr><td colspan="9" class="px-5 py-6 text-center text-slate-400">Aucune session de caisse.</td></tr>
             {% endfor %}
         </tbody>
     </table>

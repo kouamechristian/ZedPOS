@@ -4,6 +4,7 @@ namespace App\Controller\Admin;
 
 use App\Entity\FamilleProduit;
 use App\Form\FamilleProduitType;
+use App\Controller\Trait\ReponseFormulaire;
 use App\Repository\FamilleProduitRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -16,6 +17,8 @@ use Symfony\Component\Security\Http\Attribute\IsGranted;
 #[IsGranted('ROLE_GERANT')]
 class FamilleController extends AbstractController
 {
+    use ReponseFormulaire;
+
     #[Route('', name: 'admin_famille_index', methods: ['GET'])]
     public function index(FamilleProduitRepository $familles): Response
     {
@@ -39,8 +42,7 @@ class FamilleController extends AbstractController
             return $this->redirectToRoute('admin_famille_index', [], Response::HTTP_SEE_OTHER);
         }
 
-        return $this->render('admin/famille/form.html.twig', [
-            'form' => $form,
+        return $this->rendreFormulaire('admin/famille/form.html.twig', $form, [
             'famille' => $famille,
             'titre' => 'Nouvelle famille',
         ]);
@@ -59,8 +61,7 @@ class FamilleController extends AbstractController
             return $this->redirectToRoute('admin_famille_index', [], Response::HTTP_SEE_OTHER);
         }
 
-        return $this->render('admin/famille/form.html.twig', [
-            'form' => $form,
+        return $this->rendreFormulaire('admin/famille/form.html.twig', $form, [
             'famille' => $famille,
             'titre' => 'Modifier la famille',
         ]);

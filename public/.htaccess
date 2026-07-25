@@ -1,0 +1,39 @@
+# Apache — cache HTTP et routage pour ZedPOS.
+#
+# Sans effet avec `symfony serve` ou `php -S`, qui ne lisent pas les .htaccess :
+# ces règles s'appliquent au déploiement Apache / XAMPP.
+
+<IfModule mod_headers.c>
+    # Les fichiers de /assets/ portent un condensé dans leur nom
+    # (app-TNXHCQF.js) : leur contenu ne change jamais pour une URL donnée. Ils
+    # sont donc mis en cache un an et « immutable » — le navigateur ne redemande
+    # même pas s'ils ont changé. Une nouvelle version produit une nouvelle URL.
+    #
+    # Motif non ancré : l'application peut être servie depuis un sous-répertoire.
+    Header set Cache-Control "public, max-age=31536000, immutable" "expr=%{REQUEST_URI} =~ m#/assets/#"
+
+    # Le Service Worker, lui, ne doit jamais être servi depuis le cache : c'est
+    # lui qui pilote la mise en cache, il doit pouvoir être remplacé aussitôt.
+    <Files "sw.js">
+        Header set Cache-Control "no-cache, no-store, must-revalidate"
+        Header set Service-Worker-Allowed "/"
+    </Files>
+</IfModule>
+
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/css text/javascript application/javascript application/json image/svg+xml
+</IfModule>
+
+# Routage Symfony : tout ce qui n'est pas un fichier existant part vers index.php.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Conserve l'en-tête Authorization, que certaines configurations PHP perdent.
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule ^ - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    RewriteCond %{REQUEST_FILENAME} -f
+    RewriteRule ^ - [L]
+
+    RewriteRule ^ index.php [L]
+</IfModule>

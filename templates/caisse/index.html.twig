@@ -3,6 +3,11 @@
 
 {% block title %}Caisse — ZedPOS{% endblock %}
 
+{# L'écran de caisse porte un état vivant (ticket en cours, file de
+   synchronisation) : un aperçu mis en cache par Turbo afficherait un ticket
+   périmé pendant une fraction de seconde au retour sur la page. #}
+{% block turbo_meta %}<meta name="turbo-cache-control" content="no-cache">{% endblock %}
+
 {% set reglements = [
     { mode: 'ESPECES', label: 'Espèces' },
     { mode: 'WAVE', label: 'Wave' },
@@ -23,9 +28,17 @@
 <div class="h-screen flex flex-col bg-slate-100 overflow-hidden select-none"
      data-controller="caisse"
      data-caisse-mode-value="BOULANGERIE"
-     data-caisse-encaisser-url-value="{{ path('app_caisse_encaisser') }}"
-     data-caisse-ticket-base-value="{{ path('app_caisse_ticket', {uuid: '__UUID__'}) }}"
-     data-caisse-token-value="{{ csrf_token('caisse') }}">
+     data-caisse-ticket-base-value="{{ path('app_caisse_ticket', {uuid: '__UUID__'}) }}">
+
+    {# ---- Bandeau permanent de synchronisation (hors ligne / en attente) ---- #}
+    <div data-controller="synchronisation"
+         data-base-classes="shrink-0 flex items-center justify-between gap-3 px-4 py-1.5 text-sm font-bold"
+         class="shrink-0 flex items-center justify-between gap-3 px-4 py-1.5 text-sm font-bold bg-slate-600 text-white"
+         data-action="click->synchronisation#synchroniser"
+         role="status" aria-live="polite">
+        <span data-synchronisation-target="libelle">Vérification…</span>
+        <span data-synchronisation-target="detail" class="font-normal opacity-90 truncate"></span>
+    </div>
 
     {# ---- Barre supérieure : modes + tickets en attente + verrouillage ---- #}
     <header class="flex items-center gap-4 px-4 py-2 bg-slate-900 text-white shrink-0">
@@ -38,8 +51,14 @@
 
         <div class="flex-1 flex items-center gap-2 overflow-x-auto" data-caisse-target="attente"></div>
 
-        <div class="flex items-center gap-3 text-sm">
-            <span class="text-slate-300">{{ app.user.nom }}</span>
+        <div class="flex items-center gap-2 text-sm">
+            <a href="{{ path('app_caisse_depense') }}" target="_blank"
+               class="rounded-lg bg-slate-700 px-3 py-2 font-medium hover:bg-slate-600">Dépense</a>
+            <a href="{{ path('app_caisse_ticket_x') }}" target="_blank"
+               class="rounded-lg bg-slate-700 px-3 py-2 font-medium hover:bg-slate-600">Ticket X</a>
+            <a href="{{ path('app_caisse_cloture') }}"
+               class="rounded-lg bg-amber-600 px-3 py-2 font-bold hover:bg-amber-500">Clôture Z</a>
+            <span class="ml-1 text-slate-300" title="Fond de caisse : {{ fmt.fcfa(session.fondCaisse) }}">{{ app.user.nom }}</span>
             <a href="{{ path('app_logout') }}" class="rounded-lg bg-slate-700 px-3 py-2 font-medium hover:bg-slate-600">Verrouiller</a>
         </div>
     </header>
@@ -55,7 +74,10 @@
 
         {# ---- Colonne gauche : familles + grille produits ---- #}
         <section class="flex flex-col min-h-0 border-r border-slate-200">
-            <div class="flex flex-wrap gap-1.5 p-2 bg-white border-b border-slate-200">
+            {# Rendu serveur = premier affichage ; le contrôleur le remplace par le
+               catalogue mémorisé en IndexedDB dès qu'il en a un. #}
+            <div class="flex flex-wrap gap-1.5 p-2 bg-white border-b border-slate-200"
+                 data-caisse-target="onglets">
                 {% for entree in catalogue %}
                     <button type="button"
                             class="onglet-famille rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
@@ -66,7 +88,7 @@
                 {% endfor %}
             </div>
 
-            <div class="flex-1 overflow-y-auto p-2">
+            <div class="flex-1 overflow-y-auto p-2" data-caisse-target="grilles">
                 {% for entree in catalogue %}
                     <div data-caisse-target="grille" data-famille-id="{{ entree.famille.id }}"
                          class="gap-2"

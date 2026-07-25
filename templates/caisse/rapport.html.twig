@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ rapport.definitif ? 'Rapport Z' : 'Ticket X' }} — session {{ rapport.session.id }}</title>
+    {% import 'admin/_macros.html.twig' as fmt %}
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Courier New', ui-monospace, monospace; font-size: 12px; color: #000; background: #e5e7eb; }
+        .barre { max-width: 80mm; margin: 10px auto 0; display: flex; gap: 8px; }
+        .barre button, .barre a { flex: 1; padding: 8px; font: inherit; text-align: center; text-decoration: none; cursor: pointer; border: 1px solid #334155; background: #0f172a; color: #fff; border-radius: 6px; }
+        .barre .secondaire { background: #fff; color: #0f172a; }
+        .ticket { width: 80mm; background: #fff; margin: 10px auto; padding: 4mm; }
+        .center { text-align: center; }
+        .bold { font-weight: bold; }
+        .big { font-size: 16px; }
+        .muted { color: #333; }
+        .row { display: flex; justify-content: space-between; gap: 8px; }
+        .row .g { flex: 1; overflow: hidden; }
+        .row .d { white-space: nowrap; text-align: right; }
+        .sep { border-top: 1px dashed #000; margin: 5px 0; }
+        .titre-bloc { font-weight: bold; text-decoration: underline; margin-top: 4px; }
+        .total .d, .total .g { font-size: 16px; font-weight: bold; }
+        .ecart { border: 2px solid #000; padding: 3px; margin-top: 4px; }
+        .provisoire { text-align: center; font-weight: bold; letter-spacing: 1px; }
+        @media print {
+            body { background: #fff; }
+            .barre { display: none; }
+            .ticket { width: auto; margin: 0; padding: 0; }
+            @page { size: 80mm auto; margin: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="barre">
+        <button type="button" onclick="window.print()">Imprimer</button>
+        <a class="secondaire" href="{{ path('app_caisse') }}">Retour caisse</a>
+    </div>
+
+    <div class="ticket">
+        <div class="center bold big">{{ rapport.titre }}</div>
+        <div class="sep"></div>
+
+        <div>Caissier&nbsp;: {{ rapport.session.utilisateur.nom }}</div>
+        <div>Session&nbsp;&nbsp;: n° {{ rapport.session.id }}</div>
+        <div>Ouverte&nbsp;&nbsp;: {{ rapport.session.ouvertureAt|date('d/m/Y H:i') }}</div>
+        {% if rapport.session.clotureAt %}
+            <div>Clôturée&nbsp;: {{ rapport.session.clotureAt|date('d/m/Y H:i') }}</div>
+        {% else %}
+            <div>Édité le&nbsp;: {{ rapport.genereA|date('d/m/Y H:i') }}</div>
+        {% endif %}
+
+        {% if not rapport.definitif %}
+            <div class="sep"></div>
+            <div class="provisoire">*** SYNTHÈSE PROVISOIRE ***<br>LA CAISSE RESTE OUVERTE</div>
+        {% endif %}
+
+        <div class="sep"></div>
+        <div class="row total"><span class="g">CA TOTAL</span><span class="d">{{ fmt.fcfa(rapport.caTotal) }}</span></div>
+        <div class="row"><span class="g">Tickets</span><span class="d">{{ rapport.nombreTickets }}</span></div>
+        <div class="row"><span class="g">Panier moyen</span><span class="d">{{ fmt.fcfa(rapport.panierMoyen) }}</span></div>
+        <div class="row"><span class="g">Total HT</span><span class="d">{{ fmt.fcfa(rapport.totalHt) }}</span></div>
+        <div class="row"><span class="g">Total TVA</span><span class="d">{{ fmt.fcfa(rapport.totalTva) }}</span></div>
+
+        <div class="sep"></div>
+        <div class="titre-bloc">Par mode de règlement</div>
+        {% for ligne in rapport.parReglement %}
+            <div class="row"><span class="g">{{ ligne.libelle }} ({{ ligne.nombre }})</span><span class="d">{{ fmt.fcfa(ligne.montant) }}</span></div>
+        {% else %}
+            <div class="muted">Aucun règlement.</div>
+        {% endfor %}
+        {% if rapport.renduTotal > 0 %}
+            <div class="row muted"><span class="g">dont rendu de monnaie</span><span class="d">{{ fmt.fcfa(rapport.renduTotal) }}</span></div>
+        {% endif %}
+
+        <div class="sep"></div>
+        <div class="titre-bloc">Par famille</div>
+        {% for ligne in rapport.parFamille %}
+            <div class="row">
+                <span class="g">{{ ligne.famille }} ({{ fmt.unites(ligne.quantite) }})</span>
+                <span class="d">{{ fmt.fcfa(ligne.montant) }}</span>
+            </div>
+        {% else %}
+            <div class="muted">Aucune vente.</div>
+        {% endfor %}
+
+        <div class="sep"></div>
+        <div class="row"><span class="g">Remises accordées ({{ rapport.remisesNombre }})</span><span class="d">− {{ fmt.fcfa(rapport.remisesMontant) }}</span></div>
+        <div class="row"><span class="g">Annulations ({{ rapport.annulationsNombre }})</span><span class="d">{{ fmt.fcfa(rapport.annulationsMontant) }}</span></div>
+
+        {% if rapport.mouvements|length > 0 %}
+            <div class="sep"></div>
+            <div class="titre-bloc">Dépenses et sorties</div>
+            {% for mouvement in rapport.mouvements %}
+                <div class="row">
+                    <span class="g">{{ mouvement.libelle }}{% if mouvement.commentaire %} — {{ mouvement.commentaire }}{% endif %}</span>
+                    <span class="d">− {{ fmt.fcfa(mouvement.montant) }}</span>
+                </div>
+            {% endfor %}
+        {% endif %}
+
+        <div class="sep"></div>
+        <div class="titre-bloc">Fond de caisse</div>
+        <div class="row"><span class="g">Fond d'ouverture</span><span class="d">{{ fmt.fcfa(rapport.fondCaisse) }}</span></div>
+        <div class="row"><span class="g">+ Espèces encaissées</span><span class="d">{{ fmt.fcfa(rapport.especesEncaissees) }}</span></div>
+        <div class="row"><span class="g">− Dépenses</span><span class="d">{{ fmt.fcfa(rapport.depenses) }}</span></div>
+        <div class="row"><span class="g">− Sorties de caisse</span><span class="d">{{ fmt.fcfa(rapport.sorties) }}</span></div>
+        <div class="row bold"><span class="g">= Théorique</span><span class="d">{{ fmt.fcfa(rapport.theorique) }}</span></div>
+
+        {% if rapport.montantCompte is not null %}
+            <div class="row"><span class="g">Compté</span><span class="d">{{ fmt.fcfa(rapport.montantCompte) }}</span></div>
+            <div class="ecart">
+                <div class="row bold">
+                    <span class="g">ÉCART</span>
+                    <span class="d">{{ rapport.ecart > 0 ? '+ ' }}{{ fmt.fcfa(rapport.ecart) }}</span>
+                </div>
+                <div class="center muted">
+                    {% if rapport.ecart == 0 %}caisse juste
+                    {% elseif rapport.ecart > 0 %}excédent
+                    {% else %}manquant
+                    {% endif %}
+                </div>
+            </div>
+            {% if rapport.session.commentaireCloture %}
+                <div class="muted">Motif : {{ rapport.session.commentaireCloture }}</div>
+            {% endif %}
+        {% endif %}
+
+        <div class="sep"></div>
+        <div class="center muted">
+            {% if rapport.definitif %}Journée clôturée — document définitif{% else %}Ticket X — ne clôture pas la caisse{% endif %}
+        </div>
+    </div>
+
+    {% if auto %}
+    <script>
+        window.addEventListener('load', function () { window.print(); });
+    </script>
+    {% endif %}
+</body>
+</html>

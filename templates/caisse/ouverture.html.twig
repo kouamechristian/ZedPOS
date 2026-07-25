@@ -1,0 +1,26 @@
+{% extends 'caisse/_session_base.html.twig' %}
+{% form_theme form 'caisse/_form_theme.html.twig' %}
+
+{% block page_title %}Ouverture de caisse{% endblock %}
+
+{% block entete_actions %}
+    <a href="{{ path('app_logout') }}" class="rounded-lg bg-slate-700 px-3 py-2 font-medium hover:bg-slate-600">Verrouiller</a>
+{% endblock %}
+
+{% block caisse_content %}
+<div class="mx-auto max-w-md bg-white text-slate-800 rounded-2xl shadow-xl p-6">
+    <h1 class="text-2xl font-black text-slate-900">Ouverture de caisse</h1>
+    <p class="mt-1 mb-6 text-sm text-slate-500">
+        Comptez les espèces présentes dans le tiroir avant la première vente et saisissez
+        le montant. Aucune vente n'est possible tant que la session n'est pas ouverte.
+    </p>
+
+    {{ form_start(form) }}
+        {{ form_row(form.fondCaisse) }}
+
+        <button class="w-full rounded-xl bg-green-600 text-white text-lg font-bold py-4 hover:bg-green-500">
+            Ouvrir la caisse
+        </button>
+    {{ form_end(form) }}
+</div>
+{% endblock %}

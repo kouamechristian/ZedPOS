@@ -1,0 +1,211 @@
+{% extends 'pilotage/base.html.twig' %}
+{% import 'admin/_macros.html.twig' as fmt %}
+
+{% block page_title %}{{ synthese.jour|date('d/m/Y') }}{% endblock %}
+
+{# Pastille de variation : verte si en hausse, rouge si en baisse, neutre sinon. #}
+{% macro variation(bp, libelle) %}
+    {% if bp is null %}
+        <span class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500">
+            {{ libelle }} : —
+        </span>
+    {% else %}
+        {% set hausse = bp > 0 %}
+        {% set nul = bp == 0 %}
+        <span class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold
+                     {{ nul ? 'bg-slate-100 text-slate-600' : (hausse ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800') }}">
+            {{ nul ? '=' : (hausse ? '▲' : '▼') }}
+            {{ hausse ? '+' }}{{ (bp / 100)|number_format(1, ',', ' ') }} %
+            <span class="font-normal opacity-75">{{ libelle }}</span>
+        </span>
+    {% endif %}
+{% endmacro %}
+
+{% block pilotage_content %}
+{% import _self as ui %}
+
+{# ---- Alertes : annulations de ventes, à acquitter ---- #}
+{% if notifications is not empty %}
+    <section class="mb-4 space-y-2">
+        {% for notification in notifications %}
+            <div class="rounded-2xl bg-red-50 border border-red-200 p-4">
+                <div class="font-bold text-red-900">{{ notification.titre }}</div>
+                <p class="mt-1 text-sm text-red-800">{{ notification.message }}</p>
+                <div class="mt-3 flex flex-wrap items-center gap-2">
+                    {% if notification.lien %}
+                        <a href="{{ notification.lien }}"
+                           class="rounded-lg bg-red-600 text-white px-3 py-2 text-sm font-semibold hover:bg-red-500">Voir le ticket</a>
+                    {% endif %}
+                    <form method="post" action="{{ path('pilotage_notification_lue', {id: notification.id}) }}">
+                        <input type="hidden" name="_token" value="{{ csrf_token('notification_' ~ notification.id) }}">
+                        <button class="rounded-lg border border-red-300 bg-white px-3 py-2 text-sm font-medium text-red-800 hover:bg-red-50">
+                            J'ai vu
+                        </button>
+                    </form>
+                    <span class="text-xs text-red-700">{{ notification.createdAt|date('d/m/Y H:i') }}</span>
+                </div>
+            </div>
+        {% endfor %}
+    </section>
+{% endif %}
+
+{# ---- Sélecteur de journée ---- #}
+<form method="get" class="mb-4 flex items-center gap-2">
+    <label for="jour" class="sr-only">Journée</label>
+    <input type="date" id="jour" name="jour" value="{{ synthese.jour|date('Y-m-d') }}"
+           class="flex-1 rounded-xl border border-slate-300 px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-slate-400">
+    <button class="rounded-xl bg-slate-900 text-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-700">Voir</button>
+</form>
+
+{# ---- CA du jour, en très gros ---- #}
+<section class="bg-white rounded-2xl shadow-sm p-5 mb-4">
+    <div class="text-sm font-medium text-slate-500">Chiffre d'affaires</div>
+    <div class="mt-1 text-5xl sm:text-6xl font-black tabular-nums tracking-tight text-slate-900 break-words">
+        {{ (synthese.caJour / 100)|number_format(0, ',', ' ') }}
+        <span class="text-2xl font-bold text-slate-400">FCFA</span>
+    </div>
+
+    <div class="mt-4 flex flex-wrap gap-2">
+        {{ ui.variation(synthese.variationVeilleBp, 'vs veille') }}
+        {{ ui.variation(synthese.variationSemaineBp, 'vs sem. dern.') }}
+    </div>
+
+    <dl class="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 gap-3 text-sm">
+        <div>
+            <dt class="text-slate-500">Veille</dt>
+            <dd class="font-semibold tabular-nums">{{ fmt.fcfa(synthese.caVeille) }}</dd>
+        </div>
+        <div>
+            <dt class="text-slate-500">Même jour, semaine dernière</dt>
+            <dd class="font-semibold tabular-nums">{{ fmt.fcfa(synthese.caSemainePrecedente) }}</dd>
+        </div>
+    </dl>
+</section>
+
+{# ---- Tickets et panier moyen ---- #}
+<div class="grid grid-cols-2 gap-3 mb-4">
+    <div class="bg-white rounded-2xl shadow-sm p-4">
+        <div class="text-xs uppercase tracking-wide text-slate-400">Tickets</div>
+        <div class="mt-1 text-3xl font-black tabular-nums text-slate-900">{{ synthese.nombreTickets }}</div>
+    </div>
+    <div class="bg-white rounded-2xl shadow-sm p-4">
+        <div class="text-xs uppercase tracking-wide text-slate-400">Panier moyen</div>
+        <div class="mt-1 text-3xl font-black tabular-nums text-slate-900">{{ (synthese.panierMoyen / 100)|number_format(0, ',', ' ') }}</div>
+        <div class="text-xs text-slate-400">FCFA</div>
+    </div>
+</div>
+
+{# ---- Ventilation par mode de règlement ---- #}
+<section class="bg-white rounded-2xl shadow-sm p-5 mb-4">
+    <h2 class="font-semibold text-slate-800 mb-3">Modes de règlement</h2>
+    {% if synthese.parReglement is empty %}
+        <p class="text-sm text-slate-400">Aucun règlement aujourd'hui.</p>
+    {% else %}
+        <ul class="space-y-3">
+            {% for ligne in synthese.parReglement %}
+                {% set part = synthese.caJour > 0 ? (ligne.montant * 100 / synthese.caJour) : 0 %}
+                <li>
+                    <div class="flex items-baseline justify-between gap-3 text-sm">
+                        <span class="font-medium text-slate-700">{{ ligne.libelle }}</span>
+                        <span class="font-bold tabular-nums text-slate-900">{{ fmt.fcfa(ligne.montant) }}</span>
+                    </div>
+                    <div class="mt-1 flex items-center gap-2">
+                        <div class="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
+                            <div class="h-full rounded-full bg-slate-800" style="width: {{ part|round }}%"></div>
+                        </div>
+                        <span class="w-12 text-right text-xs tabular-nums text-slate-400">{{ part|round }} %</span>
+                    </div>
+                </li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+</section>
+
+{# ---- Points de vigilance ---- #}
+<section class="rounded-2xl shadow-sm p-5 mb-4 {{ synthese.aDesPointsDeVigilance ? 'bg-amber-50 border border-amber-200' : 'bg-white' }}">
+    <h2 class="font-semibold text-slate-800 mb-3">
+        Points de vigilance
+        {% if not synthese.aDesPointsDeVigilance %}
+            <span class="ml-1 text-sm font-normal text-green-700">— journée propre</span>
+        {% endif %}
+    </h2>
+
+    <ul class="space-y-2.5 text-sm">
+        <li class="flex items-baseline justify-between gap-3">
+            <span class="text-slate-600">Annulations</span>
+            <span class="font-semibold tabular-nums {{ synthese.annulationsNombre > 0 ? 'text-red-700' : 'text-slate-400' }}">
+                {{ synthese.annulationsNombre }}{% if synthese.annulationsNombre > 0 %} · {{ fmt.fcfa(synthese.annulationsMontant) }}{% endif %}
+            </span>
+        </li>
+        <li class="flex items-baseline justify-between gap-3">
+            <span class="text-slate-600">Remises accordées</span>
+            <span class="font-semibold tabular-nums {{ synthese.remisesNombre > 0 ? 'text-amber-700' : 'text-slate-400' }}">
+                {{ synthese.remisesNombre }}{% if synthese.remisesNombre > 0 %} · {{ fmt.fcfa(synthese.remisesMontant) }}{% endif %}
+            </span>
+        </li>
+        <li class="flex items-baseline justify-between gap-3">
+            <span class="text-slate-600">Écart de caisse</span>
+            <span class="font-semibold tabular-nums
+                         {{ synthese.ecartCaisse is null ? 'text-slate-400' : (synthese.ecartCaisse == 0 ? 'text-green-700' : 'text-red-700') }}">
+                {% if synthese.ecartCaisse is null %}
+                    caisse non clôturée
+                {% else %}
+                    {{ synthese.ecartCaisse > 0 ? '+' }}{{ fmt.fcfa(synthese.ecartCaisse) }}
+                {% endif %}
+            </span>
+        </li>
+        <li class="flex items-baseline justify-between gap-3">
+            <span class="text-slate-600">Pertes valorisées</span>
+            <span class="font-semibold tabular-nums {{ synthese.pertesMontant > 0 ? 'text-amber-700' : 'text-slate-400' }}">
+                {{ synthese.pertesNombre }}{% if synthese.pertesMontant > 0 %} · {{ fmt.fcfa(synthese.pertesMontant) }}{% endif %}
+            </span>
+        </li>
+        <li>
+            <div class="flex items-baseline justify-between gap-3">
+                <span class="text-slate-600">Ruptures de stock</span>
+                <span class="font-semibold tabular-nums {{ synthese.rupturesStock is not empty ? 'text-red-700' : 'text-slate-400' }}">
+                    {{ synthese.rupturesStock|length }}
+                </span>
+            </div>
+            {% if synthese.rupturesStock is not empty %}
+                <p class="mt-1 text-xs text-slate-500">{{ synthese.rupturesStock|join(', ') }}</p>
+            {% endif %}
+        </li>
+    </ul>
+</section>
+
+{# ---- Courbe du CA sur 30 jours ---- #}
+<section class="bg-white rounded-2xl shadow-sm p-5 mb-4">
+    <h2 class="font-semibold text-slate-800 mb-3">Tendance sur 30 jours</h2>
+    <div class="relative h-56"
+         data-controller="graphique-ca"
+         data-graphique-ca-libelles-value="{{ courbe.libelles|json_encode }}"
+         data-graphique-ca-valeurs-value="{{ courbe.valeurs|json_encode }}">
+        <canvas data-graphique-ca-target="canvas" role="img" aria-label="Évolution du chiffre d'affaires sur 30 jours"></canvas>
+    </div>
+</section>
+
+{# ---- Top 10 des produits ---- #}
+<section class="bg-white rounded-2xl shadow-sm p-5 mb-4">
+    <h2 class="font-semibold text-slate-800 mb-3">Top 10 des produits</h2>
+    {% if synthese.topProduits is empty %}
+        <p class="text-sm text-slate-400">Aucune vente aujourd'hui.</p>
+    {% else %}
+        <ol class="divide-y divide-slate-100">
+            {% for produit in synthese.topProduits %}
+                <li class="flex items-center gap-3 py-2.5">
+                    <span class="w-6 shrink-0 text-sm font-bold text-slate-300 tabular-nums">{{ loop.index }}</span>
+                    <span class="flex-1 min-w-0 font-medium text-slate-700 truncate">{{ produit.nom }}</span>
+                    <span class="shrink-0 text-sm tabular-nums text-slate-500">×{{ fmt.unites(produit.quantite) }}</span>
+                    <span class="shrink-0 w-24 text-right font-semibold tabular-nums text-slate-900">{{ fmt.fcfa(produit.montant) }}</span>
+                </li>
+            {% endfor %}
+        </ol>
+    {% endif %}
+</section>
+
+<a href="{{ path('pilotage_ventes', {jour: synthese.jour|date('Y-m-d')}) }}"
+   class="block rounded-2xl bg-slate-900 text-white text-center font-semibold py-4 hover:bg-slate-700">
+    Voir les {{ synthese.nombreTickets }} ticket{{ synthese.nombreTickets > 1 ? 's' }} du jour →
+</a>
+{% endblock %}

@@ -10,7 +10,18 @@
         <div class="sm:col-span-2">{{ form_row(form.nom) }}</div>
         {{ form_row(form.familleProduit) }}
         {{ form_row(form.unite) }}
-        {{ form_row(form.prixVenteTtc) }}
+        {# Champ absent du formulaire si l'utilisateur n'est pas habilité au prix. #}
+        {% if form.prixVenteTtc is defined %}
+            {{ form_row(form.prixVenteTtc) }}
+        {% else %}
+            <div class="mb-4">
+                <span class="block text-sm font-medium text-slate-700 mb-1">Prix de vente TTC</span>
+                <p class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
+                    {{ article is defined ? (article.prixVenteTtc / 100)|number_format(0, ',', ' ') ~ ' FCFA' : '—' }}
+                    <span class="block text-xs">Seule la dirigeante peut fixer un prix de vente.</span>
+                </p>
+            </div>
+        {% endif %}
         {{ form_row(form.tauxTva) }}
         {{ form_row(form.positionCaisse) }}
         {{ form_row(form.couleur) }}

@@ -5,6 +5,7 @@ namespace App\Tests\Functional;
 use App\Entity\MatierePremiere;
 use App\Entity\Utilisateur;
 use App\Service\AlerteStockService;
+use App\Service\SessionCaisseService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -21,7 +22,7 @@ class AlerteStockTest extends WebTestCase
 
         $connexion = $this->em->getConnection();
         $connexion->executeStatement('SET FOREIGN_KEY_CHECKS = 0');
-        foreach (['ligne_fiche_technique', 'fiche_technique', 'ligne_vente', 'reglement', 'vente', 'session_caisse', 'mouvement_stock', 'perte', 'article', 'matiere_premiere', 'fournisseur', 'famille_produit', 'journal_audit', 'utilisateur'] as $table) {
+        foreach (['ligne_fiche_technique', 'fiche_technique', 'ligne_vente', 'reglement', 'vente', 'mouvement_caisse', 'session_caisse', 'mouvement_stock', 'perte', 'article', 'matiere_premiere', 'fournisseur', 'famille_produit', 'journal_audit', 'utilisateur'] as $table) {
             $connexion->executeStatement('DELETE FROM '.$table);
         }
         $connexion->executeStatement('SET FOREIGN_KEY_CHECKS = 1');
@@ -36,6 +37,10 @@ class AlerteStockTest extends WebTestCase
         $this->em->persist((new MatierePremiere('Sucre', 'kg'))->setStockActuel(80000)->setStockMini(20000));
 
         $this->em->flush();
+
+        // L'écran de caisse exige une session ouverte pour s'afficher.
+        static::getContainer()->get(SessionCaisseService::class)->ouvrir($gerant, 0);
+
         $this->client->loginUser($gerant);
     }
 

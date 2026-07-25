@@ -2,13 +2,20 @@
 
 namespace App\Controller\Admin;
 
+use App\Entity\SessionCaisse;
+use App\Entity\Utilisateur;
 use App\Repository\ArticleRepository;
 use App\Repository\FicheTechniqueRepository;
 use App\Repository\SessionCaisseRepository;
 use App\Repository\UtilisateurRepository;
 use App\Repository\VenteRepository;
+use App\Security\Permission;
+use App\Service\AuditLogger;
+use App\Service\SessionCaisseService;
 use Doctrine\DBAL\Connection;
+use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
@@ -18,6 +25,7 @@ use Symfony\Component\Security\Http\Attribute\IsGranted;
 class DashboardController extends AbstractController
 {
     #[Route('', name: 'admin_dashboard', methods: ['GET'])]
+    #[IsGranted(Permission::VOIR_CA_GLOBAL)]
     public function index(Connection $connexion, ArticleRepository $articles): Response
     {
         $jour = (new \DateTimeImmutable('today'))->format('Y-m-d');
@@ -57,6 +65,7 @@ class DashboardController extends AbstractController
     }
 
     #[Route('/ventes', name: 'admin_ventes', methods: ['GET'])]
+    #[IsGranted(Permission::VOIR_TOUTES_VENTES)]
     public function ventes(VenteRepository $ventes): Response
     {
         return $this->render('admin/ventes.html.twig', [
@@ -64,7 +73,9 @@ class DashboardController extends AbstractController
         ]);
     }
 
+    // Coûts matières et marges par fiche technique : donnée de gestion.
     #[Route('/production', name: 'admin_production', methods: ['GET'])]
+    #[IsGranted(Permission::ARTICLE_VOIR_COUT)]
     public function production(FicheTechniqueRepository $fiches): Response
     {
         $lignes = [];
@@ -93,11 +104,54 @@ class DashboardController extends AbstractController
         ]);
     }
 
+    /**
+     * Rapport Z détaillé d'une session (consultation gérant).
+     */
+    #[Route('/clotures/{id}', name: 'admin_cloture', methods: ['GET'], requirements: ['id' => '\d+'])]
+    public function cloture(SessionCaisse $session, SessionCaisseService $service): Response
+    {
+        return $this->render('admin/cloture.html.twig', ['rapport' => $service->rapportZ($session)]);
+    }
+
     #[Route('/utilisateurs', name: 'admin_utilisateurs', methods: ['GET'])]
     public function utilisateurs(UtilisateurRepository $utilisateurs): Response
     {
         return $this->render('admin/utilisateurs.html.twig', [
             'utilisateurs' => $utilisateurs->findBy([], ['nom' => 'ASC']),
         ]);
+    }
+
+    /**
+     * Active ou désactive un compte. Réservé à la dirigeante : couper l'accès d'un
+     * collaborateur ne relève pas de la gestion courante. Tracé au journal d'audit.
+     */
+    #[Route('/utilisateurs/{id}/basculer', name: 'admin_utilisateur_toggle', methods: ['POST'], requirements: ['id' => '\d+'])]
+    #[IsGranted('ROLE_DIRIGEANTE')]
+    public function basculerUtilisateur(
+        Request $request,
+        Utilisateur $utilisateur,
+        EntityManagerInterface $em,
+        AuditLogger $audit,
+    ): Response {
+        if (!$this->isCsrfTokenValid('basculer_utilisateur_'.$utilisateur->getId(), (string) $request->request->get('_token'))) {
+            return $this->redirectToRoute('admin_utilisateurs', [], Response::HTTP_SEE_OTHER);
+        }
+
+        if ($utilisateur === $this->getUser()) {
+            $this->addFlash('error', 'Vous ne pouvez pas désactiver votre propre compte.');
+
+            return $this->redirectToRoute('admin_utilisateurs', [], Response::HTTP_SEE_OTHER);
+        }
+
+        $actifAvant = $utilisateur->isActif();
+        $utilisateur->setActif(!$actifAvant);
+        $em->flush();
+        $audit->utilisateurBascule($utilisateur, $actifAvant);
+
+        $this->addFlash('success', $utilisateur->isActif()
+            ? 'Compte « '.$utilisateur->getNom().' » activé.'
+            : 'Compte « '.$utilisateur->getNom().' » désactivé.');
+
+        return $this->redirectToRoute('admin_utilisateurs', [], Response::HTTP_SEE_OTHER);
     }
 }

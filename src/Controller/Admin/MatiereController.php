@@ -4,6 +4,7 @@ namespace App\Controller\Admin;
 
 use App\Entity\MatierePremiere;
 use App\Form\MatierePremiereType;
+use App\Controller\Trait\ReponseFormulaire;
 use App\Repository\MatierePremiereRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -16,6 +17,8 @@ use Symfony\Component\Security\Http\Attribute\IsGranted;
 #[IsGranted('ROLE_GERANT')]
 class MatiereController extends AbstractController
 {
+    use ReponseFormulaire;
+
     #[Route('', name: 'admin_matiere_index', methods: ['GET'])]
     public function index(MatierePremiereRepository $matieres): Response
     {
@@ -39,8 +42,7 @@ class MatiereController extends AbstractController
             return $this->redirectToRoute('admin_matiere_index', [], Response::HTTP_SEE_OTHER);
         }
 
-        return $this->render('admin/matiere/form.html.twig', [
-            'form' => $form,
+        return $this->rendreFormulaire('admin/matiere/form.html.twig', $form, [
             'titre' => 'Nouvelle matière première',
         ]);
     }
@@ -58,8 +60,7 @@ class MatiereController extends AbstractController
             return $this->redirectToRoute('admin_matiere_index', [], Response::HTTP_SEE_OTHER);
         }
 
-        return $this->render('admin/matiere/form.html.twig', [
-            'form' => $form,
+        return $this->rendreFormulaire('admin/matiere/form.html.twig', $form, [
             'titre' => 'Modifier la matière première',
         ]);
     }

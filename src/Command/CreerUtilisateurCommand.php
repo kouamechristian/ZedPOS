@@ -5,6 +5,7 @@ namespace App\Command;
 use App\Entity\Utilisateur;
 use App\Enum\RoleUtilisateur;
 use App\Repository\UtilisateurRepository;
+use App\Service\AuditLogger;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -27,6 +28,7 @@ class CreerUtilisateurCommand extends Command
         private readonly UtilisateurRepository $utilisateurs,
         private readonly UserPasswordHasherInterface $hasher,
         private readonly PasswordHasherFactoryInterface $hasherFactory,
+        private readonly AuditLogger $audit,
     ) {
         parent::__construct();
     }
@@ -95,6 +97,9 @@ class CreerUtilisateurCommand extends Command
 
         $this->em->persist($utilisateur);
         $this->em->flush();
+
+        // Création en console : aucun auteur authentifié ni IP à rattacher.
+        $this->audit->utilisateurCree($utilisateur);
 
         $io->success(\sprintf('Utilisateur "%s" (%s) créé.', $email, $role->libelle()));
 

@@ -1,30 +1,108 @@
 import { Controller } from '@hotwired/stimulus';
+import { caisseHorsLigne } from '../offline/caisse_hors_ligne.js';
 
 /*
  * Caisse tactile ZedPOS.
+ *
  * Tout l'état du ticket vit en mémoire côté client : aucun rechargement pendant
- * la prise de commande. Seul l'encaissement effectue un appel réseau.
+ * la prise de commande.
+ *
+ * L'encaissement suit un ordre non négociable :
+ *   1. écriture durable de la vente en IndexedDB (avec son uuid) ;
+ *   2. libération de l'écran ;
+ *   3. transmission au serveur, immédiate si le réseau est là, différée sinon.
+ * Le réseau n'intervient qu'à l'étape 3 : une coupure ne peut donc pas faire
+ * perdre une vente, et l'idempotence de POST /api/vente empêche les doublons.
  */
 export default class extends Controller {
     static targets = [
-        'modeBtn', 'onglet', 'grille', 'ticket', 'total', 'reglement',
+        'modeBtn', 'onglet', 'onglets', 'grille', 'grilles', 'ticket', 'total', 'reglement',
         'encaisser', 'attente', 'panneau', 'panneauNom', 'panneauQte',
         'panneauCommentaire', 'confirmation', 'imprimer', 'impression',
     ];
-    static values = { mode: String, encaisserUrl: String, ticketBase: String, token: String };
+    static values = { mode: String, ticketBase: String };
 
     connect() {
         this.lignes = [];        // { cle, articleId, nom, prix, quantite, commentaire }
         this.enAttente = [];     // tickets mis de côté
         this.reglement = null;
+        this.horsLigne = caisseHorsLigne();
         this.rendreTicket();
+
+        // Le catalogue mémorisé prime sur le rendu serveur : hors ligne, la page
+        // peut venir du cache du Service Worker et dater un peu.
+        this.actualiserCatalogue();
     }
 
     // ----- Familles -----
     choisirFamille(event) {
-        const id = event.currentTarget.dataset.familleId;
+        this.afficherFamille(event.currentTarget.dataset.familleId);
+    }
+
+    afficherFamille(id) {
         this.grilleTargets.forEach((g) => { g.style.display = g.dataset.familleId === id ? 'grid' : 'none'; });
         this.ongletTargets.forEach((o) => this.marquer(o, o.dataset.familleId === id));
+    }
+
+    // ----- Catalogue hors ligne -----
+
+    /**
+     * Reconstruit les touches produits à partir du catalogue stocké en IndexedDB.
+     * Le rendu serveur reste le premier affichage ; on ne le remplace que si un
+     * catalogue mémorisé existe.
+     */
+    async actualiserCatalogue() {
+        const catalogue = await this.horsLigne.catalogueMemorise();
+        if (catalogue?.familles?.length) {
+            this.rendreCatalogue(catalogue);
+        }
+
+        // Puis, si le réseau répond, on rafraîchit et on rerend avec la version du jour.
+        const frais = await this.horsLigne.rafraichirCatalogue();
+        if (frais?.familles?.length) {
+            this.rendreCatalogue(frais);
+        }
+    }
+
+    rendreCatalogue(catalogue) {
+        if (!this.hasOngletsTarget || !this.hasGrillesTarget) {
+            return;
+        }
+
+        const familleActive = this.ongletTargets.find((o) => o.hasAttribute('data-actif'))?.dataset.familleId
+            ?? String(catalogue.familles[0].id);
+
+        this.ongletsTarget.innerHTML = catalogue.familles.map((famille) => `
+            <button type="button"
+                    class="onglet-famille rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
+                    data-action="caisse#choisirFamille" data-famille-id="${famille.id}"
+                    data-caisse-target="onglet">${this.esc(famille.nom)}</button>
+        `).join('');
+
+        this.grillesTarget.innerHTML = catalogue.familles.map((famille) => `
+            <div data-caisse-target="grille" data-famille-id="${famille.id}" class="gap-2"
+                 style="display: none; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));">
+                ${famille.articles.map((article) => `
+                    <button type="button"
+                            class="touche-produit flex flex-col justify-between rounded-xl p-2 text-left text-white font-semibold active:scale-95 transition"
+                            style="min-height: 92px; background: ${this.esc(article.couleur || '#64748b')};"
+                            data-action="caisse#appuyerProduit"
+                            data-article-id="${article.id}"
+                            data-nom="${this.esc(article.nom)}"
+                            data-prix="${article.prix}"
+                            data-tva="${article.tva}">
+                        <span class="text-sm leading-tight">${this.esc(article.nom)}</span>
+                        <span class="text-sm font-bold">${this.fcfa(article.prix)}</span>
+                    </button>
+                `).join('')}
+            </div>
+        `).join('');
+
+        // Stimulus recâble les cibles au prochain tick : on rétablit ensuite la sélection.
+        requestAnimationFrame(() => {
+            const existe = this.ongletTargets.some((o) => o.dataset.familleId === familleActive);
+            this.afficherFamille(existe ? familleActive : String(catalogue.familles[0].id));
+        });
     }
 
     // ----- Mode de vente -----
@@ -139,39 +217,72 @@ export default class extends Controller {
             return;
         }
 
+        const uuid = this.genererUuid();
         const charge = {
+            uuid,
             mode: this.modeValue,
-            reglementMode: this.reglement,
-            _token: this.tokenValue,
             lignes: this.lignes.map((l) => ({
                 articleId: l.articleId,
                 quantite: l.quantite,
                 commentaire: l.commentaire,
             })),
+            // Règlement du montant exact : la caisse ne saisit pas encore le
+            // montant remis, il n'y a donc jamais de rendu à cette étape.
+            reglements: [{ mode: this.reglement, montant: this.total() }],
         };
 
         this.encaisserTarget.disabled = true;
+
+        // --- 1. Durabilité AVANT tout appel réseau -------------------------------
         try {
-            const reponse = await fetch(this.encaisserUrlValue, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(charge),
-            });
-            const data = await reponse.json();
-            if (data.ok) {
-                this.notifier(`Vente ${data.numero} encaissée`, false);
-                if (this.imprimerTarget.checked && data.uuid) {
-                    this.imprimerTicket(data.uuid);
-                }
-                this.reinitialiser();
-            } else {
-                this.notifier(data.erreur || 'Erreur lors de l\'encaissement', true);
-            }
+            await this.horsLigne.file.enfiler(uuid, charge);
         } catch (e) {
-            this.notifier('Erreur réseau', true);
-        } finally {
+            // Rien n'a été enregistré : on garde le ticket à l'écran pour que le
+            // caissier puisse réessayer. C'est le seul cas où l'on refuse la vente.
             this.encaisserTarget.disabled = false;
+            this.notifier("Enregistrement local impossible — ne validez pas, appelez le gérant", true);
+
+            return;
         }
+
+        // --- 2. La vente est acquise : on libère l'écran -------------------------
+        const imprimer = this.imprimerTarget.checked;
+        this.reinitialiser();
+        this.encaisserTarget.disabled = false;
+
+        // --- 3. Transmission, immédiate ou différée ------------------------------
+        await this.horsLigne.synchroniser();
+
+        if (await this.venteTransmise(uuid)) {
+            this.notifier('Vente encaissée', false);
+            if (imprimer) {
+                this.imprimerTicket(uuid);
+            }
+        } else {
+            this.notifier('Vente enregistrée — en attente de réseau', false);
+        }
+    }
+
+    /** La vente a-t-elle quitté la file, c'est-à-dire été confirmée par le serveur ? */
+    async venteTransmise(uuid) {
+        const entrees = await this.horsLigne.depot.toutes();
+
+        return !entrees.some((entree) => entree.uuid === uuid);
+    }
+
+    genererUuid() {
+        if (globalThis.crypto?.randomUUID) {
+            return globalThis.crypto.randomUUID();
+        }
+
+        // Repli pour les contextes non sécurisés : uuid v4 à partir de valeurs aléatoires.
+        const octets = new Uint8Array(16);
+        globalThis.crypto.getRandomValues(octets);
+        octets[6] = (octets[6] & 0x0f) | 0x40;
+        octets[8] = (octets[8] & 0x3f) | 0x80;
+        const hex = [...octets].map((o) => o.toString(16).padStart(2, '0')).join('');
+
+        return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
     }
 
     reinitialiser() {

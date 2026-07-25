@@ -9,6 +9,7 @@
 {% endblock %}
 
 {% block admin_content %}
+<turbo-frame id="tableau-stock" data-turbo-action="advance">
 <div class="bg-white rounded-xl shadow-sm overflow-hidden">
     <table class="w-full text-sm">
         <thead class="text-left text-slate-500 bg-slate-50">
@@ -35,8 +36,12 @@
                     <td class="px-5 py-3 text-right">{{ fmt.fcfa(matiere.coutMoyenPondere) }}</td>
                     <td class="px-5 py-3">
                         <div class="flex items-center justify-end gap-2">
-                            <a href="{{ path('admin_matiere_edit', {id: matiere.id}) }}" class="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-medium hover:bg-slate-100">Modifier</a>
-                            <form method="post" action="{{ path('admin_matiere_delete', {id: matiere.id}) }}" data-turbo-confirm="Supprimer cette matière première ?">
+                            {# _top : ces actions quittent le frame (page de formulaire,
+                               ou message de confirmation affiché hors du frame). #}
+                            <a href="{{ path('admin_matiere_edit', {id: matiere.id}) }}" data-turbo-frame="_top"
+                               class="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-medium hover:bg-slate-100">Modifier</a>
+                            <form method="post" action="{{ path('admin_matiere_delete', {id: matiere.id}) }}" data-turbo-frame="_top"
+                                  data-turbo-confirm="Supprimer cette matière première ?">
                                 <input type="hidden" name="_token" value="{{ csrf_token('supprimer_matiere_' ~ matiere.id) }}">
                                 <button class="rounded-md border border-red-300 text-red-700 px-2.5 py-1 text-xs font-medium hover:bg-red-50">Supprimer</button>
                             </form>
@@ -49,4 +54,5 @@
         </tbody>
     </table>
 </div>
+</turbo-frame>
 {% endblock %}

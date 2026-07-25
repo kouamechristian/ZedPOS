@@ -2,6 +2,7 @@
 
 namespace App\Controller\Admin;
 
+use App\Controller\Trait\ReponseFormulaire;
 use App\Enum\MotifPerte;
 use App\Form\PerteType;
 use App\Repository\PerteRepository;
@@ -17,6 +18,8 @@ use Symfony\Component\Security\Http\Attribute\IsGranted;
 #[IsGranted('ROLE_GERANT')]
 class PerteController extends AbstractController
 {
+    use ReponseFormulaire;
+
     /**
      * Synthèse mensuelle : total valorisé, ventilation par motif, top 5 des produits.
      */
@@ -97,6 +100,6 @@ class PerteController extends AbstractController
             }
         }
 
-        return $this->render('admin/perte/saisie.html.twig', ['form' => $form]);
+        return $this->rendreFormulaire('admin/perte/saisie.html.twig', $form);
     }
 }
