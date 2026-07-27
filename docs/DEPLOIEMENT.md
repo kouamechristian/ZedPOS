@@ -16,13 +16,19 @@ modifiés à la main — sinon plus rien ne dit ce qui tourne réellement.
 | Composant | Version | Vérification |
 |---|---|---|
 | PHP | **8.2 minimum** (CLI *et* module web, la même) | `php -v` |
-| Extensions PHP | `ctype`, `iconv`, `pdo_mysql`, `gd`, `intl`, `mbstring`, `zip` | `php -m` |
+| Extensions PHP | `ctype`, `iconv`, `pdo_mysql`, `gd`, `mbstring`, `zip` | `php -m` |
 | MariaDB / MySQL | MariaDB 10.4+ ou MySQL 8 | `mysql --version` |
 | Composer | 2.x | `composer -V` |
 | Serveur web | Apache (`mod_rewrite`) ou Nginx | |
 
-`gd` n'est pas optionnel : c'est lui qui réduit les photos des touches produits
-(`ImageArticle`). Sans lui, le téléversement d'une image échoue.
+**`gd` n'est pas optionnel** : c'est lui qui réduit les photos des touches produits
+(`ImageArticle::imagecreatefromjpeg()` et suivantes). Il n'est pas déclaré dans
+`composer.json` — `composer install` ne s'en plaindra donc pas, et son absence ne
+se révélerait qu'au premier téléversement de photo, en production. **Vérifiez-le
+avant** : `php -m | grep gd`.
+
+`intl` est recommandé sans être obligatoire : le paquet `symfony/intl` fournit les
+données de repli si l'extension manque, plus lentement.
 
 ```bash
 # Debian / Ubuntu, si une extension manque
@@ -176,12 +182,17 @@ mettrait `.env.local`, `src/` et `var/` à portée du premier visiteur.
 ```
 
 ```bash
-sudo a2enmod rewrite headers expires ssl
+sudo a2enmod rewrite headers deflate ssl
 sudo systemctl reload apache2
 ```
 
-`headers` et `expires` sont nécessaires à `public/.htaccess`, qui met `/assets/`
-en cache un an et interdit la mise en cache de `sw.js`.
+Ce sont les trois modules dont `public/.htaccess` se sert (`mod_rewrite`,
+`mod_headers`, `mod_deflate`) : il met `/assets/` en cache un an et interdit la
+mise en cache de `sw.js`. Chaque bloc est gardé par un `<IfModule>`, donc un
+module manquant ne produit pas d'erreur — la règle est simplement ignorée, en
+silence. Concrètement, sans `mod_headers`, `sw.js` serait mis en cache par le
+navigateur et une mise à jour de la caisse pourrait mettre des jours à atteindre
+la tablette.
 
 ### Nginx
 
