@@ -123,6 +123,7 @@ php bin/console doctrine:migrations:migrate
 | [docs/GUIDE-CAISSIER.md](docs/GUIDE-CAISSIER.md) | La caissière, à imprimer et afficher près de la caisse |
 | [docs/GUIDE-GERANT.md](docs/GUIDE-GERANT.md) | Le gérant : stock, pertes, rapports |
 | [docs/GUIDE-COMPTABLE.md](docs/GUIDE-COMPTABLE.md) | Le comptable : exports SYSCOHADA, contrôles, plan de comptes |
+| [docs/DEPLOIEMENT.md](docs/DEPLOIEMENT.md) | Mise en production sur un VPS : prérequis, `.env.local`, HTTPS, sauvegardes |
 | [DEMO.md](DEMO.md) | Démonstration client en 10 minutes |
 | [CLAUDE.md](CLAUDE.md) | Conventions techniques, état du projet, reste à faire |
 

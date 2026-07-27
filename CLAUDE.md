@@ -1383,4 +1383,5 @@ Classés par importance.
 | `docs/GUIDE-CAISSIER.md` | La caissière — une page, à imprimer |
 | `docs/GUIDE-GERANT.md` | Le gérant — stock, pertes, rapports |
 | `docs/GUIDE-COMPTABLE.md` | Le comptable — exports SYSCOHADA, contrôles, plan de comptes |
+| `docs/DEPLOIEMENT.md` | Mise en production sur un VPS — prérequis, `.env.local`, HTTPS, sauvegardes |
 | `DEMO.md` | Démonstration client en 10 minutes |
