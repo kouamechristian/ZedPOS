@@ -92,8 +92,9 @@ class PilotageTest extends WebTestCase
         int $totalTtc,
         ?Article $article = null,
         int $quantiteMillimes = 1000,
+        ?SessionCaisse $session = null,
     ): Vente {
-        $vente = new Vente($this->session, ModeVente::BOULANGERIE, \sprintf('VT-%05d', ++$this->sequence), $totalTtc, 0, $totalTtc);
+        $vente = new Vente($session ?? $this->session, ModeVente::BOULANGERIE, \sprintf('VT-%05d', ++$this->sequence), $totalTtc, 0, $totalTtc);
         (new \ReflectionProperty($vente, 'createdAt'))->setValue($vente, $moment);
 
         // Prix unitaire déduit du total : la ligne doit sommer au montant de la vente.
@@ -381,5 +382,177 @@ class PilotageTest extends WebTestCase
             ->construire($this->syntheses()->construire());
 
         $this->assertStringContainsString('RAS, journée propre', $texte);
+    }
+
+    // ----------------------------------------------------- Ventes par caissière
+
+    /**
+     * Ouvre une seconde caisse, tenue par une autre caissière.
+     */
+    private function secondeCaissiere(string $nom = 'Yao Kouassi'): SessionCaisse
+    {
+        $caissier = new Utilisateur(strtolower(str_replace(' ', '.', $nom)).'@test.ci', $nom);
+        $caissier->setRoles(['ROLE_CAISSIER'])->setCodePin('y');
+        $this->em->persist($caissier);
+        $this->em->flush();
+
+        return static::getContainer()->get(SessionCaisseService::class)->ouvrir($caissier, 0);
+    }
+
+    public function testVentesVentileesParCaissiere(): void
+    {
+        $autre = $this->secondeCaissiere();
+
+        // Fatou : 3 tickets, 300 FCFA. Yao : 1 ticket, 100 FCFA.
+        $this->vendre(new \DateTimeImmutable('today 08:00'), 10000);
+        $this->vendre(new \DateTimeImmutable('today 09:00'), 10000);
+        $this->vendre(new \DateTimeImmutable('today 10:00'), 10000);
+        $this->vendre(new \DateTimeImmutable('today 11:00'), 10000, session: $autre);
+
+        $parCaissiere = $this->syntheses()->construire()->parCaissiere;
+
+        $this->assertCount(2, $parCaissiere);
+
+        // Classement par chiffre décroissant : la plus grosse vendeuse en tête.
+        $this->assertSame('Fatou Traoré', $parCaissiere[0]['nom']);
+        $this->assertSame(30000, $parCaissiere[0]['ca']);
+        $this->assertSame(3, $parCaissiere[0]['tickets']);
+        $this->assertSame(10000, $parCaissiere[0]['panierMoyen']);
+        $this->assertSame(7500, $parCaissiere[0]['partBp'], '300 sur 400 FCFA = 75 %.');
+
+        $this->assertSame('Yao Kouassi', $parCaissiere[1]['nom']);
+        $this->assertSame(10000, $parCaissiere[1]['ca']);
+        $this->assertSame(2500, $parCaissiere[1]['partBp']);
+
+        // La somme des parts couvre bien la totalité du chiffre d'affaires.
+        $this->assertSame(10000, array_sum(array_column($parCaissiere, 'partBp')));
+        $this->assertSame(40000, array_sum(array_column($parCaissiere, 'ca')));
+    }
+
+    public function testLesAnnulationsSortentDuChiffreDeLaCaissiere(): void
+    {
+        $this->vendre(new \DateTimeImmutable('today 08:00'), 10000);
+        $annulee = $this->vendre(new \DateTimeImmutable('today 09:00'), 50000);
+        $annulee->annuler('Erreur de saisie');
+        $this->em->flush();
+
+        $caissiere = $this->syntheses()->construire()->parCaissiere[0];
+
+        $this->assertSame(10000, $caissiere['ca'], 'Une vente annulée ne compte pas dans le chiffre.');
+        $this->assertSame(1, $caissiere['tickets']);
+        $this->assertSame(1, $caissiere['annulationsNombre'], 'Elle est comptée à part, pour être vue.');
+        $this->assertSame(50000, $caissiere['annulationsMontant']);
+    }
+
+    /**
+     * Deux sessions pour une même caissière dans la journée ne doivent pas
+     * dupliquer son chiffre : c'est le piège d'une jointure unique sur ventes et
+     * sessions, d'où les requêtes séparées.
+     */
+    public function testDeuxSessionsPourUneMemeCaissiereNeDoublentPasSonChiffre(): void
+    {
+        $this->vendre(new \DateTimeImmutable('today 08:00'), 10000);
+
+        $sessions = static::getContainer()->get(SessionCaisseService::class);
+        $sessions->cloturer($this->session, 10000);
+        $seconde = $sessions->ouvrir($this->caissier, 0);
+
+        $this->vendre(new \DateTimeImmutable('today 14:00'), 20000, session: $seconde);
+
+        $parCaissiere = $this->syntheses()->construire()->parCaissiere;
+
+        $this->assertCount(1, $parCaissiere);
+        $this->assertSame(30000, $parCaissiere[0]['ca']);
+        $this->assertSame(2, $parCaissiere[0]['tickets']);
+    }
+
+    public function testLeTableauDeBordAfficheLesVentesParCaissiere(): void
+    {
+        $autre = $this->secondeCaissiere();
+        $this->vendre(new \DateTimeImmutable('today 08:00'), 30000);
+        $this->vendre(new \DateTimeImmutable('today 09:00'), 10000, session: $autre);
+
+        $this->client->loginUser($this->dirigeante);
+        $crawler = $this->client->request('GET', '/pilotage');
+
+        $this->assertResponseIsSuccessful();
+        $this->assertStringContainsString('Ventes par caissière', $crawler->text());
+        $this->assertStringContainsString('Fatou Traoré', $crawler->text());
+        $this->assertStringContainsString('Yao Kouassi', $crawler->text());
+        $this->assertSelectorExists('[data-controller="graphique-caissieres"]');
+    }
+
+    public function testLeRapportTexteDetailleLesCaissieres(): void
+    {
+        $autre = $this->secondeCaissiere();
+        $this->vendre(new \DateTimeImmutable('today 08:00'), 30000);
+        $this->vendre(new \DateTimeImmutable('today 09:00'), 10000, session: $autre);
+
+        $texte = static::getContainer()->get(RapportQuotidienTexte::class)
+            ->construire($this->syntheses()->construire());
+
+        $this->assertStringContainsString('Par caissière :', $texte);
+        $this->assertStringContainsString('Fatou Traoré : 300 FCFA (1 ticket, 75 %)', $texte);
+    }
+
+    // ------------------------------------------------------------ Téléchargements
+
+    public function testTelechargementDuRapportTexte(): void
+    {
+        $this->vendre(new \DateTimeImmutable('today 08:00'), 30000);
+
+        $this->client->loginUser($this->dirigeante);
+        $jour = (new \DateTimeImmutable('today'))->format('Y-m-d');
+        $this->client->request('GET', '/pilotage/rapport.txt?jour='.$jour);
+
+        $this->assertResponseIsSuccessful();
+        $this->assertResponseHeaderSame('Content-Type', 'text/plain; charset=UTF-8');
+        $this->assertStringContainsString(
+            'zedpos-rapport-'.$jour.'.txt',
+            (string) $this->client->getResponse()->headers->get('Content-Disposition'),
+        );
+
+        $contenu = (string) $this->client->getResponse()->getContent();
+        $this->assertStringContainsString('CA du jour', $contenu);
+        $this->assertStringContainsString('Par caissière :', $contenu);
+    }
+
+    public function testTelechargementDesVentesEnCsv(): void
+    {
+        $this->vendre(new \DateTimeImmutable('today 08:00'), 30000);
+        $annulee = $this->vendre(new \DateTimeImmutable('today 09:00'), 50000);
+        $annulee->annuler('Client parti');
+        $this->em->flush();
+
+        $this->client->loginUser($this->dirigeante);
+        $jour = (new \DateTimeImmutable('today'))->format('Y-m-d');
+        $this->client->request('GET', '/pilotage/rapport.csv?jour='.$jour);
+
+        $this->assertResponseIsSuccessful();
+        $this->assertResponseHeaderSame('Content-Type', 'text/csv; charset=UTF-8');
+
+        $contenu = (string) $this->client->getResponse()->getContent();
+        $this->assertStringStartsWith("\u{FEFF}", $contenu, 'Sans marque d\'ordre, Excel lit le CSV en ANSI.');
+        $this->assertStringContainsString('Numéro;Date;Heure;Caissière', $contenu);
+        $this->assertStringContainsString('Fatou Traoré', $contenu);
+
+        // La vente annulée figure dans l'export — c'est ce qu'on vient vérifier —
+        // avec son motif, mais hors du total.
+        $this->assertStringContainsString('Annulée', $contenu);
+        $this->assertStringContainsString('Client parti', $contenu);
+        $this->assertStringContainsString('1 ticket encaissé', $contenu);
+        $this->assertStringContainsString('300,00', $contenu, 'Le total exclut la vente annulée.');
+    }
+
+    public function testLesTelechargementsSontReservesALaDirigeante(): void
+    {
+        foreach ([$this->gerant, $this->caissier] as $utilisateur) {
+            $this->client->loginUser($utilisateur);
+
+            foreach (['/pilotage/rapport.txt', '/pilotage/rapport.csv'] as $url) {
+                $this->client->request('GET', $url);
+                $this->assertResponseStatusCodeSame(403, $url.' ne doit pas sortir du pilotage.');
+            }
+        }
     }
 }

@@ -30,6 +30,7 @@ enum ActionAudit: string
 
     // Comptes
     case UTILISATEUR_CREE = 'UTILISATEUR_CREE';
+    case UTILISATEUR_MODIFIE = 'UTILISATEUR_MODIFIE';
     case UTILISATEUR_ACTIVE = 'UTILISATEUR_ACTIVE';
     case UTILISATEUR_DESACTIVE = 'UTILISATEUR_DESACTIVE';
 
@@ -47,6 +48,7 @@ enum ActionAudit: string
             self::CAISSE_CLOTUREE => 'Clôture de caisse',
             self::ECART_CAISSE => 'Écart de caisse',
             self::UTILISATEUR_CREE => 'Création d\'utilisateur',
+            self::UTILISATEUR_MODIFIE => 'Modification d\'utilisateur',
             self::UTILISATEUR_ACTIVE => 'Activation d\'utilisateur',
             self::UTILISATEUR_DESACTIVE => 'Désactivation d\'utilisateur',
         };
@@ -64,6 +66,9 @@ enum ActionAudit: string
             self::REMISE_ACCORDEE,
             self::ECART_CAISSE,
             self::UTILISATEUR_DESACTIVE,
+            // Un rôle changé ou un identifiant réinitialisé redistribue un accès :
+            // c'est exactement ce qu'on vient relire dans un journal d'audit.
+            self::UTILISATEUR_MODIFIE,
         ], true);
     }
 
@@ -75,7 +80,8 @@ enum ActionAudit: string
             self::VENTE_ANNULEE, self::REMISE_ACCORDEE => 'Ventes',
             self::PRIX_MODIFIE, self::PERTE_SAISIE, self::INVENTAIRE_VALIDE => 'Catalogue et stock',
             self::CAISSE_CLOTUREE, self::ECART_CAISSE => 'Caisse',
-            self::UTILISATEUR_CREE, self::UTILISATEUR_ACTIVE, self::UTILISATEUR_DESACTIVE => 'Comptes',
+            self::UTILISATEUR_CREE, self::UTILISATEUR_MODIFIE,
+            self::UTILISATEUR_ACTIVE, self::UTILISATEUR_DESACTIVE => 'Comptes',
         };
     }
 }

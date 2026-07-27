@@ -6,6 +6,7 @@ use App\Entity\Article;
 use App\Entity\FamilleProduit;
 use App\Entity\MatierePremiere;
 use App\Entity\Utilisateur;
+use App\Repository\Pagination;
 use App\Service\SessionCaisseService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
@@ -203,9 +204,75 @@ class TurboNavigationTest extends WebTestCase
         $this->client->loginUser($this->gerant);
         $crawler = $this->client->request('GET', '/admin/stock');
 
-        $crawler->filter('turbo-frame#tableau-stock a, turbo-frame#tableau-stock form')->each(function ($noeud): void {
+        // Pagination et recherche sont exclues : ce ne sont pas des actions mais
+        // de la navigation *dans* le tableau — voir les deux tests suivants.
+        $actions = $crawler->filterXPath(
+            '//turbo-frame[@id="tableau-stock"]//a[not(ancestor::nav[@aria-label="Pagination"])]'
+            .' | //turbo-frame[@id="tableau-stock"]//form[not(@role="search")]',
+        );
+
+        $this->assertGreaterThan(0, $actions->count());
+
+        $actions->each(function ($noeud): void {
             $this->assertSame('_top', $noeud->attr('data-turbo-frame'));
         });
+    }
+
+    /**
+     * Pendant de la règle, côté recherche : filtrer un tableau ne doit redessiner
+     * que ce tableau. Le formulaire vit donc **dans** le frame et n'en sort pas —
+     * sinon on rechargerait la page entière, navigation latérale comprise, pour
+     * afficher trois lignes de moins.
+     */
+    public function testLeFormulaireDeRechercheResteDansLeFrame(): void
+    {
+        $this->client->loginUser($this->gerant);
+        $crawler = $this->client->request('GET', '/admin/stock');
+
+        $recherche = $crawler->filterXPath('//turbo-frame[@id="tableau-stock"]//form[@role="search"]');
+
+        $this->assertCount(1, $recherche, 'Le tableau de stock doit offrir une recherche, dans son frame.');
+        $this->assertNull(
+            $recherche->attr('data-turbo-frame'),
+            'La recherche ne sort pas du frame : elle ne redessine que le tableau.',
+        );
+    }
+
+    /**
+     * Le pendant de la règle précédente : changer de page doit rester **dans** le
+     * frame, sans quoi on rechargerait toute la page pour redessiner un tableau —
+     * c'est précisément ce que le frame évite.
+     */
+    public function testLesLiensDePaginationRestentDansLeFrame(): void
+    {
+        // Sans données au-delà d'une page, la barre ne contient aucun lien et le
+        // test ne vérifierait rien.
+        for ($i = 1; $i <= Pagination::PAR_DEFAUT + 2; ++$i) {
+            $this->em->persist(new MatierePremiere(\sprintf('Matière %02d', $i), 'kg'));
+
+            $article = new Article(\sprintf('Article %02d', $i), 1000 + $i, 'pièce');
+            $this->em->persist($article);
+        }
+        $this->em->flush();
+
+        $this->client->loginUser($this->gerant);
+
+        foreach (['/admin/stock' => 'tableau-stock', '/admin/articles' => 'liste-articles'] as $url => $frame) {
+            $crawler = $this->client->request('GET', $url);
+
+            $liens = $crawler->filterXPath(
+                \sprintf('//turbo-frame[@id="%s"]//nav[@aria-label="Pagination"]//a', $frame),
+            );
+
+            $this->assertGreaterThan(0, $liens->count(), $url.' doit proposer des liens de page.');
+
+            $liens->each(function ($lien) use ($url): void {
+                $this->assertNull(
+                    $lien->attr('data-turbo-frame'),
+                    $url.' : un lien de page ne doit pas quitter le frame.',
+                );
+            });
+        }
     }
 
     // ------------------------------------ Compatibilité des formulaires (422)
@@ -251,10 +318,14 @@ class TurboNavigationTest extends WebTestCase
 
     public function testLesInteractionsDuTicketNAppellentJamaisLeServeur(): void
     {
-        $source = file_get_contents(\dirname(__DIR__, 2).'/assets/controllers/caisse_controller.js');
+        $source = file_get_contents(\dirname(__DIR__, 2).'/assets/controllers/ticket_controller.js');
 
-        // Seul `encaisser()` est asynchrone : ajouter un article, +/-, supprimer
-        // une ligne, vider ou reprendre un ticket restent en mémoire.
+        // Rien de ce qui se passe **pendant la prise de commande** n'est
+        // asynchrone : ajouter un article, +/−, retirer une ligne, vider le
+        // ticket, saisir le montant reçu ou lire la monnaie à rendre restent en
+        // mémoire. Les quatre méthodes ci-dessous sortent sur le réseau, et
+        // toutes après coup : le catalogue au chargement, l'encaissement, sa
+        // confirmation, et l'affichage du reçu une fois la vente acquise.
         preg_match_all('/^    (?:async )?(\w+)\(/m', $source, $correspondances);
         $asynchrones = [];
         foreach ($correspondances[0] as $index => $signature) {
@@ -265,12 +336,14 @@ class TurboNavigationTest extends WebTestCase
 
         sort($asynchrones);
         $this->assertSame(
-            ['actualiserCatalogue', 'encaisser', 'venteTransmise'],
+            ['actualiserCatalogue', 'afficherRecu', 'encaisser', 'venteTransmise'],
             $asynchrones,
-            'Aucune autre méthode du contrôleur de caisse ne doit faire d\'aller-retour serveur.',
+            'Aucune autre méthode du contrôleur de ticket ne doit faire d\'aller-retour serveur.',
         );
 
-        foreach (['ajouter', 'incrementer', 'decrementer', 'supprimer', 'vider', 'panneauPlus', 'panneauMoins'] as $methode) {
+        // La monnaie se calcule à l'écran, sans réseau : hors ligne, la réponse
+        // du serveur n'arriverait qu'après le départ du client.
+        foreach (['ajouter', 'incrementer', 'decrementer', 'vider', 'total', 'tva', 'saisirRecu', 'rendreRendu'] as $methode) {
             $this->assertMatchesRegularExpression(
                 '/^    '.$methode.'\(/m',
                 $source,

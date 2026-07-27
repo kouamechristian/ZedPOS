@@ -73,8 +73,8 @@ class ImpressionService
             $sortie .= $this->deuxColonnes('Rendu', $this->fcfa($ticket->rendu));
         }
 
-        // Emplacement réservé au futur QR code RNE/DGI.
-        $sortie .= "\n".$this->centrer().$this->ligneTexte('[ QR RNE/DGI a venir ]');
+        // Code-barres du numéro de ticket, dessiné par l'imprimante elle-même.
+        $sortie .= "\n".$this->centrer().$this->codeBarres($ticket->numero);
 
         // Pied de page.
         if ('' !== $ticket->pied) {
@@ -88,6 +88,35 @@ class ImpressionService
         $sortie .= self::ESC.'p'.\chr(0).\chr(25).\chr(250); // impulsion tiroir
 
         return $sortie;
+    }
+
+    /**
+     * Code-barres Code 128 (jeu B) du numéro de ticket.
+     *
+     * On envoie la **chaîne**, pas une image : le firmware trace le symbole à la
+     * résolution native de la tête d'impression. Une trame calculée ici serait
+     * rééchantillonnée, et des barres d'un point de large finiraient par se
+     * confondre — le code cesserait d'être lisible sans que rien ne le montre.
+     *
+     * Le préfixe `{B` sélectionne le jeu B dans les données, comme le fait
+     * {@see CodeBarres128} pour le rendu HTML : les deux supports encodent donc
+     * la même chose de la même façon.
+     */
+    private function codeBarres(string $valeur): string
+    {
+        // Hors du jeu B, l'imprimante rendrait un symbole faux plutôt que rien :
+        // mieux vaut se contenter du numéro en clair.
+        if (1 !== preg_match('/^[\x20-\x7E]+$/', $valeur)) {
+            return $this->ligneTexte($valeur);
+        }
+
+        $donnees = '{B'.$valeur;
+
+        return self::GS.'h'.\chr(60)                                   // hauteur, en points
+            .self::GS.'w'.\chr(2)                                      // largeur d'un module
+            .self::GS.'H'.\chr(2)                                      // numéro en clair, sous le code
+            .self::GS.'k'.\chr(73).\chr(\strlen($donnees)).$donnees
+            ."\n";
     }
 
     private function centrer(): string

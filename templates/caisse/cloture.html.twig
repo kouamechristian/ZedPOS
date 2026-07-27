@@ -5,40 +5,40 @@
 {% block page_title %}Clôture Z{% endblock %}
 
 {% block entete_actions %}
-    <a href="{{ path('app_caisse_ticket_x') }}" class="rounded-lg bg-slate-700 px-3 py-2 font-medium hover:bg-slate-600">Ticket X</a>
-    <a href="{{ path('app_caisse') }}" class="rounded-lg bg-slate-700 px-3 py-2 font-medium hover:bg-slate-600">← Caisse</a>
+    <a href="{{ path('app_caisse_ticket_x') }}" class="rounded-lg bg-stone-700 px-3 py-2 font-medium hover:bg-stone-600">Ticket X</a>
+    <a href="{{ path('app_caisse') }}" class="rounded-lg bg-stone-700 px-3 py-2 font-medium hover:bg-stone-600">← Caisse</a>
 {% endblock %}
 
 {% block caisse_content %}
 <div class="mx-auto max-w-3xl grid gap-5 lg:grid-cols-2">
 
     {# ---- Récapitulatif de la session (le théorique n'est jamais saisi) ---- #}
-    <div class="bg-white text-slate-800 rounded-2xl shadow-xl p-6">
-        <h2 class="text-lg font-bold text-slate-900 mb-4">Session en cours</h2>
+    <div class="bg-white text-stone-800 rounded-2xl shadow-xl p-6">
+        <h2 class="text-lg font-bold text-stone-900 mb-4">Session en cours</h2>
 
         <dl class="space-y-2 text-sm">
-            <div class="flex justify-between"><dt class="text-slate-500">Ouverte le</dt><dd class="font-medium">{{ rapport.session.ouvertureAt|date('d/m/Y à H:i') }}</dd></div>
-            <div class="flex justify-between"><dt class="text-slate-500">Tickets</dt><dd class="font-medium tabular-nums">{{ rapport.nombreTickets }}</dd></div>
-            <div class="flex justify-between"><dt class="text-slate-500">CA total</dt><dd class="font-medium tabular-nums">{{ fmt.fcfa(rapport.caTotal) }}</dd></div>
+            <div class="flex justify-between"><dt class="text-stone-500">Ouverte le</dt><dd class="font-medium">{{ rapport.session.ouvertureAt|date('d/m/Y à H:i') }}</dd></div>
+            <div class="flex justify-between"><dt class="text-stone-500">Tickets</dt><dd class="font-medium tabular-nums">{{ rapport.nombreTickets }}</dd></div>
+            <div class="flex justify-between"><dt class="text-stone-500">CA total</dt><dd class="font-medium tabular-nums">{{ fmt.fcfa(rapport.caTotal) }}</dd></div>
         </dl>
 
-        <div class="mt-4 pt-4 border-t border-slate-200 space-y-2 text-sm">
-            <div class="flex justify-between"><span class="text-slate-500">Fond d'ouverture</span><span class="tabular-nums">{{ fmt.fcfa(rapport.fondCaisse) }}</span></div>
-            <div class="flex justify-between"><span class="text-slate-500">+ Espèces encaissées</span><span class="tabular-nums">{{ fmt.fcfa(rapport.especesEncaissees) }}</span></div>
-            <div class="flex justify-between"><span class="text-slate-500">− Dépenses</span><span class="tabular-nums">{{ fmt.fcfa(rapport.depenses) }}</span></div>
-            <div class="flex justify-between"><span class="text-slate-500">− Sorties de caisse</span><span class="tabular-nums">{{ fmt.fcfa(rapport.sorties) }}</span></div>
+        <div class="mt-4 pt-4 border-t border-stone-200 space-y-2 text-sm">
+            <div class="flex justify-between"><span class="text-stone-500">Fond d'ouverture</span><span class="tabular-nums">{{ fmt.fcfa(rapport.fondCaisse) }}</span></div>
+            <div class="flex justify-between"><span class="text-stone-500">+ Espèces encaissées</span><span class="tabular-nums">{{ fmt.fcfa(rapport.especesEncaissees) }}</span></div>
+            <div class="flex justify-between"><span class="text-stone-500">− Dépenses</span><span class="tabular-nums">{{ fmt.fcfa(rapport.depenses) }}</span></div>
+            <div class="flex justify-between"><span class="text-stone-500">− Sorties de caisse</span><span class="tabular-nums">{{ fmt.fcfa(rapport.sorties) }}</span></div>
         </div>
 
-        <div class="mt-4 pt-4 border-t-2 border-slate-300 flex items-end justify-between">
-            <span class="font-semibold text-slate-600">Théorique en caisse</span>
-            <span class="text-2xl font-black tabular-nums text-slate-900">{{ fmt.fcfa(rapport.theorique) }}</span>
+        <div class="mt-4 pt-4 border-t-2 border-stone-300 flex items-end justify-between">
+            <span class="font-semibold text-stone-600">Théorique en caisse</span>
+            <span class="text-2xl font-black tabular-nums text-stone-900">{{ fmt.fcfa(rapport.theorique) }}</span>
         </div>
     </div>
 
     {# ---- Saisie du comptage physique ---- #}
-    <div class="bg-white text-slate-800 rounded-2xl shadow-xl p-6">
-        <h1 class="text-xl font-black text-slate-900">Clôture de la journée</h1>
-        <p class="mt-1 mb-5 text-sm text-slate-500">
+    <div class="bg-white text-stone-800 rounded-2xl shadow-xl p-6">
+        <h1 class="text-xl font-black text-stone-900">Clôture de la journée</h1>
+        <p class="mt-1 mb-5 text-sm text-stone-500">
             Comptez les espèces réellement présentes dans le tiroir. L'écart est calculé
             par le système ; <strong>un commentaire est obligatoire s'il n'est pas nul</strong>.
             Une fois clôturée, la journée n'est plus modifiable.

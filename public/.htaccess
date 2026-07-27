@@ -12,6 +12,11 @@
     # Motif non ancré : l'application peut être servie depuis un sous-répertoire.
     Header set Cache-Control "public, max-age=31536000, immutable" "expr=%{REQUEST_URI} =~ m#/assets/#"
 
+    # Même raisonnement pour les photos des touches produits : leur nom de fichier
+    # est tiré au sort au téléversement, remplacer une photo change donc son URL.
+    # Une adresse donnée désigne toujours la même image.
+    Header set Cache-Control "public, max-age=31536000, immutable" "expr=%{REQUEST_URI} =~ m#/uploads/#"
+
     # Le Service Worker, lui, ne doit jamais être servi depuis le cache : c'est
     # lui qui pilote la mise en cache, il doit pouvoir être remplacé aussitôt.
     <Files "sw.js">

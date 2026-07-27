@@ -17,7 +17,11 @@ use Symfony\Component\Security\Core\Authorization\Voter\Voter;
  */
 class DonneesGlobalesVoter extends Voter
 {
-    private const ATTRIBUTS = [Permission::VOIR_CA_GLOBAL, Permission::VOIR_TOUTES_VENTES];
+    private const ATTRIBUTS = [
+        Permission::VOIR_CA_GLOBAL,
+        Permission::VOIR_TOUTES_VENTES,
+        Permission::EXPORTER_COMPTABILITE,
+    ];
 
     public function __construct(private readonly Security $security)
     {
@@ -34,7 +38,18 @@ class DonneesGlobalesVoter extends Voter
             return false;
         }
 
-        // Consultation seulement : encadrement et comptabilité.
+        // Même audience pour les trois permissions : encadrement et comptabilité.
+        //
+        // `EXPORTER_COMPTABILITE` a longtemps fait exception — le gérant lisait les
+        // chiffres à l'écran mais n'emportait pas les écritures. La restriction a
+        // été levée : le gérant accède désormais à `/comptabilite` et à ses trois
+        // formats d'export au même titre que la dirigeante. Le constante reste
+        // distincte parce que les points d'appel expriment des intentions
+        // différentes, pas parce que l'arbitrage diffère.
+        //
+        // ROLE_COMPTABLE est testé séparément : rôle autonome, il n'hérite de
+        // ROLE_GERANT dans aucune branche de la hiérarchie. La dirigeante, elle,
+        // est couverte par ROLE_GERANT dont elle hérite.
         return $this->security->isGranted('ROLE_GERANT') || $this->security->isGranted('ROLE_COMPTABLE');
     }
 }

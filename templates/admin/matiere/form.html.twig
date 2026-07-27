@@ -10,13 +10,25 @@
         <div class="sm:col-span-2">{{ form_row(form.nom) }}</div>
         {{ form_row(form.uniteStock) }}
         {{ form_row(form.fournisseur) }}
-        {{ form_row(form.stockActuel) }}
+        {# Le stock de départ n'est saisissable qu'à la création : ensuite il se
+           compte, par un inventaire, qui laisse un mouvement et une trace. #}
+        {% if form.stockActuel is defined %}
+            {{ form_row(form.stockActuel) }}
+        {% endif %}
         {{ form_row(form.stockMini) }}
         {{ form_row(form.coutMoyenPondere) }}
     </div>
+
+    {% if form.stockActuel is not defined %}
+        <p class="mt-1 text-xs text-stone-500">
+            Le stock ne se corrige pas ici : ouvrez un
+            <a href="{{ path('admin_inventaires') }}" class="underline hover:text-stone-800">inventaire</a>,
+            qui reporte l'écart en mouvement de stock et le trace au journal d'audit.
+        </p>
+    {% endif %}
     <div class="mt-6 flex items-center gap-3">
-        <button class="rounded-lg bg-slate-800 text-white px-4 py-2 text-sm font-semibold hover:bg-slate-700">Enregistrer</button>
-        <a href="{{ path('admin_matiere_index') }}" class="rounded-lg border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50">Annuler</a>
+        <button class="rounded-lg bg-stone-800 text-white px-4 py-2 text-sm font-semibold hover:bg-stone-700">Enregistrer</button>
+        <a href="{{ path('admin_matiere_index') }}" class="rounded-lg border border-stone-300 px-4 py-2 text-sm hover:bg-stone-50">Annuler</a>
     </div>
     {{ form_end(form) }}
 </div>

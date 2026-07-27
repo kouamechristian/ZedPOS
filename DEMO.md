@@ -18,7 +18,7 @@ php bin/console tailwind:build
 php bin/console asset-map:compile
 
 # 3. Lancer le serveur
-symfony serve            # ou : php -S localhost:8000 -t public/
+symfony serve            # ou : php -S localhost:8000 -t public/ public/index.php
 ```
 
 La commande affiche à la fin les comptes et les deux anomalies injectées. **Relisez
@@ -41,6 +41,7 @@ l'étape 6.
 |---|---|---|---|
 | Dirigeante | `aya.kone@zedpos.ci` | `dirigeante123` | `/pilotage` |
 | Gérant | `koffi.nguessan@zedpos.ci` | `gerant123` | `/admin` |
+| Comptable | `cabinet@zedpos.ci` | `comptable123` | `/comptabilite` |
 | Caissière | Fatou Traoré | PIN **1234** | `/caisse` |
 | Caissier | Yao Kouassi | PIN **5678** | `/caisse` |
 
@@ -211,6 +212,27 @@ Vigilance :
   - 1 annulation (600 FCFA)
   - Écart de caisse : -2 500 FCFA
 ```
+
+---
+
+## Pour le client qui a un cabinet comptable (1 min, optionnel)
+
+Connectez-vous en comptable (`cabinet@zedpos.ci` / `comptable123`) : vous arrivez
+sur `/comptabilite`. Cliquez sur **Mois en cours**.
+
+Trois choses à montrer, dans cet ordre :
+
+1. Le bloc **« Contrôles conformes »** en vert. Le chiffre d'affaires, la TVA, les
+   espèces et les mouvements de caisse du fichier sont rapprochés de ceux de la
+   caisse, au franc près. *« Votre comptable n'a pas à nous croire sur parole. »*
+2. La **balance générale** en bas : `7021` produits finis, `7011` marchandises,
+   `4431` TVA, `5711` caisse, `5521` Wave… — du SYSCOHADA, pas un format maison.
+3. Le bouton **FEC** : le fichier que le cabinet importe directement dans son
+   logiciel. *« Plus de ressaisie de fin de mois. »*
+
+> Si vous avez déjà fait la clôture de caisse à l'étape 5, l'écart de −2 500 FCFA
+> apparaît en `6588` — la démonstration se boucle : l'anomalie constatée en caisse
+> ressort telle quelle en comptabilité.
 
 ---
 

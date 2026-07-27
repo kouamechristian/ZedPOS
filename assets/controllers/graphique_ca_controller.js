@@ -26,8 +26,8 @@ export default class extends Controller {
                 labels: this.libellesValue,
                 datasets: [{
                     data: this.valeursValue,
-                    borderColor: '#0f172a',
-                    backgroundColor: 'rgba(15, 23, 42, .08)',
+                    borderColor: '#b45309',
+                    backgroundColor: 'rgba(180, 83, 9, .10)',
                     borderWidth: 2,
                     fill: true,
                     tension: 0.3,

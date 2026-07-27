@@ -1,0 +1,43 @@
+{% extends 'base.html.twig' %}
+{% form_theme form 'admin/_form_theme.html.twig' %}
+
+{% block title %}Installation — ZedPOS{% endblock %}
+
+{% block body %}
+{# Même habillage que l'écran de connexion : c'est la porte d'entrée de
+   l'application, l'exploitant doit reconnaître les lieux au premier coup d'œil. #}
+<div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-amber-50 via-amber-100 to-orange-100 px-4 py-10">
+    <div class="w-full max-w-md bg-white rounded-2xl shadow-xl shadow-amber-900/10 ring-1 ring-amber-200/60 p-8">
+        <div class="text-center mb-7">
+            <span class="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-amber-500 text-stone-900 text-xl font-black shadow-inner">Z</span>
+            <h1 class="titre text-3xl font-bold text-stone-900">Bienvenue</h1>
+            <p class="mt-1 text-sm text-stone-500">
+                L'application est vierge. Créez le compte <strong>dirigeante</strong> :
+                c'est lui qui ouvrira ensuite ceux du gérant, des caissières et du comptable.
+            </p>
+        </div>
+
+        {{ form_start(form) }}
+            {{ form_errors(form) }}
+
+            {{ form_row(form.nom) }}
+            {{ form_row(form.email) }}
+            {{ form_row(form.motDePasse.first) }}
+            {{ form_row(form.motDePasse.second) }}
+
+            {# Le seul mot de passe du système : aucun autre compte ne pourra le
+               réinitialiser s'il est perdu. C'est pourquoi il est saisi deux fois. #}
+            <p class="mt-4 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900">
+                Notez ce mot de passe : il est haché et ne pourra plus être relu.
+                Tant que ce compte est le seul, personne ne pourra le réinitialiser
+                à votre place.
+            </p>
+
+            <button type="submit"
+                    class="mt-5 w-full rounded-xl bg-amber-600 py-3 font-semibold text-white shadow-sm shadow-amber-900/20 transition hover:bg-amber-500">
+                Créer le compte dirigeante
+            </button>
+        {{ form_end(form) }}
+    </div>
+</div>
+{% endblock %}

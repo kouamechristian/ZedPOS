@@ -7,6 +7,7 @@ use App\Entity\MouvementStock;
 use App\Entity\SessionCaisse;
 use App\Entity\Utilisateur;
 use App\Entity\Vente;
+use App\Enum\RoleUtilisateur;
 use App\Enum\TypeMouvementStock;
 use App\Repository\ArticleRepository;
 use App\Repository\MatierePremiereRepository;
@@ -77,6 +78,7 @@ class DemoResetCommand extends Command
     {
         $this
             ->addOption('force', null, InputOption::VALUE_NONE, 'Passe outre la confirmation et le garde-fou de production (à vos risques).')
+            ->addOption('garder-utilisateurs', null, InputOption::VALUE_NONE, 'Conserve les comptes existants au lieu de les remplacer par ceux de la démonstration.')
             ->setHelp(<<<'AIDE'
                 Reconstruit une base de démonstration complète et cohérente.
 
@@ -85,6 +87,10 @@ class DemoResetCommand extends Command
 
                   <info>php %command.full_name%</info>            Avec confirmation
                   <info>php %command.full_name% --force</info>    Sans confirmation (scripts)
+
+                <comment>--garder-utilisateurs</comment> épargne la table `utilisateur` : les comptes en
+                place sont conservés et l'historique leur est attribué. C'est ce qu'il faut
+                pour garnir une base déjà installée sans perdre ses accès.
 
                 Deux anomalies sont injectées volontairement pour la démonstration :
                 un ticket annulé après encaissement, et un écart de caisse de −2 500 FCFA.
@@ -103,9 +109,13 @@ class DemoResetCommand extends Command
             return Command::FAILURE;
         }
 
+        $garderUtilisateurs = (bool) $input->getOption('garder-utilisateurs');
+
         $io->title('Préparation de la démonstration ZedPOS');
         $io->warning(\sprintf(
-            'Toutes les données de la base « %s » vont être effacées.',
+            $garderUtilisateurs
+                ? 'Toutes les données de la base « %s » vont être effacées, sauf les comptes utilisateurs.'
+                : 'Toutes les données de la base « %s » vont être effacées.',
             $this->em->getConnection()->getDatabase() ?? '?',
         ));
 
@@ -122,26 +132,36 @@ class DemoResetCommand extends Command
         // la marge nécessaire quelle que soit la configuration CLI de la machine.
         ini_set('memory_limit', '1G');
 
-        if (Command::SUCCESS !== $this->chargerFixtures($io)) {
+        if (Command::SUCCESS !== $this->chargerFixtures($io, $garderUtilisateurs)) {
             return Command::FAILURE;
         }
 
-        [$fatou, $yao] = $this->caissiers($io);
-        if (null === $fatou || null === $yao) {
-            $io->error('Comptes caissiers introuvables après le chargement des fixtures.');
+        [$premier, $second] = $this->caissiers();
+        if (null === $premier) {
+            $io->error('Aucun compte caissier après le chargement : impossible d\'attribuer une caisse.');
 
             return Command::FAILURE;
         }
 
         $io->section('Injection des anomalies de démonstration');
 
-        $ticketAnnule = $this->injecterAnnulation($fatou, $io);
-        $ecart = $this->injecterEcartDeCaisse($yao, $io);
+        $ticketAnnule = $this->injecterAnnulation($premier, $io);
+
+        // Les deux anomalies veulent deux caisses distinctes : la première reste
+        // ouverte avec son ticket annulé, la seconde est clôturée sur un manquant.
+        // Sur une base à un seul caissier, clôturer la sienne fermerait la caisse
+        // du jour et effacerait la première anomalie de l'écran.
+        $ecart = null;
+        if (null !== $second) {
+            $ecart = $this->injecterEcartDeCaisse($second, $io);
+        } else {
+            $io->text('Un seul caissier : écart de caisse non injecté, sa caisse du jour reste ouverte.');
+        }
 
         $io->section('Remise à niveau du stock');
         $io->text(\sprintf('%d matières premières réapprovisionnées.', $this->reapprovisionner()));
 
-        $this->recapituler($io, $ticketAnnule, $ecart);
+        $this->recapituler($io, $ticketAnnule, $ecart, $garderUtilisateurs);
 
         return Command::SUCCESS;
     }
@@ -150,7 +170,7 @@ class DemoResetCommand extends Command
      * Recharge AppFixtures (purge comprise). La sortie est capturée : les
      * avertissements de stock négatif sont attendus et brouilleraient l'écran.
      */
-    private function chargerFixtures(SymfonyStyle $io): int
+    private function chargerFixtures(SymfonyStyle $io, bool $garderUtilisateurs = false): int
     {
         $io->section('Chargement de 30 jours d\'historique');
         $io->text([
@@ -161,7 +181,15 @@ class DemoResetCommand extends Command
         ]);
 
         $tampon = new BufferedOutput();
-        $entree = new ArrayInput(['--no-interaction' => true]);
+        $arguments = ['--no-interaction' => true];
+
+        if ($garderUtilisateurs) {
+            // La table est épargnée par la purge ; AppFixtures détecte alors les
+            // comptes en place et leur attribue l'historique au lieu d'en créer.
+            $arguments['--purge-exclusions'] = ['utilisateur'];
+        }
+
+        $entree = new ArrayInput($arguments);
         $entree->setInteractive(false);
 
         $code = $this->getApplication()->find('doctrine:fixtures:load')->run($entree, $tampon);
@@ -180,14 +208,22 @@ class DemoResetCommand extends Command
     }
 
     /**
+     * Les deux premiers caissiers, **par rôle** et non par adresse e-mail.
+     *
+     * Les chercher par `fatou.traore@zedpos.ci` ne marchait que sur une base de
+     * démonstration fraîche ; avec `--garder-utilisateurs`, ce sont les comptes
+     * réels de l'établissement qui tiennent la caisse.
+     *
      * @return array{0: ?Utilisateur, 1: ?Utilisateur}
      */
-    private function caissiers(SymfonyStyle $io): array
+    private function caissiers(): array
     {
-        return [
-            $this->utilisateurs->findOneBy(['email' => 'fatou.traore@zedpos.ci']),
-            $this->utilisateurs->findOneBy(['email' => 'yao.kouassi@zedpos.ci']),
-        ];
+        $caissiers = array_values(array_filter(
+            $this->utilisateurs->findBy([], ['id' => 'ASC']),
+            static fn (Utilisateur $u): bool => \in_array(RoleUtilisateur::CAISSIER->value, $u->getRoles(), true),
+        ));
+
+        return [$caissiers[0] ?? null, $caissiers[1] ?? null];
     }
 
     /**
@@ -314,11 +350,36 @@ class DemoResetCommand extends Command
             ?? $this->articles->findOneBy(['actif' => true], ['positionCaisse' => 'ASC']);
     }
 
-    private function recapituler(SymfonyStyle $io, ?Vente $ticketAnnule, ?int $ecart): void
+    private function recapituler(SymfonyStyle $io, ?Vente $ticketAnnule, ?int $ecart, bool $garderUtilisateurs): void
     {
         $io->success('Base de démonstration prête.');
 
         $io->section('Comptes');
+
+        if ($garderUtilisateurs) {
+            // Annoncer les identifiants de démonstration alors qu'ils n'ont pas été
+            // créés enverrait l'exploitant se connecter avec des comptes qui
+            // n'existent pas. On liste ceux qui sont réellement en base, sans
+            // prétendre en connaître les mots de passe : ce sont les siens.
+            $io->text('Comptes conservés — connectez-vous avec vos identifiants habituels.');
+            $io->table(
+                ['Rôle', 'Identifiant', 'Nom'],
+                array_map(
+                    static fn (Utilisateur $u): array => [
+                        implode(', ', array_map(
+                            static fn (string $role): string => RoleUtilisateur::tryFrom($role)?->libelle() ?? $role,
+                            array_filter($u->getRoles(), static fn (string $r): bool => 'ROLE_USER' !== $r),
+                        )),
+                        $u->getEmail(),
+                        $u->getNom(),
+                    ],
+                    $this->utilisateurs->findBy([], ['id' => 'ASC']),
+                ),
+            );
+
+            return;
+        }
+
         $io->table(
             ['Rôle', 'Identifiant', 'Secret', 'Atterrissage'],
             [
@@ -335,7 +396,7 @@ class DemoResetCommand extends Command
                 ? \sprintf('Ticket %s annulé après encaissement (alerte rouge + bloc « Points de vigilance »)', $ticketAnnule->getNumero())
                 : 'Annulation non injectée (voir avertissements ci-dessus)',
             null !== $ecart
-                ? \sprintf('Écart de caisse de %s FCFA sur la session de Yao Kouassi', number_format(intdiv($ecart, 100), 0, ',', ' '))
+                ? \sprintf('Écart de caisse de %s FCFA sur une session clôturée', number_format(intdiv($ecart, 100), 0, ',', ' '))
                 : 'Écart non injecté (voir avertissements ci-dessus)',
         ]);
 

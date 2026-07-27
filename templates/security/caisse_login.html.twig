@@ -3,10 +3,11 @@
 {% block title %}Caisse — Code PIN{% endblock %}
 
 {% block body %}
-<div class="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center select-none"
+<div class="min-h-screen bg-gradient-to-b from-stone-900 to-amber-950 text-white flex flex-col items-center justify-center select-none"
      data-controller="numpad">
-    <h1 class="text-3xl font-bold mb-1">ZedPOS</h1>
-    <p class="text-slate-400 mb-8">Saisissez votre code PIN</p>
+    <span class="mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-amber-500 text-stone-900 text-xl font-black">Z</span>
+    <h1 class="titre text-3xl font-bold mb-1">ZedPOS</h1>
+    <p class="text-amber-200/70 mb-8">Saisissez votre code PIN</p>
 
     {% for message in app.flashes('caisse_erreur') %}
         <div class="mb-4 rounded-lg bg-red-500/20 border border-red-400/40 px-4 py-2 text-sm text-red-200">
@@ -17,7 +18,7 @@
     {# Points indiquant le nombre de chiffres saisis #}
     <div class="flex gap-4 mb-10" data-numpad-target="dots">
         {% for i in 1..4 %}
-            <span class="h-5 w-5 rounded-full border-2 border-slate-500 transition-colors" data-dot></span>
+            <span class="h-5 w-5 rounded-full border-2 border-amber-400/50 transition-colors" data-dot></span>
         {% endfor %}
     </div>
 
@@ -28,28 +29,28 @@
         <div class="grid grid-cols-3 gap-4">
             {% for chiffre in [1, 2, 3, 4, 5, 6, 7, 8, 9] %}
                 <button type="button" data-action="numpad#appuyer" data-chiffre="{{ chiffre }}"
-                        class="h-20 w-20 rounded-full bg-slate-700 text-3xl font-semibold hover:bg-slate-600 active:bg-slate-500 transition">
+                        class="h-20 w-20 rounded-full bg-stone-700 text-3xl font-semibold hover:bg-stone-600 active:bg-stone-500 transition">
                     {{ chiffre }}
                 </button>
             {% endfor %}
 
             <button type="button" data-action="numpad#effacer"
-                    class="h-20 w-20 rounded-full bg-slate-800 text-sm font-medium text-slate-300 hover:bg-slate-700 transition">
+                    class="h-20 w-20 rounded-full bg-stone-800 text-sm font-medium text-stone-300 hover:bg-stone-700 transition">
                 Effacer
             </button>
 
             <button type="button" data-action="numpad#appuyer" data-chiffre="0"
-                    class="h-20 w-20 rounded-full bg-slate-700 text-3xl font-semibold hover:bg-slate-600 active:bg-slate-500 transition">
+                    class="h-20 w-20 rounded-full bg-stone-700 text-3xl font-semibold hover:bg-stone-600 active:bg-stone-500 transition">
                 0
             </button>
 
             <button type="button" data-action="numpad#reculer"
-                    class="h-20 w-20 rounded-full bg-slate-800 text-2xl text-slate-300 hover:bg-slate-700 transition">
+                    class="h-20 w-20 rounded-full bg-stone-800 text-2xl text-stone-300 hover:bg-stone-700 transition">
                 ⌫
             </button>
         </div>
     </form>
 
-    <a href="{{ path('app_login') }}" class="mt-10 text-sm text-slate-400 underline">Connexion par mot de passe</a>
+    <a href="{{ path('app_login') }}" class="mt-10 text-sm text-stone-400 underline">Connexion par mot de passe</a>
 </div>
 {% endblock %}

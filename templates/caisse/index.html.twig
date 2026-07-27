@@ -3,107 +3,231 @@
 
 {% block title %}Caisse — ZedPOS{% endblock %}
 
-{# L'écran de caisse porte un état vivant (ticket en cours, file de
-   synchronisation) : un aperçu mis en cache par Turbo afficherait un ticket
-   périmé pendant une fraction de seconde au retour sur la page. #}
+{# L'écran porte un état vivant (ticket en cours, file de synchronisation) :
+   un aperçu mis en cache par Turbo afficherait un ticket périmé. #}
 {% block turbo_meta %}<meta name="turbo-cache-control" content="no-cache">{% endblock %}
 
+{# Moyens de paiement, **aux couleurs de chaque opérateur**. La caissière ne lit
+   pas cinq libellés : elle reconnaît un bleu Wave, un orange Orange, un jaune MTN.
+   C'est le seul endroit de l'application où la couleur ne nous appartient pas —
+   elle appartient au réseau, et s'aligner dessus supprime une hésitation par vente.
+
+   `teinte` est la couleur de la marque, `encre` le texte à poser dessus. Aucune
+   n'est laissée au hasard : le blanc sur l'orange Orange ne donne que 2,6:1 et le
+   jaune MTN est illisible sous du blanc. Toutes les paires ci-dessous tiennent
+   au-delà de 5,8:1, contrôlées comme le reste de l'écran pour la lecture en plein
+   jour derrière le comptoir.
+
+   Le bleu de Wave et de Moov est une **exception assumée** à la règle « aucun bleu
+   sur l'écran de caisse » qui vaut pour les touches produits : ces deux teintes ne
+   sont pas un choix esthétique, ce sont des logos. Ne pas les « réchauffer ».
+
+   Les espèces n'ont pas d'opérateur : elles gardent le brun neutre de l'habillage. #}
 {% set reglements = [
-    { mode: 'ESPECES', label: 'Espèces' },
-    { mode: 'WAVE', label: 'Wave' },
-    { mode: 'ORANGE_MONEY', label: 'Orange Money' },
-    { mode: 'MTN_MOMO', label: 'MTN MoMo' },
-    { mode: 'MOOV_MONEY', label: 'Moov Money' },
+    { mode: 'ESPECES',      label: 'Espèces',      teinte: '#44403c', encre: '#ffffff' },
+    { mode: 'WAVE',         label: 'Wave',         teinte: '#1dc8ff', encre: '#073b4c' },
+    { mode: 'ORANGE_MONEY', label: 'Orange Money', teinte: '#ff7900', encre: '#3d1c00' },
+    { mode: 'MTN_MOMO',     label: 'MTN MoMo',     teinte: '#ffcc00', encre: '#3d3000' },
+    { mode: 'MOOV_MONEY',   label: 'Moov Money',   teinte: '#0a4ea3', encre: '#ffffff' },
+] %}
+
+{# Teintes par famille : mêmes valeurs que ticket_controller.teinte(), pour que
+   le rendu serveur et le rendu depuis IndexedDB soient identiques.
+   Toute modification ici doit être reportée là-bas, et réciproquement.
+
+   Palette **chaude** : pas de bleu ni de lavande, qui refroidissaient l'écran et
+   juraient avec l'ambre du reste de l'interface. Texte foncé de la même teinte que
+   le fond — jamais de noir pur sur fond coloré, et un contraste qui tient en plein
+   jour derrière le comptoir. #}
+{% set teintes = [
+    { fond: '#fce3b4', texte: '#7a4708' },
+    { fond: '#fbd7bd', texte: '#8a4321' },
+    { fond: '#f9d3dd', texte: '#7d3350' },
+    { fond: '#e6edc4', texte: '#4d5a17' },
+    { fond: '#f7d2ca', texte: '#8c3a2a' },
+    { fond: '#f0e3c8', texte: '#6b5320' },
+    { fond: '#eeddf0', texte: '#632f6e' },
+    { fond: '#dcebd9', texte: '#3b5c34' },
 ] %}
 
 {% block body %}
+{# Format du reçu : le même fichier que la page imprimée, pour qu'ils ne puissent
+   pas diverger. Ne pas recopier ces règles ici. #}
+{{ include('ticket/_styles.html.twig') }}
 <style>
-    /* États actifs : le sélecteur d'attribut l'emporte sur les utilitaires Tailwind. */
-    .onglet-famille[data-actif] { background: #0f172a; color: #fff; border-color: #0f172a; }
-    .touche-mode[data-actif] { background: #f8fafc; color: #0f172a; }
-    .touche-reglement[data-actif] { box-shadow: inset 0 0 0 3px #0f172a; background: #f1f5f9; }
-    .touche-produit { text-shadow: 0 1px 2px rgba(0,0,0,.45); }
+    /* Famille active : pastille ambre pleine (amber-700). En plein soleil, un gris
+       clair ne se distingue pas — la sélection doit sauter aux yeux. */
+    .onglet[data-actif] { background: #b45309; color: #fff; font-weight: 600; }
+
+    /* Chaque règlement porte la couleur de son réseau, déclarée une seule fois
+       ici à partir de la liste `reglements` — le repos, le survol et la sélection
+       s'en déduisent tous les trois. */
+    {% for reglement in reglements %}
+    .reglement[data-mode="{{ reglement.mode }}"] { --teinte: {{ reglement.teinte }}; --encre: {{ reglement.encre }}; }
+    {% endfor %}
+
+    /* Au repos, les cinq boutons restent blancs : cinq aplats saturés côte à côte
+       se disputeraient l'écran et plus rien ne ressortirait. La marque tient dans
+       une pastille, assez pour être reconnue du coin de l'œil. */
+    .reglement .pastille {
+        width: .625rem;
+        height: .625rem;
+        flex: none;
+        border-radius: 9999px;
+        background: var(--teinte);
+        /* Un cerne discret : sans lui, le jaune MTN et le bleu clair de Wave
+           disparaissent sur le fond blanc du bouton. */
+        box-shadow: inset 0 0 0 1px rgb(0 0 0 / .18);
+    }
+
+    /* Au survol, le liseré prend la couleur du réseau : le retour est immédiat
+       et n'a pas besoin d'un fond supplémentaire. */
+    .reglement:hover { border-color: var(--teinte); }
+
+    /* Règlement retenu : aplat plein de la couleur du réseau. En plein soleil, la
+       sélection doit se voir de loin — un simple liseré ne suffit pas.
+       La bordure change de couleur mais **jamais d'épaisseur** : une bordure qui
+       grossit décalerait le texte au clic. */
+    .reglement[data-actif] {
+        background: var(--teinte);
+        border-color: var(--teinte);
+        color: var(--encre);
+        font-weight: 600;
+    }
+
+    /* La pastille s'inverse pour rester visible sur l'aplat. */
+    .reglement[data-actif] .pastille {
+        background: var(--encre);
+        box-shadow: none;
+    }
+
+    /* Le reçu doit ressembler à ce qui sort de l'imprimante : bande de papier
+       étroite, dentelée aux deux bouts, posée sur le comptoir.
+
+       La caissière compare le reçu à l'écran avec le ticket qu'elle tend au
+       client — les deux doivent se superposer sans effort. */
+
+    /* Bande de papier : 80 mm de large, dentelée en haut et en bas.
+       Le masque découpe les dents ; l'ombre est portée par le conteneur, sinon
+       elle serait découpée avec le reste. */
+    .recu-papier {
+        --dent: 6px;
+        width: 80mm;
+        margin: 0 auto;
+        background: #fff;
+        -webkit-mask:
+            conic-gradient(from 135deg at top,    #0000, #000 1deg 89deg, #0000 90deg) top   /var(--dent) var(--dent) repeat-x,
+            conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom/var(--dent) var(--dent) repeat-x,
+            linear-gradient(#000 0 0) center/100% calc(100% - 2 * var(--dent)) no-repeat;
+        mask:
+            conic-gradient(from 135deg at top,    #0000, #000 1deg 89deg, #0000 90deg) top   /var(--dent) var(--dent) repeat-x,
+            conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom/var(--dent) var(--dent) repeat-x,
+            linear-gradient(#000 0 0) center/100% calc(100% - 2 * var(--dent)) no-repeat;
+    }
+    /* L'ombre suit la découpe des dents, ce qu'un box-shadow ne saurait pas faire. */
+    .recu-ombre { filter: drop-shadow(0 2px 5px rgba(0, 0, 0, .22)); }
+
+    /* Le fragment apporte sa propre largeur de 80 mm : dans la bande, il n'a plus
+       qu'à la remplir, dents comprises. */
+    .recu-papier .ticket {
+        width: 100%;
+        padding: calc(4mm + var(--dent)) 4mm;
+    }
 </style>
 
-<div class="h-screen flex flex-col bg-slate-100 overflow-hidden select-none"
-     data-controller="caisse"
-     data-caisse-mode-value="BOULANGERIE"
-     data-caisse-ticket-base-value="{{ path('app_caisse_ticket', {uuid: '__UUID__'}) }}">
+<div class="h-screen flex flex-col bg-amber-50 text-stone-800 overflow-hidden select-none"
+     data-controller="ticket"
+     data-ticket-ticket-base-value="{{ path('app_caisse_ticket', {uuid: '__UUID__'}) }}"
+     data-ticket-apercu-base-value="{{ path('app_caisse_ticket_apercu', {uuid: '__UUID__'}) }}">
 
-    {# ---- Bandeau permanent de synchronisation (hors ligne / en attente) ---- #}
-    <div data-controller="synchronisation"
-         data-base-classes="shrink-0 flex items-center justify-between gap-3 px-4 py-1.5 text-sm font-bold"
-         class="shrink-0 flex items-center justify-between gap-3 px-4 py-1.5 text-sm font-bold bg-slate-600 text-white"
-         data-action="click->synchronisation#synchroniser"
-         role="status" aria-live="polite">
-        <span data-synchronisation-target="libelle">Vérification…</span>
-        <span data-synchronisation-target="detail" class="font-normal opacity-90 truncate"></span>
-    </div>
-
-    {# ---- Barre supérieure : modes + tickets en attente + verrouillage ---- #}
-    <header class="flex items-center gap-4 px-4 py-2 bg-slate-900 text-white shrink-0">
-        <div class="flex gap-2">
-            <button type="button" class="touche-mode rounded-lg px-4 py-2 text-sm font-bold bg-slate-700 text-slate-200"
-                    data-action="caisse#changerMode" data-mode="BOULANGERIE" data-caisse-target="modeBtn" data-actif>Boulangerie</button>
-            <button type="button" class="touche-mode rounded-lg px-4 py-2 text-sm font-bold bg-slate-700 text-slate-200"
-                    data-action="caisse#changerMode" data-mode="FASTFOOD" data-caisse-target="modeBtn">Fast-food</button>
+    {# ---------- Barre fine : identité à gauche, état et caissière à droite ---------- #}
+    {# Liseré ambre sous l'en-tête : même signature que /admin et /pilotage. #}
+    <header class="shrink-0 flex items-center justify-between gap-4 border-b-2 border-amber-300 bg-white px-5 py-2.5">
+        <div class="flex items-center gap-4 text-sm">
+            <span class="flex items-center gap-2">
+                <span class="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-amber-500 text-stone-900 text-xs font-black">Z</span>
+                <span class="font-semibold text-stone-800">Caisse</span>
+            </span>
+            <span class="text-amber-300">|</span>
+            {# Actions du cycle de caisse, volontairement discrètes : la caissière
+               doit pouvoir clôturer sans quitter cet écran. #}
+            <a href="{{ path('app_caisse_depense') }}" class="text-stone-500 hover:text-amber-700">Dépense</a>
+            <a href="{{ path('app_caisse_ticket_x') }}" class="text-stone-500 hover:text-amber-700">Ticket X</a>
+            <a href="{{ path('app_caisse_cloture') }}" class="text-stone-500 hover:text-amber-700">Clôture</a>
         </div>
 
-        <div class="flex-1 flex items-center gap-2 overflow-x-auto" data-caisse-target="attente"></div>
-
-        <div class="flex items-center gap-2 text-sm">
-            <a href="{{ path('app_caisse_depense') }}" target="_blank"
-               class="rounded-lg bg-slate-700 px-3 py-2 font-medium hover:bg-slate-600">Dépense</a>
-            <a href="{{ path('app_caisse_ticket_x') }}" target="_blank"
-               class="rounded-lg bg-slate-700 px-3 py-2 font-medium hover:bg-slate-600">Ticket X</a>
-            <a href="{{ path('app_caisse_cloture') }}"
-               class="rounded-lg bg-amber-600 px-3 py-2 font-bold hover:bg-amber-500">Clôture Z</a>
-            <span class="ml-1 text-slate-300" title="Fond de caisse : {{ fmt.fcfa(session.fondCaisse) }}">{{ app.user.nom }}</span>
-            <a href="{{ path('app_logout') }}" class="rounded-lg bg-slate-700 px-3 py-2 font-medium hover:bg-slate-600">Verrouiller</a>
+        <div class="flex items-center gap-3 text-sm">
+            {# Bandeau de synchronisation : discret, mais toujours visible. #}
+            <span data-controller="synchronisation"
+                  data-base-classes="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs"
+                  class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs bg-stone-100 text-stone-500"
+                  data-action="click->synchronisation#synchroniser"
+                  role="status" aria-live="polite">
+                <span data-synchronisation-target="libelle">Vérification</span>
+                <span data-synchronisation-target="detail" class="opacity-70"></span>
+            </span>
+            <span class="text-stone-600">{{ app.user.nom }}</span>
+            <a href="{{ path('app_logout') }}" class="text-stone-400 hover:text-stone-700">Verrouiller</a>
         </div>
     </header>
 
     {% set sousSeuil = alertesStock.matieresSousSeuil %}
     {% if sousSeuil is not empty %}
-        <div class="shrink-0 bg-amber-400 text-amber-950 px-4 py-1.5 text-sm font-semibold">
-            ⚠ Stock bas : {{ sousSeuil|length }} matière(s) sous le seuil ({% for matiere in sousSeuil|slice(0, 5) %}{{ matiere.nom }}{{ not loop.last ? ', ' }}{% endfor %}{% if sousSeuil|length > 5 %}…{% endif %})
+        <div class="shrink-0 border-b border-amber-200 bg-amber-50 px-5 py-1.5 text-xs text-amber-800">
+            Stock bas : {% for matiere in sousSeuil|slice(0, 5) %}{{ matiere.nom }}{{ not loop.last ? ', ' }}{% endfor %}{% if sousSeuil|length > 5 %}…{% endif %}
         </div>
     {% endif %}
 
-    <div class="flex-1 grid grid-cols-[1fr_380px_260px] min-h-0">
+    <div class="flex-1 grid grid-cols-[60fr_40fr] min-h-0">
 
-        {# ---- Colonne gauche : familles + grille produits ---- #}
-        <section class="flex flex-col min-h-0 border-r border-slate-200">
-            {# Rendu serveur = premier affichage ; le contrôleur le remplace par le
-               catalogue mémorisé en IndexedDB dès qu'il en a un. #}
-            <div class="flex flex-wrap gap-1.5 p-2 bg-white border-b border-slate-200"
-                 data-caisse-target="onglets">
+        {# ================= Gauche : familles + grille produits ================= #}
+        <section class="flex flex-col min-h-0">
+            <div class="shrink-0 flex gap-1 overflow-x-auto border-b border-amber-200/80 bg-white px-4 py-2"
+                 data-ticket-target="onglets">
                 {% for entree in catalogue %}
-                    <button type="button"
-                            class="onglet-famille rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
-                            data-action="caisse#choisirFamille" data-famille-id="{{ entree.famille.id }}"
-                            data-caisse-target="onglet" {{ loop.first ? 'data-actif' }}>
+                    <button type="button" data-action="ticket#choisirFamille"
+                            data-famille-id="{{ entree.famille.id }}" data-ticket-target="onglet"
+                            class="onglet shrink-0 rounded-[10px] px-4 py-2 text-sm text-stone-600 hover:bg-amber-100/70"
+                            {{ loop.first ? 'data-actif' }}>
                         {{ entree.famille.nom }}
                     </button>
                 {% endfor %}
             </div>
 
-            <div class="flex-1 overflow-y-auto p-2" data-caisse-target="grilles">
+            <div class="flex-1 overflow-y-auto p-4" data-ticket-target="grilles">
                 {% for entree in catalogue %}
-                    <div data-caisse-target="grille" data-famille-id="{{ entree.famille.id }}"
-                         class="gap-2"
-                         style="display: {{ loop.first ? 'grid' : 'none' }}; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));">
+                    {% set teinte = teintes[loop.index0 % teintes|length] %}
+                    <div data-ticket-target="grille" data-famille-id="{{ entree.famille.id }}"
+                         style="display: {{ loop.first ? 'grid' : 'none' }}; grid-template-columns: repeat(3, 1fr); gap: 10px;">
                         {% for article in entree.articles %}
-                            <button type="button"
-                                    class="touche-produit flex flex-col justify-between rounded-xl p-2 text-left text-white font-semibold active:scale-95 transition"
-                                    style="min-height: 92px; background: {{ article.couleur ?: '#64748b' }};"
-                                    data-action="caisse#appuyerProduit"
+                            <button type="button" data-action="ticket#appuyerProduit"
                                     data-article-id="{{ article.id }}"
                                     data-nom="{{ article.nom }}"
                                     data-prix="{{ article.prixVenteTtc }}"
-                                    data-tva="{{ article.tauxTva }}">
-                                <span class="text-sm leading-tight">{{ article.nom }}</span>
-                                <span class="text-sm font-bold">{{ fmt.fcfa(article.prixVenteTtc) }}</span>
+                                    data-tva="{{ article.tauxTva }}"
+                                    class="flex flex-col overflow-hidden rounded-[12px] text-left shadow-sm active:scale-[0.98] transition"
+                                    style="min-height: 92px; background: {{ teinte.fond }}; color: {{ teinte.texte }};">
+                                {# Photo au-dessus, libellé **sur l'aplat** en dessous —
+                                   jamais de texte posé sur la photo : son contraste
+                                   dépendrait de l'image téléversée, donc de personne,
+                                   et l'écran doit rester lisible en plein jour.
+
+                                   `alt` vide : le nom est juste en dessous, un lecteur
+                                   d'écran le dirait deux fois.
+
+                                   Un fichier disparu retire simplement l'image : la
+                                   touche retombe sur son aplat, elle reste utilisable.
+                                   Une icône d'image cassée en pleine grille de caisse
+                                   ne rend service à personne. #}
+                                {% if article.image %}
+                                    <img src="{{ image_article(article.image) }}" alt="" loading="lazy"
+                                         onerror="this.remove()"
+                                         class="h-20 w-full shrink-0 object-cover">
+                                {% endif %}
+                                <span class="flex flex-1 flex-col justify-between p-3">
+                                    <span class="text-[15px] font-medium leading-snug">{{ article.nom }}</span>
+                                    <span class="text-sm" style="opacity: .72;">{{ fmt.fcfa(article.prixVenteTtc) }}</span>
+                                </span>
                             </button>
                         {% endfor %}
                     </div>
@@ -111,85 +235,168 @@
             </div>
         </section>
 
-        {# ---- Colonne centre : ticket ---- #}
-        <section class="flex flex-col min-h-0 bg-white border-r border-slate-200">
-            <div class="px-4 py-2 border-b border-slate-100 flex items-center justify-between">
-                <span class="font-semibold text-slate-700">Ticket en cours</span>
-                <button type="button" class="text-xs text-slate-400 hover:text-red-600" data-action="caisse#vider">Vider</button>
-            </div>
-            <div class="flex-1 overflow-y-auto" data-caisse-target="ticket"></div>
-            <div class="p-4 border-t border-slate-200">
-                <div class="flex items-end justify-between">
-                    <span class="text-slate-500 font-medium">Total</span>
-                    <span class="text-5xl font-black tabular-nums text-slate-900" data-caisse-target="total">0 FCFA</span>
+        {# ========================= Droite : carte ticket ========================= #}
+        <aside class="flex flex-col min-h-0 border-l-2 border-amber-200 bg-white">
+
+            <div class="shrink-0 flex items-baseline justify-between border-b border-amber-200/70 bg-amber-50/60 px-5 py-3">
+                <div>
+                    <span class="text-[15px] font-semibold text-stone-800">Ticket</span>
+                    {# Le numéro est attribué par le serveur à la validation : on ne
+                       peut pas l'inventer côté client sans risquer un faux numéro. #}
+                    <span class="ml-1.5 text-xs text-stone-400">n° attribué à la validation</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="text-xs text-stone-500" data-ticket-target="compte"></span>
+                    <button type="button" data-action="ticket#vider"
+                            class="text-xs text-stone-400 hover:text-stone-700">Vider</button>
                 </div>
             </div>
-        </section>
 
-        {# ---- Colonne droite : règlement ---- #}
-        <section class="flex flex-col min-h-0 bg-white p-3 gap-2">
-            <div class="text-sm font-semibold text-slate-500 px-1">Règlement</div>
-            <div class="grid gap-2">
-                {% for reglement in reglements %}
-                    <button type="button"
-                            class="touche-reglement rounded-xl border border-slate-300 bg-white px-3 py-3 text-left font-semibold text-slate-800 hover:bg-slate-50"
-                            style="min-height: 56px;"
-                            data-action="caisse#choisirReglement" data-mode="{{ reglement.mode }}" data-caisse-target="reglement">
-                        {{ reglement.label }}
-                    </button>
-                {% endfor %}
-            </div>
+            <div class="flex-1 overflow-y-auto" data-ticket-target="lignes"></div>
 
-            <div class="mt-auto grid gap-2">
-                <label class="flex items-center gap-2 text-sm text-slate-600 px-1 select-none">
-                    <input type="checkbox" data-caisse-target="imprimer" checked class="h-4 w-4 rounded border-slate-300">
+            <div class="shrink-0 border-t border-amber-200/70 px-5 py-4">
+                <div class="flex items-baseline justify-between text-sm text-stone-500">
+                    <span>Sous-total</span>
+                    <span class="tabular-nums" data-ticket-target="sousTotal">0 FCFA</span>
+                </div>
+                <div class="mt-1 flex items-baseline justify-between text-sm text-stone-500">
+                    <span data-ticket-target="tvaLibelle">Dont TVA</span>
+                    <span class="tabular-nums" data-ticket-target="tva">0 FCFA</span>
+                </div>
+
+                {# Le total est le chiffre que la caissière annonce : serif (.titre),
+                   ambre foncé, et le plus gros de l'écran. #}
+                <div class="mt-3 flex items-baseline justify-between border-t-2 border-amber-200 pt-3">
+                    <span class="text-sm font-medium text-stone-600">Total</span>
+                    <span class="titre text-4xl font-bold tabular-nums tracking-tight text-amber-800"
+                          data-ticket-target="total">0 FCFA</span>
+                </div>
+
+                <div class="mt-4 grid grid-cols-3 gap-2">
+                    {% for reglement in reglements %}
+                        <button type="button" data-action="ticket#choisirReglement"
+                                data-mode="{{ reglement.mode }}" data-ticket-target="reglement"
+                                class="reglement flex items-center justify-center gap-1.5 rounded-[10px] border border-stone-300 px-2 py-2.5 text-sm font-medium leading-tight text-stone-700 transition-colors">
+                            <span class="pastille" aria-hidden="true"></span>{{ reglement.label }}
+                        </button>
+                    {% endfor %}
+                </div>
+
+                {# ---------- Espèces : montant reçu et monnaie à rendre ----------
+
+                   La caissière saisit ce que le client lui tend ; la monnaie se
+                   calcule ici, **à l'écran et sans réseau**. C'est le geste qui
+                   suit immédiatement : elle ne peut pas attendre la réponse du
+                   serveur, et hors ligne cette réponse n'arrivera qu'au retour du
+                   réseau. Le serveur recalcule le même montant à la validation —
+                   l'écran ne fait foi pour personne, il renseigne la caissière au
+                   moment où elle ouvre le tiroir.
+
+                   Le champ reste **facultatif** : laissé vide il vaut « compte
+                   juste », et l'encaissement garde sa vitesse d'origine — un
+                   appui sur Encaisser, rien de plus. La contrainte de la file du
+                   matin ne se négocie pas contre un champ à remplir.
+
+                   Masqué hors espèces : sur un paiement mobile, le client règle le
+                   montant exact et il n'y a rien à rendre. #}
+                <div data-ticket-target="especes"
+                     class="hidden mt-3 rounded-[12px] border border-amber-200 bg-amber-50 p-3">
+                    <div class="flex items-center gap-2">
+                        <label for="montant-recu" class="shrink-0 text-sm font-medium text-stone-600">Reçu</label>
+                        {# inputmode="numeric" : sur la tablette du comptoir, le pavé
+                           numérique s'ouvre directement, sans clavier alphabétique. #}
+                        <input id="montant-recu" type="text" inputmode="numeric" autocomplete="off"
+                               data-ticket-target="montantRecu" data-action="input->ticket#saisirRecu"
+                               placeholder="Compte juste"
+                               class="min-w-0 flex-1 select-text rounded-[10px] border border-amber-300 bg-white px-3 py-2
+                                      text-right text-lg font-semibold tabular-nums text-stone-800
+                                      placeholder:text-sm placeholder:font-normal placeholder:text-stone-400
+                                      focus:border-amber-600 focus:outline-none">
+                        <span class="shrink-0 text-sm text-stone-500">FCFA</span>
+                    </div>
+
+                    {# Coupures courantes, recalculées d'après le total : un appui
+                       suffit dans le cas ordinaire, où le client tend un billet
+                       rond. Taper « 2 000 » chiffre par chiffre pendant la file du
+                       matin coûte plus cher que le calcul lui-même. #}
+                    <div class="mt-2 grid grid-cols-4 gap-1.5" data-ticket-target="suggestions"></div>
+
+                    {# Monnaie à rendre — ou ce qui manque encore, en rouge, quand le
+                       compte n'y est pas. Serif et grand : c'est le second montant
+                       que la caissière annonce à voix haute, juste après le total. #}
+                    <div data-ticket-target="renduLigne"
+                         class="hidden mt-3 flex items-baseline justify-between border-t border-amber-200 pt-2.5">
+                        <span class="text-sm font-medium text-stone-600"
+                              data-ticket-target="renduLibelle">Monnaie à rendre</span>
+                        <span class="titre text-3xl font-bold tabular-nums text-amber-800"
+                              data-ticket-target="renduMontant">0 FCFA</span>
+                    </div>
+                </div>
+
+                <label class="mt-3 flex items-center gap-2 text-xs text-stone-500">
+                    <input type="checkbox" data-ticket-target="imprimer" checked
+                           class="h-4 w-4 rounded border-stone-300">
                     Imprimer le ticket
                 </label>
-                <button type="button"
-                        class="rounded-xl bg-green-600 text-white text-lg font-bold py-4 hover:bg-green-500 disabled:opacity-40"
-                        data-action="caisse#encaisser" data-caisse-target="encaisser">Encaisser</button>
-                <button type="button"
-                        class="rounded-xl border border-slate-300 text-slate-700 font-semibold py-3 hover:bg-slate-50"
-                        data-action="caisse#mettreEnAttente">Mise en attente</button>
+
+                {# Vert : convention forte en caisse, jamais d'ambre ici — c'est le
+                   seul bouton qui engage l'argent.
+                   green-800 et non emerald-700 : depuis que les règlements portent
+                   les couleurs des réseaux, l'emerald se noyait dans la rangée. Un
+                   vert plus dense reprend le dessus, et le blanc y tient à 7,0:1
+                   (contre 5,5:1 avant) pour un écran lu en plein jour. #}
+                <button type="button" data-action="ticket#encaisser" data-ticket-target="encaisser"
+                        class="mt-3 w-full rounded-[12px] bg-green-800 py-4 text-lg font-semibold text-white shadow-sm
+                               hover:bg-green-700 disabled:bg-stone-200 disabled:text-stone-400 disabled:shadow-none transition">
+                    Encaisser
+                </button>
             </div>
-        </section>
+        </aside>
     </div>
 
-    {# ---- Panneau variantes / commentaire (mode fast-food) ---- #}
-    <div data-caisse-target="panneau" class="hidden fixed inset-0 z-20 bg-black/50 flex items-center justify-center p-4">
-        <div class="w-full max-w-md bg-white rounded-2xl shadow-xl p-5">
-            <div class="flex items-center justify-between mb-4">
-                <h2 class="text-lg font-bold text-slate-900" data-caisse-target="panneauNom">Article</h2>
-                <button type="button" class="text-slate-400 hover:text-slate-700 text-2xl leading-none" data-action="caisse#fermerPanneau">&times;</button>
+    {# ---------- Reçu affiché après encaissement, au format 80 mm ---------- #}
+    <div data-ticket-target="recu"
+         class="hidden fixed inset-0 z-30 flex items-center justify-center bg-stone-900/40 p-6">
+        <div class="flex max-h-full w-[420px] flex-col rounded-[12px] bg-white">
+            <div class="flex items-center justify-between border-b border-stone-200 px-5 py-3">
+                <span class="text-[15px] font-medium text-stone-800">Reçu</span>
+                <span class="text-xs text-stone-500" data-ticket-target="recuNumero"></span>
             </div>
 
-            <div class="flex items-center justify-center gap-4 mb-4">
-                <button type="button" class="h-14 w-14 rounded-full bg-slate-200 text-2xl font-bold hover:bg-slate-300" data-action="caisse#panneauMoins">−</button>
-                <span class="w-12 text-center text-3xl font-black tabular-nums" data-caisse-target="panneauQte">1</span>
-                <button type="button" class="h-14 w-14 rounded-full bg-slate-200 text-2xl font-bold hover:bg-slate-300" data-action="caisse#panneauPlus">+</button>
+            {# La monnaie est répétée en grand au-dessus du fragment 80 mm : c'est
+               le geste qui suit l'encaissement, la caissière ne doit pas avoir à
+               la relire en corps 9 sur la bande de papier. Elle figure aussi sur
+               le ticket lui-même, ligne « Rendu » — le client la retrouve donc en
+               main. Masquée quand le compte était juste. #}
+            <div data-ticket-target="recuRendu"
+                 class="hidden flex items-baseline justify-between border-b border-amber-200 bg-amber-100 px-5 py-3">
+                <span class="text-sm font-medium text-amber-900">Monnaie à rendre</span>
+                <span class="titre text-3xl font-bold tabular-nums text-amber-800"
+                      data-ticket-target="recuRenduMontant">0 FCFA</span>
             </div>
 
-            <div class="flex flex-wrap gap-2 mb-3">
-                {% for chip in ['Sur place', 'À emporter', 'Bien cuit', 'Sans oignon', 'Piment', 'Sans sauce'] %}
-                    <button type="button" class="rounded-full border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100"
-                            data-action="caisse#ajouterChip" data-texte="{{ chip }}">{{ chip }}</button>
-                {% endfor %}
+            {# Fond sombre : la bande blanche s'en détache comme du papier sur le
+               comptoir. Le fragment 80 mm est injecté dans .recu-papier. #}
+            <div class="flex-1 overflow-y-auto bg-stone-200 px-5 py-6">
+                <div class="recu-ombre">
+                    <div class="recu-papier" data-ticket-target="recuContenu"></div>
+                </div>
             </div>
 
-            <textarea data-caisse-target="panneauCommentaire" rows="2" placeholder="Commentaire libre…"
-                      class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"></textarea>
-
-            <div class="mt-4 flex gap-2">
-                <button type="button" class="flex-1 rounded-xl bg-slate-800 text-white font-bold py-3 hover:bg-slate-700" data-action="caisse#confirmerPanneau">Ajouter au ticket</button>
-                <button type="button" class="rounded-xl border border-slate-300 px-4 py-3 font-semibold hover:bg-slate-50" data-action="caisse#fermerPanneau">Annuler</button>
+            <div class="flex gap-2 border-t border-stone-200 p-4">
+                <button type="button" data-action="ticket#imprimerRecu"
+                        class="flex-1 rounded-[10px] border border-stone-200 py-3 text-sm text-stone-700 hover:bg-stone-50">
+                    Imprimer
+                </button>
+                <button type="button" data-action="ticket#fermerRecu"
+                        class="flex-1 rounded-[10px] bg-stone-800 py-3 text-sm font-medium text-white hover:bg-stone-700">
+                    Nouveau ticket
+                </button>
             </div>
         </div>
     </div>
 
-    {# ---- Bandeau de confirmation d'encaissement ---- #}
-    <div data-caisse-target="confirmation" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-30 rounded-xl bg-slate-900 text-white px-6 py-3 shadow-lg font-semibold"></div>
-
-    {# ---- Iframe caché : impression automatique du ticket après encaissement ---- #}
-    <iframe data-caisse-target="impression" title="Impression du ticket" class="hidden" aria-hidden="true"></iframe>
+    <div data-ticket-target="message" class="hidden"></div>
+    <iframe data-ticket-target="impression" title="Impression du ticket" class="hidden" aria-hidden="true"></iframe>
 </div>
 {% endblock %}

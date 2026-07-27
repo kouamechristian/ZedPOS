@@ -5,8 +5,8 @@
 
 {% block page_actions %}
     <a href="{{ path('app_caisse_rapport_z', {id: rapport.session.id}) }}" target="_blank"
-       class="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700">Imprimer (80 mm)</a>
-    <a href="{{ path('admin_clotures') }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50">← Clôtures</a>
+       class="rounded-lg bg-stone-900 px-3 py-2 text-sm font-medium text-white hover:bg-stone-700">Imprimer (80 mm)</a>
+    <a href="{{ path('admin_clotures') }}" class="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-medium hover:bg-stone-50">← Clôtures</a>
 {% endblock %}
 
 {% block admin_content %}
@@ -26,8 +26,8 @@
     ] %}
     {% for carte in cartes %}
         <div class="bg-white rounded-xl shadow-sm p-5">
-            <div class="text-xs uppercase tracking-wide text-slate-400">{{ carte.titre }}</div>
-            <div class="mt-1 text-2xl font-black tabular-nums text-slate-900">{{ carte.valeur }}</div>
+            <div class="text-xs uppercase tracking-wide text-stone-400">{{ carte.titre }}</div>
+            <div class="mt-1 text-2xl font-black tabular-nums text-stone-900">{{ carte.valeur }}</div>
         </div>
     {% endfor %}
 </div>
@@ -36,16 +36,16 @@
 
     {# ---- Fond de caisse et écart ---- #}
     <div class="bg-white rounded-xl shadow-sm p-5">
-        <h2 class="font-semibold text-slate-800 mb-4">Fond de caisse</h2>
+        <h2 class="font-semibold text-stone-800 mb-4">Fond de caisse</h2>
         <dl class="space-y-2 text-sm">
-            <div class="flex justify-between"><dt class="text-slate-500">Fond d'ouverture</dt><dd class="tabular-nums">{{ fmt.fcfa(rapport.fondCaisse) }}</dd></div>
-            <div class="flex justify-between"><dt class="text-slate-500">+ Espèces encaissées</dt><dd class="tabular-nums">{{ fmt.fcfa(rapport.especesEncaissees) }}</dd></div>
-            <div class="flex justify-between"><dt class="text-slate-500">− Dépenses</dt><dd class="tabular-nums">{{ fmt.fcfa(rapport.depenses) }}</dd></div>
-            <div class="flex justify-between"><dt class="text-slate-500">− Sorties de caisse</dt><dd class="tabular-nums">{{ fmt.fcfa(rapport.sorties) }}</dd></div>
-            <div class="flex justify-between border-t border-slate-200 pt-2 font-semibold"><dt>= Théorique</dt><dd class="tabular-nums">{{ fmt.fcfa(rapport.theorique) }}</dd></div>
+            <div class="flex justify-between"><dt class="text-stone-500">Fond d'ouverture</dt><dd class="tabular-nums">{{ fmt.fcfa(rapport.fondCaisse) }}</dd></div>
+            <div class="flex justify-between"><dt class="text-stone-500">+ Espèces encaissées</dt><dd class="tabular-nums">{{ fmt.fcfa(rapport.especesEncaissees) }}</dd></div>
+            <div class="flex justify-between"><dt class="text-stone-500">− Dépenses</dt><dd class="tabular-nums">{{ fmt.fcfa(rapport.depenses) }}</dd></div>
+            <div class="flex justify-between"><dt class="text-stone-500">− Sorties de caisse</dt><dd class="tabular-nums">{{ fmt.fcfa(rapport.sorties) }}</dd></div>
+            <div class="flex justify-between border-t border-stone-200 pt-2 font-semibold"><dt>= Théorique</dt><dd class="tabular-nums">{{ fmt.fcfa(rapport.theorique) }}</dd></div>
             {% if rapport.montantCompte is not null %}
-                <div class="flex justify-between"><dt class="text-slate-500">Compté</dt><dd class="tabular-nums">{{ fmt.fcfa(rapport.montantCompte) }}</dd></div>
-                <div class="flex justify-between border-t-2 border-slate-300 pt-2 text-base font-black
+                <div class="flex justify-between"><dt class="text-stone-500">Compté</dt><dd class="tabular-nums">{{ fmt.fcfa(rapport.montantCompte) }}</dd></div>
+                <div class="flex justify-between border-t-2 border-stone-300 pt-2 text-base font-black
                             {{ rapport.ecart == 0 ? 'text-green-700' : (rapport.ecart > 0 ? 'text-amber-600' : 'text-red-600') }}">
                     <dt>Écart</dt><dd class="tabular-nums">{{ rapport.ecart > 0 ? '+' }}{{ fmt.fcfa(rapport.ecart) }}</dd>
                 </div>
@@ -53,7 +53,7 @@
         </dl>
 
         {% if rapport.session.commentaireCloture %}
-            <div class="mt-4 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-sm text-slate-700">
+            <div class="mt-4 rounded-lg bg-stone-50 border border-stone-200 px-3 py-2 text-sm text-stone-700">
                 <span class="font-semibold">Commentaire de clôture :</span> {{ rapport.session.commentaireCloture }}
             </div>
         {% endif %}
@@ -61,38 +61,38 @@
 
     {# ---- Ventilation par mode de règlement ---- #}
     <div class="bg-white rounded-xl shadow-sm p-5">
-        <h2 class="font-semibold text-slate-800 mb-4">Par mode de règlement</h2>
+        <h2 class="font-semibold text-stone-800 mb-4">Par mode de règlement</h2>
         <table class="w-full text-sm">
             <tbody>
                 {% for ligne in rapport.parReglement %}
-                    <tr class="border-b border-slate-100 last:border-0">
-                        <td class="py-2 font-medium text-slate-700">{{ ligne.libelle }}</td>
-                        <td class="py-2 text-right text-slate-500 tabular-nums">{{ ligne.nombre }}</td>
+                    <tr class="border-b border-stone-100 last:border-0">
+                        <td class="py-2 font-medium text-stone-700">{{ ligne.libelle }}</td>
+                        <td class="py-2 text-right text-stone-500 tabular-nums">{{ ligne.nombre }}</td>
                         <td class="py-2 text-right font-semibold tabular-nums">{{ fmt.fcfa(ligne.montant) }}</td>
                     </tr>
                 {% else %}
-                    <tr><td class="py-4 text-center text-slate-400">Aucun règlement.</td></tr>
+                    <tr><td class="py-4 text-center text-stone-400">Aucun règlement.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
         {% if rapport.renduTotal > 0 %}
-            <p class="mt-3 text-xs text-slate-400">Rendu de monnaie déduit de la ligne espèces : {{ fmt.fcfa(rapport.renduTotal) }}.</p>
+            <p class="mt-3 text-xs text-stone-400">Rendu de monnaie déduit de la ligne espèces : {{ fmt.fcfa(rapport.renduTotal) }}.</p>
         {% endif %}
     </div>
 
     {# ---- Ventilation par famille ---- #}
     <div class="bg-white rounded-xl shadow-sm p-5">
-        <h2 class="font-semibold text-slate-800 mb-4">Par famille</h2>
+        <h2 class="font-semibold text-stone-800 mb-4">Par famille</h2>
         <table class="w-full text-sm">
             <tbody>
                 {% for ligne in rapport.parFamille %}
-                    <tr class="border-b border-slate-100 last:border-0">
-                        <td class="py-2 font-medium text-slate-700">{{ ligne.famille }}</td>
-                        <td class="py-2 text-right text-slate-500 tabular-nums">{{ fmt.unites(ligne.quantite) }}</td>
+                    <tr class="border-b border-stone-100 last:border-0">
+                        <td class="py-2 font-medium text-stone-700">{{ ligne.famille }}</td>
+                        <td class="py-2 text-right text-stone-500 tabular-nums">{{ fmt.unites(ligne.quantite) }}</td>
                         <td class="py-2 text-right font-semibold tabular-nums">{{ fmt.fcfa(ligne.montant) }}</td>
                     </tr>
                 {% else %}
-                    <tr><td class="py-4 text-center text-slate-400">Aucune vente.</td></tr>
+                    <tr><td class="py-4 text-center text-stone-400">Aucune vente.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -100,25 +100,25 @@
 
     {# ---- Remises, annulations, mouvements ---- #}
     <div class="bg-white rounded-xl shadow-sm p-5">
-        <h2 class="font-semibold text-slate-800 mb-4">Remises, annulations et sorties</h2>
+        <h2 class="font-semibold text-stone-800 mb-4">Remises, annulations et sorties</h2>
         <dl class="space-y-2 text-sm">
-            <div class="flex justify-between"><dt class="text-slate-500">Remises accordées ({{ rapport.remisesNombre }})</dt><dd class="tabular-nums">{{ fmt.fcfa(rapport.remisesMontant) }}</dd></div>
-            <div class="flex justify-between"><dt class="text-slate-500">Ventes annulées ({{ rapport.annulationsNombre }})</dt><dd class="tabular-nums">{{ fmt.fcfa(rapport.annulationsMontant) }}</dd></div>
+            <div class="flex justify-between"><dt class="text-stone-500">Remises accordées ({{ rapport.remisesNombre }})</dt><dd class="tabular-nums">{{ fmt.fcfa(rapport.remisesMontant) }}</dd></div>
+            <div class="flex justify-between"><dt class="text-stone-500">Ventes annulées ({{ rapport.annulationsNombre }})</dt><dd class="tabular-nums">{{ fmt.fcfa(rapport.annulationsMontant) }}</dd></div>
         </dl>
 
-        <h3 class="mt-5 mb-2 text-sm font-semibold text-slate-600">Dépenses et sorties</h3>
-        <ul class="divide-y divide-slate-100 text-sm">
+        <h3 class="mt-5 mb-2 text-sm font-semibold text-stone-600">Dépenses et sorties</h3>
+        <ul class="divide-y divide-stone-100 text-sm">
             {% for mouvement in rapport.mouvements %}
                 <li class="flex items-start justify-between gap-3 py-2">
                     <div class="min-w-0">
-                        <span class="font-medium text-slate-700">{{ mouvement.libelle }}</span>
-                        {% if mouvement.commentaire %}<span class="text-slate-500"> — {{ mouvement.commentaire }}</span>{% endif %}
-                        <div class="text-xs text-slate-400">{{ mouvement.createdAt|date('d/m H:i') }} — {{ mouvement.utilisateur.nom }}</div>
+                        <span class="font-medium text-stone-700">{{ mouvement.libelle }}</span>
+                        {% if mouvement.commentaire %}<span class="text-stone-500"> — {{ mouvement.commentaire }}</span>{% endif %}
+                        <div class="text-xs text-stone-400">{{ mouvement.createdAt|date('d/m H:i') }} — {{ mouvement.utilisateur.nom }}</div>
                     </div>
                     <span class="shrink-0 font-semibold tabular-nums text-red-600">− {{ fmt.fcfa(mouvement.montant) }}</span>
                 </li>
             {% else %}
-                <li class="py-3 text-center text-slate-400">Aucune sortie d'espèces.</li>
+                <li class="py-3 text-center text-stone-400">Aucune sortie d'espèces.</li>
             {% endfor %}
         </ul>
     </div>

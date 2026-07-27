@@ -68,11 +68,12 @@ class PerteController extends AbstractController
             'total' => $total,
             'ventilation' => $ventilation,
             'top' => $top,
-            'pertes' => $pertes->createQueryBuilder('p')
-                ->andWhere('p.createdAt >= :debut')->andWhere('p.createdAt < :fin')
-                ->setParameter('debut', $debut)->setParameter('fin', $fin)
-                ->orderBy('p.createdAt', 'DESC')
-                ->getQuery()->getResult(),
+            'pertes' => $pertes->surPeriode(
+                $debut,
+                $fin,
+                $request->query->getInt('page', 1),
+                $request->query->get('q'),
+            ),
         ]);
     }
 

@@ -20,10 +20,13 @@ class FamilleController extends AbstractController
     use ReponseFormulaire;
 
     #[Route('', name: 'admin_famille_index', methods: ['GET'])]
-    public function index(FamilleProduitRepository $familles): Response
+    public function index(Request $request, FamilleProduitRepository $familles): Response
     {
         return $this->render('admin/famille/index.html.twig', [
-            'familles' => $familles->findBy([], ['position' => 'ASC']),
+            'familles' => $familles->paginees(
+                $request->query->getInt('page', 1),
+                $request->query->get('q'),
+            ),
         ]);
     }
 

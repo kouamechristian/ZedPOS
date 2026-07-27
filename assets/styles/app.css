@@ -1,17 +1,49 @@
 @import "tailwindcss";
 
 /*
- * Barre de progression Turbo.
+ * Identité visuelle ZedPOS — boulangerie.
  *
- * Turbo l'injecte lui-même, mais seulement après 500 ms d'attente et dans un bleu
- * discret. On la rend plus visible et aux couleurs de l'application : c'est le
- * seul retour visuel pendant une navigation, puisqu'il n'y a plus de spinner
- * navigateur.
+ * Deux familles de couleurs seulement :
+ *   - `amber`  : l'accent, couleur du pain et de la croûte (amber-700 #b45309) ;
+ *   - `stone`  : le neutre. Chaud, contrairement au `slate` bleuté par défaut —
+ *                c'est ce qui empêche l'interface de « refroidir ».
+ * Ce sont deux palettes Tailwind natives : rien de nouveau à maintenir.
+ *
+ * Les polices sont **exclusivement système**. Aucune police distante : l'écran de
+ * caisse doit rester lisible hors ligne, et une requête Google Fonts échouerait
+ * (elle est de toute façon hors du périmètre du Service Worker).
+ */
+@theme {
+    --font-titre: Georgia, "Iowan Old Style", "Palatino Linotype", "Times New Roman", serif;
+
+    /* Surfaces récurrentes, nommées pour éviter de disperser les valeurs. */
+    --color-creme: #fffbeb;
+    --color-croute: #b45309;
+}
+
+/* Fond crème par défaut : la couleur de la page, pas une carte. */
+body {
+    background-color: var(--color-creme);
+}
+
+/*
+ * Titres en serif. Appliqué aux titres d'écran et aux montants mis en avant, pas
+ * au corps de texte ni aux tableaux — un tableau de chiffres reste plus lisible
+ * en sans-serif.
+ */
+.titre {
+    font-family: var(--font-titre);
+    letter-spacing: -0.01em;
+}
+
+/*
+ * Barre de progression Turbo, aux couleurs de la croûte. C'est le seul retour
+ * visuel pendant une navigation, puisqu'il n'y a plus de spinner navigateur.
  */
 .turbo-progress-bar {
     height: 3px;
-    background: linear-gradient(90deg, #0f172a, #38bdf8);
-    box-shadow: 0 0 8px rgba(56, 189, 248, 0.6);
+    background: linear-gradient(90deg, #78350f, #f59e0b);
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.7);
 }
 
 /* Un frame est un élément inconnu du navigateur : sans cela il resterait inline. */

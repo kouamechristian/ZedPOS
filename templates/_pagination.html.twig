@@ -1,0 +1,63 @@
+{# Contrôle de pagination — source unique pour tout le projet.
+
+   Usage :
+     {% import '_pagination.html.twig' as pagination %}
+     {{ pagination.barre(articles, 'admin_article_index') }}
+
+   Les **paramètres de requête courants sont conservés** : changer de page ne doit
+   pas effacer un filtre de famille, une recherche ou une date. C'est le défaut le
+   plus pénible d'une pagination faite à la main, et le plus facile à ne pas voir
+   en développement, où l'on teste souvent sans filtre.
+
+   À l'intérieur d'un Turbo Frame, ces liens naviguent **dans le frame** — c'est
+   voulu : seul le tableau se rafraîchit. Ne pas leur ajouter `data-turbo-frame`,
+   contrairement aux liens de détail (voir la section Turbo de CLAUDE.md). #}
+
+{% macro barre(page, route, parametres = {}) %}
+    {% if page.total > 0 %}
+        {# `app.request.query.all` porte les filtres en cours ; `parametres` permet
+           d'en forcer certains depuis l'appelant (une route à segment, typiquement). #}
+        {% set base = app.request.query.all|merge(parametres) %}
+
+        <nav class="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm"
+             aria-label="Pagination" data-turbo-prefetch="true">
+
+            <p class="text-stone-500">
+                {{ page.debut }}–{{ page.fin }} sur <span class="font-semibold text-stone-700">{{ page.total }}</span>
+            </p>
+
+            {% if page.estPaginee %}
+                <div class="flex flex-wrap items-center gap-1">
+                    {{ _self.lien(route, base, 1, '«', page.aPrecedente, 'Première page') }}
+                    {{ _self.lien(route, base, page.page - 1, '‹', page.aPrecedente, 'Page précédente') }}
+
+                    {% for numero in page.fenetre %}
+                        {% if numero == page.page %}
+                            <span aria-current="page"
+                                  class="min-w-9 rounded-lg bg-amber-700 px-3 py-2 text-center font-semibold text-white">{{ numero }}</span>
+                        {% else %}
+                            <a href="{{ path(route, base|merge({page: numero})) }}"
+                               class="min-w-9 rounded-lg border border-stone-300 bg-white px-3 py-2 text-center font-medium text-stone-700 hover:bg-stone-50">{{ numero }}</a>
+                        {% endif %}
+                    {% endfor %}
+
+                    {{ _self.lien(route, base, page.page + 1, '›', page.aSuivante, 'Page suivante') }}
+                    {{ _self.lien(route, base, page.pages, '»', page.aSuivante, 'Dernière page') }}
+                </div>
+            {% endif %}
+        </nav>
+    {% endif %}
+{% endmacro %}
+
+{# Flèche de navigation. Désactivée, elle reste **présente mais inerte** : la barre
+   ne change pas de largeur en cours de navigation, et les boutons ne se déplacent
+   pas sous le curseur au moment du clic. #}
+{% macro lien(route, base, numero, symbole, actif, titre) %}
+    {% if actif %}
+        <a href="{{ path(route, base|merge({page: numero})) }}" title="{{ titre }}" aria-label="{{ titre }}"
+           class="min-w-9 rounded-lg border border-stone-300 bg-white px-3 py-2 text-center font-medium text-stone-700 hover:bg-stone-50">{{ symbole }}</a>
+    {% else %}
+        <span aria-hidden="true"
+              class="min-w-9 rounded-lg border border-stone-200 px-3 py-2 text-center font-medium text-stone-300">{{ symbole }}</span>
+    {% endif %}
+{% endmacro %}

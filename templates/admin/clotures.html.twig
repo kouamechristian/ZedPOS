@@ -1,12 +1,16 @@
 {% extends 'admin/base.html.twig' %}
 {% import 'admin/_macros.html.twig' as fmt %}
+{% import '_pagination.html.twig' as pagination %}
+{% import 'admin/_recherche.html.twig' as recherche %}
 
 {% block page_title %}Clôtures de caisse{% endblock %}
 
 {% block admin_content %}
+
+{{ recherche.barre('admin_clotures', 'Nom de la caissière') }}
 <div class="bg-white rounded-xl shadow-sm overflow-hidden">
     <table class="w-full text-sm">
-        <thead class="text-left text-slate-500 bg-slate-50">
+        <thead class="text-left text-stone-500 bg-stone-50">
             <tr>
                 <th class="px-5 py-3 font-medium">Caissier</th>
                 <th class="px-5 py-3 font-medium">Ouverture</th>
@@ -20,17 +24,17 @@
             </tr>
         </thead>
         <tbody>
-            {% for session in sessions %}
-                <tr class="border-t border-slate-100 hover:bg-slate-50">
-                    <td class="px-5 py-3 font-medium text-slate-800">{{ session.utilisateur.nom }}</td>
-                    <td class="px-5 py-3 text-slate-600">{{ session.ouvertureAt|date('d/m/Y H:i') }}</td>
-                    <td class="px-5 py-3 text-slate-600">{{ session.clotureAt ? session.clotureAt|date('d/m/Y H:i') : '—' }}</td>
+            {% for session in sessions.items %}
+                <tr class="border-t border-stone-100 hover:bg-stone-50">
+                    <td class="px-5 py-3 font-medium text-stone-800">{{ session.utilisateur.nom }}</td>
+                    <td class="px-5 py-3 text-stone-600">{{ session.ouvertureAt|date('d/m/Y H:i') }}</td>
+                    <td class="px-5 py-3 text-stone-600">{{ session.clotureAt ? session.clotureAt|date('d/m/Y H:i') : '—' }}</td>
                     <td class="px-5 py-3 text-right tabular-nums">{{ fmt.fcfa(session.fondCaisse) }}</td>
-                    <td class="px-5 py-3 text-right tabular-nums text-slate-600">{{ session.theorique is not null ? fmt.fcfa(session.theorique) : '—' }}</td>
-                    <td class="px-5 py-3 text-right tabular-nums text-slate-600">{{ session.montantCompte is not null ? fmt.fcfa(session.montantCompte) : '—' }}</td>
+                    <td class="px-5 py-3 text-right tabular-nums text-stone-600">{{ session.theorique is not null ? fmt.fcfa(session.theorique) : '—' }}</td>
+                    <td class="px-5 py-3 text-right tabular-nums text-stone-600">{{ session.montantCompte is not null ? fmt.fcfa(session.montantCompte) : '—' }}</td>
                     <td class="px-5 py-3 text-right tabular-nums font-semibold">
                         {% if session.ecart is null %}
-                            <span class="text-slate-400">—</span>
+                            <span class="text-stone-400">—</span>
                         {% elseif session.ecart == 0 %}
                             <span class="text-green-600">0 FCFA</span>
                         {% else %}
@@ -44,17 +48,18 @@
                         {% if session.estOuverte %}
                             <span class="inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-800">Ouverte</span>
                         {% else %}
-                            <span class="inline-flex rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-600">Clôturée</span>
+                            <span class="inline-flex rounded-full bg-stone-200 px-2 py-0.5 text-xs text-stone-600">Clôturée</span>
                         {% endif %}
                     </td>
                     <td class="px-5 py-3 text-right">
-                        <a href="{{ path('admin_cloture', {id: session.id}) }}" class="font-medium text-slate-700 underline hover:text-slate-900">Rapport</a>
+                        <a href="{{ path('admin_cloture', {id: session.id}) }}" class="font-medium text-stone-700 underline hover:text-stone-900">Rapport</a>
                     </td>
                 </tr>
             {% else %}
-                <tr><td colspan="9" class="px-5 py-6 text-center text-slate-400">Aucune session de caisse.</td></tr>
+                <tr><td colspan="9" class="px-5 py-6 text-center text-stone-400">Aucune session de caisse.</td></tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
+{{ pagination.barre(sessions, 'admin_clotures') }}
 {% endblock %}

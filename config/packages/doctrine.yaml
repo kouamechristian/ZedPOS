@@ -6,7 +6,10 @@ doctrine:
         # either here or in the DATABASE_URL env var (see .env file)
         #server_version: '16'
 
-        profiling_collect_backtrace: '%kernel.debug%'
+        # Volontairement à false, même en dev : collecter une trace d'appels pour
+        # CHAQUE requête SQL est l'un des postes les plus coûteux du profileur.
+        # Les requêtes restent listées dans le profileur, sans leur pile d'appels.
+        profiling_collect_backtrace: false
         use_savepoints: true
         types:
             uuid: Symfony\Bridge\Doctrine\Types\UuidType

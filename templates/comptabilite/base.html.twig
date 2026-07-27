@@ -1,0 +1,49 @@
+{# Cadre de l'espace comptable. Lecture seule : aucune action d'écriture n'y a
+   sa place, la navigation ne propose donc que des consultations et des exports. #}
+{% extends 'base.html.twig' %}
+
+{% block title %}{% block page_title %}Comptabilité{% endblock %} — ZedPOS{% endblock %}
+
+{% block body %}
+<div class="min-h-screen bg-amber-50 text-stone-800 pb-16">
+    <header class="bg-gradient-to-br from-stone-900 via-stone-900 to-amber-950 text-white shadow-lg shadow-amber-900/10">
+        <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2.5 min-w-0">
+                <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-amber-500 text-stone-900 text-sm font-black">Z</span>
+                <div class="min-w-0 leading-tight">
+                    <div class="titre font-bold">ZedPOS</div>
+                    <div class="text-xs text-amber-200/80 truncate">{{ block('page_title') }}</div>
+                </div>
+            </div>
+            <div class="flex items-center gap-3 text-sm">
+                {% if app.user %}
+                    <span class="hidden sm:inline text-amber-100/80 truncate">{{ app.user.nom }}</span>
+                {% endif %}
+                {# Retour au back-office pour qui y a accès — le gérant vient
+                   d'ici et n'aurait sinon que la déconnexion pour ressortir. On
+                   teste bien le **rôle** et non une permission : c'est le pare-feu
+                   `^/admin` qu'on reproduit, pas une décision métier. Le comptable
+                   ne voit pas ce lien, qui ne lui rendrait qu'un 403. #}
+                {% if is_granted('ROLE_GERANT') %}
+                    <a href="{{ path('admin_dashboard') }}" data-turbo-prefetch="true"
+                       class="hidden sm:inline shrink-0 rounded-lg bg-white/10 px-3 py-2 font-medium hover:bg-white/20">Back-office</a>
+                {% endif %}
+                <a href="{{ path('app_logout') }}"
+                   class="shrink-0 rounded-lg bg-white/10 px-3 py-2 font-medium hover:bg-white/20">Quitter</a>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-4 py-6">
+        {% for type, messages in app.flashes(['success', 'error']) %}
+            {% for message in messages %}
+                <div class="mb-4 rounded-xl px-4 py-3 text-sm {{ type == 'success' ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-red-50 border border-red-200 text-red-800' }}">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        {% endfor %}
+
+        {% block comptabilite_content %}{% endblock %}
+    </main>
+</div>
+{% endblock %}

@@ -5,7 +5,6 @@ namespace App\Controller;
 use App\Security\RoleRedirectionHandler;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\RedirectResponse;
-use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 
 /**
@@ -27,14 +26,6 @@ class DashboardController extends AbstractController
         return new RedirectResponse($redirection->urlPour($this->getUser()));
     }
 
-    // L'espace de pilotage est servi par App\Controller\Pilotage\TableauDeBordController.
-
-    #[Route('/comptabilite', name: 'app_comptabilite', methods: ['GET'])]
-    public function comptabilite(): Response
-    {
-        return $this->render('dashboard/espace.html.twig', [
-            'titre' => 'Comptabilité',
-            'sous_titre' => 'Espace comptable',
-        ]);
-    }
+    // L'espace de pilotage est servi par App\Controller\Pilotage\TableauDeBordController,
+    // l'espace comptable par App\Controller\Comptabilite\ExportController.
 }

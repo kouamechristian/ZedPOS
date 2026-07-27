@@ -62,13 +62,14 @@ class DemoResetTest extends KernelTestCase
         return $tester;
     }
 
-    public function testLesQuatreComptesSontPresents(): void
+    public function testLesCinqComptesSontPresents(): void
     {
         $utilisateurs = static::getContainer()->get(UtilisateurRepository::class);
 
         foreach ([
             'aya.kone@zedpos.ci',
             'koffi.nguessan@zedpos.ci',
+            'cabinet@zedpos.ci',
             'fatou.traore@zedpos.ci',
             'yao.kouassi@zedpos.ci',
         ] as $email) {

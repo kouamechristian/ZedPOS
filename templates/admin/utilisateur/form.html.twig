@@ -1,0 +1,51 @@
+{% extends 'admin/base.html.twig' %}
+{% form_theme form 'admin/_form_theme.html.twig' %}
+
+{% block page_title %}{{ titre }}{% endblock %}
+
+{% block admin_content %}
+<div class="max-w-lg bg-white rounded-xl shadow-sm p-6"
+     data-controller="secret-role"
+     data-secret-role-role-pin-value="ROLE_CAISSIER">
+    {{ form_start(form) }}
+        {{ form_errors(form) }}
+
+        {{ form_row(form.nom) }}
+        {{ form_row(form.email) }}
+        {{ form_row(form.role, {attr: {
+            'data-secret-role-target': 'role',
+            'data-action': 'change->secret-role#basculer',
+        }}) }}
+
+        {# Un seul de ces deux blocs est affiché, selon le rôle choisi. #}
+        <div data-secret-role-target="motDePasse">
+            {{ form_row(form.motDePasse) }}
+        </div>
+        <div data-secret-role-target="codePin">
+            {{ form_row(form.codePin) }}
+        </div>
+
+        <p class="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900">
+            Notez le mot de passe ou le code PIN avant d'enregistrer : il est haché
+            et ne pourra plus être relu ensuite.
+            {% if utilisateur is defined %}
+                Laissé vide, le secret actuel est conservé.
+            {% endif %}
+        </p>
+
+        {% if utilisateur is defined and utilisateur == app.user %}
+            {# On ne change pas son propre rôle : le formulaire ne propose donc que
+               celui en place. Le dire évite de chercher une liste déroulante qui
+               paraîtrait cassée. #}
+            <p class="mt-3 text-xs text-stone-500">
+                Vous modifiez votre propre compte : votre rôle n'est pas modifiable ici.
+            </p>
+        {% endif %}
+
+        <div class="mt-6 flex items-center gap-3">
+            <button class="rounded-lg bg-stone-800 text-white px-4 py-2 text-sm font-semibold hover:bg-stone-700">{{ bouton }}</button>
+            <a href="{{ path('admin_utilisateurs') }}" class="rounded-lg border border-stone-300 px-4 py-2 text-sm hover:bg-stone-50">Annuler</a>
+        </div>
+    {{ form_end(form) }}
+</div>
+{% endblock %}

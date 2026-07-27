@@ -20,10 +20,13 @@ class MatiereController extends AbstractController
     use ReponseFormulaire;
 
     #[Route('', name: 'admin_matiere_index', methods: ['GET'])]
-    public function index(MatierePremiereRepository $matieres): Response
+    public function index(Request $request, MatierePremiereRepository $matieres): Response
     {
         return $this->render('admin/matiere/index.html.twig', [
-            'matieres' => $matieres->findBy([], ['nom' => 'ASC']),
+            'matieres' => $matieres->paginees(
+                $request->query->getInt('page', 1),
+                $request->query->get('q'),
+            ),
         ]);
     }
 
@@ -31,7 +34,8 @@ class MatiereController extends AbstractController
     public function new(Request $request, EntityManagerInterface $em): Response
     {
         $matiere = new MatierePremiere();
-        $form = $this->createForm(MatierePremiereType::class, $matiere);
+        // Seule la création saisit un stock : ensuite, il se compte.
+        $form = $this->createForm(MatierePremiereType::class, $matiere, ['stock_initial' => true]);
         $form->handleRequest($request);
 
         if ($form->isSubmitted() && $form->isValid()) {

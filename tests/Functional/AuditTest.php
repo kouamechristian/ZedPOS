@@ -252,6 +252,19 @@ class AuditTest extends WebTestCase
         $this->assertContains('ROLE_CAISSIER', $entrees[0]->getApres()['roles']);
     }
 
+    /**
+     * Bascule un compte depuis son bouton dans la liste : le formulaire porte le
+     * jeton CSRF, qu'un POST nu n'aurait pas — et sans lui l'action est ignorée
+     * en silence, ce qui ferait passer le test pour de mauvaises raisons.
+     */
+    private function basculer(Utilisateur $cible): void
+    {
+        $crawler = $this->client->request('GET', '/admin/utilisateurs');
+        $this->client->submit(
+            $crawler->filter('form[action$="/admin/utilisateurs/'.$cible->getId().'/basculer"] button')->form()
+        );
+    }
+
     public function testDesactivationDUtilisateurTracee(): void
     {
         $this->client->loginUser($this->dirigeante);
@@ -272,12 +285,31 @@ class AuditTest extends WebTestCase
         $this->assertFalse($this->em->getRepository(Utilisateur::class)->find($this->caissier->getId())->isActif());
     }
 
-    public function testDesactivationInterditeAuGerant(): void
+    /**
+     * Le gérant désactive un caissier — c'est de la gestion d'équipe — et la
+     * trace d'audit porte **son** nom, pas celui de la dirigeante.
+     */
+    public function testDesactivationParLeGerantTraceeASonNom(): void
     {
         $this->client->loginUser($this->gerant);
-        $this->client->request('POST', '/admin/utilisateurs/'.$this->caissier->getId().'/basculer');
+        $this->basculer($this->caissier);
+
+        $entrees = $this->entrees(ActionAudit::UTILISATEUR_DESACTIVE);
+        $this->assertCount(1, $entrees);
+        $this->assertSame($this->gerant->getId(), $entrees[0]->getUtilisateur()?->getId());
+    }
+
+    /**
+     * En revanche il n'a pas la main sur un compte dirigeante : il pourrait sinon
+     * couper l'établissement de son seul accès au pilotage et à l'audit.
+     */
+    public function testDesactivationDUneDirigeanteInterditeAuGerant(): void
+    {
+        $this->client->loginUser($this->gerant);
+        $this->client->request('POST', '/admin/utilisateurs/'.$this->dirigeante->getId().'/basculer');
 
         $this->assertResponseStatusCodeSame(403);
+        $this->assertEmpty($this->entrees(ActionAudit::UTILISATEUR_DESACTIVE));
     }
 
     public function testConnexionEtEchecTraces(): void
@@ -408,11 +440,11 @@ class AuditTest extends WebTestCase
         }
 
         $resultat = $this->journal()->rechercher(page: 1);
-        $this->assertCount(JournalAuditRepository::PAR_PAGE, $resultat['entrees']);
-        $this->assertSame(JournalAuditRepository::PAR_PAGE + 5, $resultat['total']);
-        $this->assertSame(2, $resultat['pages']);
+        $this->assertCount(JournalAuditRepository::PAR_PAGE, $resultat->items);
+        $this->assertSame(JournalAuditRepository::PAR_PAGE + 5, $resultat->total);
+        $this->assertSame(2, $resultat->pages);
 
-        $this->assertCount(5, $this->journal()->rechercher(page: 2)['entrees']);
+        $this->assertCount(5, $this->journal()->rechercher(page: 2)->items);
 
         $this->client->loginUser($this->dirigeante);
         $this->client->request('GET', '/pilotage/audit?page=2');

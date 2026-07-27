@@ -109,7 +109,10 @@ class FuiteDonneesCaisseTest extends WebTestCase
         $article = $donnees['familles'][0]['articles'][0];
 
         $this->assertSame(
-            ['id', 'nom', 'prix', 'tva', 'couleur'],
+            // `image` : chemin public de la photo de touche, ou null. C'est une
+            // donnée d'affichage, au même titre que `couleur` — elle ne dit rien
+            // du coût, de la marge ni du stock.
+            ['id', 'nom', 'prix', 'tva', 'couleur', 'image'],
             array_keys($article),
             'Le catalogue expose exactement ces clés, pas une de plus.',
         );

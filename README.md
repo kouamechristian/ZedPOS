@@ -44,15 +44,33 @@ php bin/console doctrine:migrations:migrate
 php bin/console tailwind:build
 php bin/console asset-map:compile
 
-# 3. Jeu de données de démonstration (comptes inclus)
-php bin/console app:demo:reset
-
-# 4. Serveur
-symfony serve            # ou : php -S localhost:8000 -t public/
+# 3. Serveur
+symfony serve            # ou : php -S localhost:8000 -t public/ public/index.php
 ```
 
-Ouvrez <http://localhost:8000>. Les comptes créés sont affichés à la fin de
-`app:demo:reset` (voir aussi [DEMO.md](DEMO.md)).
+Ouvrez <http://localhost:8000>. Sur une base vierge, l'application mène
+directement à l'écran d'**installation** : vous y créez le compte **dirigeante**,
+qui ouvrira ensuite ceux du gérant, des caissières et du comptable. La page se
+referme définitivement dès qu'un compte existe.
+
+> **`php -S` exige le script de routage** (`public/index.php` en dernier
+> argument). Sans lui, le serveur intégré renvoie 404 sur tout ce qu'AssetMapper
+> sert à la volée : la page s'affiche, mais sans aucun style.
+
+Pour une **démonstration client** plutôt qu'une installation vierge, chargez le
+jeu de données complet — 30 jours d'historique et cinq comptes :
+
+```bash
+php bin/console app:demo:reset       # voir DEMO.md
+```
+
+Pour **garnir une base déjà installée** — vous avez créé vos comptes et voulez du
+contenu pour travailler — ajoutez `--garder-utilisateurs` : la table `utilisateur`
+est épargnée et l'historique est attribué à vos caissiers.
+
+```bash
+php bin/console app:demo:reset --garder-utilisateurs
+```
 
 > **Mode hors ligne** : le Service Worker n'est actif qu'en `localhost` ou en
 > HTTPS. En accédant au serveur par une IP locale en HTTP, la file de
@@ -65,8 +83,10 @@ php bin/phpunit                          # tests (commande de référence)
 node --test "tests/js/*.test.js"         # tests JS (file de synchronisation)
 
 php bin/console app:demo:reset           # remet la base en état de démonstration
+php bin/console app:demo:reset --garder-utilisateurs   # garnit sans toucher aux comptes
 php bin/console app:rapport-quotidien    # synthèse du jour, prête pour WhatsApp
 php bin/console app:creer-utilisateur    # crée un compte
+php bin/console app:export-comptable --mois=2026-06 --format=fec -o juin.txt
 
 php bin/console tailwind:build --watch   # CSS en continu pendant le développement
 php bin/console make:migration           # après tout changement d'entité
@@ -80,7 +100,7 @@ php bin/console doctrine:migrations:migrate
 3. Le domaine est **en français** : `Vente`, `SessionCaisse`, `Perte`, `MouvementStock`.
 4. **Tout montant est un `int` en centimes de FCFA** ; aucun `float` ne touche l'argent.
 5. Les quantités sont des entiers en **millièmes d'unité**.
-6. Trois espaces cloisonnés : `/caisse` (caissier), `/admin` (gérant), `/pilotage` (dirigeante).
+6. Quatre espaces cloisonnés : `/caisse` (caissier), `/admin` (gérant), `/pilotage` (dirigeante), `/comptabilite` (comptable, gérant et dirigeante).
 7. `Vente` est l'entité comptable : **jamais supprimée**, seulement annulée avec motif.
 8. `SessionCaisse` porte le cycle de caisse — ouverture, dépenses, ticket X, clôture Z.
 9. Une session **clôturée est figée** : `garantirOuverte()` refuse toute écriture ultérieure.
@@ -91,7 +111,7 @@ php bin/console doctrine:migrations:migrate
 14. `EventListener\DestockageVenteListener` décrémente le stock à chaque vente via les fiches techniques.
 15. Les habilitations fines passent par des **Security Voters** (`App\Security\Permission`), pas par des tests de rôle.
 16. `AuditLogger` écrit un journal **inaltérable** (ni UPDATE ni DELETE, garanti au niveau ORM).
-17. Les services de calcul (`RapportCaisseService`, `SyntheseJourneeService`) sont partagés entre écrans et commandes.
+17. Les services de calcul (`RapportCaisseService`, `SyntheseJourneeService`, `GenerateurEcrituresSyscohada`) sont partagés entre écrans et commandes.
 18. Un middleware DBAL corrige l'introspection de MariaDB 10.4 (`src/Doctrine/DBAL/`) — ne pas le retirer.
 19. Les tests sont **fonctionnels** et tapent une vraie base MariaDB (suffixe `_test`).
 20. `CLAUDE.md` fait référence pour les conventions ; ce README ne fait que résumer.
@@ -102,6 +122,7 @@ php bin/console doctrine:migrations:migrate
 |---|---|
 | [docs/GUIDE-CAISSIER.md](docs/GUIDE-CAISSIER.md) | La caissière, à imprimer et afficher près de la caisse |
 | [docs/GUIDE-GERANT.md](docs/GUIDE-GERANT.md) | Le gérant : stock, pertes, rapports |
+| [docs/GUIDE-COMPTABLE.md](docs/GUIDE-COMPTABLE.md) | Le comptable : exports SYSCOHADA, contrôles, plan de comptes |
 | [DEMO.md](DEMO.md) | Démonstration client en 10 minutes |
 | [CLAUDE.md](CLAUDE.md) | Conventions techniques, état du projet, reste à faire |
 

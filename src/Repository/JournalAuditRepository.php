@@ -6,7 +6,6 @@ use App\Entity\JournalAudit;
 use App\Entity\Utilisateur;
 use App\Enum\ActionAudit;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
-use Doctrine\ORM\Tools\Pagination\Paginator;
 use Doctrine\Persistence\ManagerRegistry;
 
 /**
@@ -33,7 +32,7 @@ class JournalAuditRepository extends ServiceEntityRepository
      * @param \DateTimeImmutable|null $au  fin de période (inclus — la journée entière)
      * @param int                     $page numéro de page, à partir de 1
      *
-     * @return array{entrees: list<JournalAudit>, total: int, pages: int, page: int}
+     * @return Pagination<JournalAudit>
      */
     public function rechercher(
         ?\DateTimeImmutable $du = null,
@@ -41,7 +40,7 @@ class JournalAuditRepository extends ServiceEntityRepository
         ?Utilisateur $utilisateur = null,
         ?ActionAudit $action = null,
         int $page = 1,
-    ): array {
+    ): Pagination {
         $qb = $this->createQueryBuilder('j')
             ->leftJoin('j.utilisateur', 'u')->addSelect('u')
             ->orderBy('j.createdAt', 'DESC')
@@ -61,18 +60,7 @@ class JournalAuditRepository extends ServiceEntityRepository
             $qb->andWhere('j.action = :action')->setParameter('action', $action->value);
         }
 
-        $page = max(1, $page);
-        $qb->setFirstResult(($page - 1) * self::PAR_PAGE)->setMaxResults(self::PAR_PAGE);
-
-        $paginateur = new Paginator($qb->getQuery(), fetchJoinCollection: false);
-        $total = \count($paginateur);
-
-        return [
-            'entrees' => iterator_to_array($paginateur),
-            'total' => $total,
-            'pages' => max(1, (int) ceil($total / self::PAR_PAGE)),
-            'page' => $page,
-        ];
+        return Pagination::depuis($qb, $page, self::PAR_PAGE);
     }
 
     /**

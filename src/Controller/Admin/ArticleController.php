@@ -13,9 +13,11 @@ use App\Repository\FamilleProduitRepository;
 use App\Security\Permission;
 use App\Service\AuditLogger;
 use App\Service\CalculateurCoutMatiere;
+use App\Service\ImageArticle;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bridge\Doctrine\Attribute\MapEntity;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\Form\FormError;
 use Symfony\Component\Form\FormInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -27,6 +29,10 @@ use Symfony\Component\Security\Http\Attribute\IsGranted;
 class ArticleController extends AbstractController
 {
     use ReponseFormulaire;
+
+    public function __construct(private readonly ImageArticle $images)
+    {
+    }
 
     #[Route('', name: 'admin_article_index', methods: ['GET'])]
     public function index(
@@ -45,13 +51,15 @@ class ArticleController extends AbstractController
             default => null,
         };
 
-        $resultats = $articles->rechercher($famille, $recherche, $actif);
+        $resultats = $articles->rechercher($famille, $recherche, $actif, $request->query->getInt('page', 1));
 
         // Les coûts ne sont même pas calculés pour qui n'a pas le droit de les voir :
-        // rien ne peut alors fuiter par le gabarit.
+        // rien ne peut alors fuiter par le gabarit. Depuis la pagination, seuls
+        // les articles de la page en cours sont calculés — le coût d'affichage ne
+        // dépend plus de la taille du catalogue.
         $couts = [];
         if ($this->isGranted(Permission::ARTICLE_VOIR_COUT)) {
-            foreach ($resultats as $article) {
+            foreach ($resultats->items as $article) {
                 $couts[$article->getId()] = $calculateur->calculer($article);
             }
         }
@@ -76,6 +84,13 @@ class ArticleController extends AbstractController
         $form->handleRequest($request);
 
         if ($form->isSubmitted() && $form->isValid()) {
+            // La photo d'abord : un message de succès posé avant elle s'afficherait
+            // au-dessus du formulaire réaffiché en cas d'échec, annonçant une
+            // création qui n'a pas eu lieu.
+            if (!$this->appliquerImage($form, $article)) {
+                return $this->rendreFormulaire('admin/article/form.html.twig', $form, ['titre' => 'Nouvel article']);
+            }
+
             // Sans habilitation sur le prix, l'article naît à 0 FCFA : on le force
             // inactif pour qu'il ne parte pas gratuitement en caisse. Créer puis
             // recréer un article ne permet donc pas de contourner la règle de prix.
@@ -116,6 +131,10 @@ class ArticleController extends AbstractController
         $form->handleRequest($request);
 
         if ($form->isSubmitted() && $form->isValid()) {
+            if (!$this->appliquerImage($form, $article)) {
+                return $this->rendreFormulaire('admin/article/form.html.twig', $form, ['titre' => 'Modifier l\'article', 'article' => $article]);
+            }
+
             $em->flush();
 
             if ($article->getPrixVenteTtc() !== $ancienPrix) {
@@ -146,8 +165,14 @@ class ArticleController extends AbstractController
     public function delete(Request $request, Article $article, EntityManagerInterface $em): Response
     {
         if ($this->isCsrfTokenValid('supprimer_article_'.$article->getId(), (string) $request->request->get('_token'))) {
+            // Le fichier est relevé avant la suppression et effacé après : sinon
+            // il resterait sur le disque sans plus rien pour le désigner.
+            $image = $article->getImage();
+
             $em->remove($article);
             $em->flush();
+            $this->images->supprimer($image);
+
             $this->addFlash('success', 'Article supprimé.');
         }
 
@@ -190,6 +215,44 @@ class ArticleController extends AbstractController
         }
 
         return $this->rendreFiche($request, $article, $this->creerFicheForm($article));
+    }
+
+    /**
+     * Applique la photo soumise : dépôt du nouveau fichier, retrait de l'ancien.
+     *
+     * Renvoie `false` si l'image n'a pas pu être traitée — l'appelant réaffiche
+     * alors le formulaire avec le message, en 422. Une photo illisible ne doit
+     * pas faire échouer l'enregistrement du reste de l'article en silence, mais
+     * elle ne doit pas non plus passer inaperçue.
+     */
+    private function appliquerImage(FormInterface $form, Article $article): bool
+    {
+        $fichier = $form->get('imageFichier')->getData();
+        $retirer = (bool) $form->get('supprimerImage')->getData();
+
+        if (null === $fichier && !$retirer) {
+            return true;
+        }
+
+        $ancienne = $article->getImage();
+
+        try {
+            // Une nouvelle photo l'emporte sur la case « retirer » : c'est le
+            // geste le plus récent, et le plus explicite.
+            $article->setImage(null !== $fichier ? $this->images->enregistrer($fichier) : null);
+        } catch (\RuntimeException $e) {
+            $form->get('imageFichier')->addError(new FormError($e->getMessage()));
+
+            return false;
+        }
+
+        // L'ancienne n'est supprimée qu'une fois la nouvelle écrite : en cas
+        // d'échec, l'article garde la photo qu'il avait.
+        if ($ancienne !== $article->getImage()) {
+            $this->images->supprimer($ancienne);
+        }
+
+        return true;
     }
 
     private function creerFicheForm(Article $article): FormInterface

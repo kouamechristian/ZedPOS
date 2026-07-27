@@ -33,8 +33,25 @@ class FamilleProduit
     #[ORM\Column(options: ['default' => true])]
     private bool $actif = true;
 
-    /** @var Collection<int, Article> */
-    #[ORM\OneToMany(mappedBy: 'familleProduit', targetEntity: Article::class)]
+    /**
+     * Compte de produits SYSCOHADA sur lequel le chiffre d'affaires de la famille
+     * est crédité dans les exports comptables (ex. « 7021 »).
+     *
+     * Null = pas de consigne : l'export retombe alors sur la nature de l'article
+     * (fabriqué sur place ou revendu en l'état). Renseigner ce champ n'a de sens
+     * que si le cabinet comptable tient un plan différent de celui par défaut.
+     */
+    #[ORM\Column(length: 10, nullable: true)]
+    private ?string $compteVente = null;
+
+    /**
+     * EXTRA_LAZY : la liste des familles n'affiche que le *nombre* d'articles.
+     * Sans cela, `famille.articles|length` chargeait tous les articles de chaque
+     * famille pour les compter ; Doctrine se contente désormais d'un COUNT.
+     *
+     * @var Collection<int, Article>
+     */
+    #[ORM\OneToMany(mappedBy: 'familleProduit', targetEntity: Article::class, fetch: 'EXTRA_LAZY')]
     private Collection $articles;
 
     public function __construct(string $nom)
@@ -93,6 +110,20 @@ class FamilleProduit
     public function setActif(bool $actif): self
     {
         $this->actif = $actif;
+
+        return $this;
+    }
+
+    public function getCompteVente(): ?string
+    {
+        return $this->compteVente;
+    }
+
+    /** Une chaîne vide est ramenée à null : « pas de consigne » a une seule écriture. */
+    public function setCompteVente(?string $compteVente): self
+    {
+        $compteVente = null !== $compteVente ? trim($compteVente) : null;
+        $this->compteVente = '' !== $compteVente ? $compteVente : null;
 
         return $this;
     }

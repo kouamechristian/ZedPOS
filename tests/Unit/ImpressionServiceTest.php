@@ -45,6 +45,33 @@ class ImpressionServiceTest extends TestCase
         $this->assertStringContainsString("\x1Bp\x00", $sortie, "L'ouverture du tiroir (ESC p) doit être présente.");
     }
 
+    /**
+     * Le code-barres est confié au firmware : on lui envoie la chaîne, pas une
+     * image. Une trame calculée ici serait rééchantillonnée par la tête
+     * d'impression et des barres d'un point finiraient par se confondre.
+     */
+    public function testLeNumeroEstImprimeEnCodeBarresNatif(): void
+    {
+        $sortie = (new ImpressionService())->commandeEscPos($this->ticket());
+
+        $donnees = '{BV260725-00001';
+
+        // GS k 73 n <données> : Code 128, longueur préfixée, jeu B sélectionné
+        // dans les données elles-mêmes par « {B ».
+        $this->assertStringContainsString(
+            "\x1Dk\x49".\chr(\strlen($donnees)).$donnees,
+            $sortie,
+            'Le numéro doit partir en Code 128 jeu B.',
+        );
+
+        $this->assertStringContainsString("\x1Dh\x3C", $sortie, 'La hauteur du code (GS h) doit être fixée.');
+        $this->assertStringContainsString("\x1Dw\x02", $sortie, 'La largeur de module (GS w) doit être fixée.');
+        $this->assertStringContainsString("\x1DH\x02", $sortie, 'Le numéro doit être imprimé en clair sous le code.');
+
+        // L'emplacement réservé au QR a disparu avec le code-barres qui le remplace.
+        $this->assertStringNotContainsString('QR', $sortie);
+    }
+
     public function testTexteTranslittereEnAscii(): void
     {
         $sortie = (new ImpressionService())->commandeEscPos($this->ticket());

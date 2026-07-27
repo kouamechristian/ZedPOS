@@ -41,6 +41,21 @@ class RapportQuotidienTexte
             }
         }
 
+        if ([] !== $synthese->parCaissiere) {
+            $lignes[] = '';
+            $lignes[] = 'Par caissière :';
+            foreach ($synthese->parCaissiere as $caissiere) {
+                $lignes[] = \sprintf(
+                    '  - %s : %s FCFA (%d ticket%s, %s %%)',
+                    $caissiere['nom'],
+                    $this->fcfa($caissiere['ca']),
+                    $caissiere['tickets'],
+                    $caissiere['tickets'] > 1 ? 's' : '',
+                    number_format($caissiere['partBp'] / 100, 0, ',', ' '),
+                );
+            }
+        }
+
         if ([] !== $synthese->topProduits) {
             $lignes[] = '';
             $lignes[] = 'Top 5 :';

@@ -16,6 +16,9 @@
 
 ###> symfony/asset-mapper ###
 /public/assets/
+# Images des touches produits : contenu d'exploitation, pas du code. Elles
+# accompagnent la base de données, pas le dépôt.
+/public/uploads/
 /assets/vendor/
 ###< symfony/asset-mapper ###
 

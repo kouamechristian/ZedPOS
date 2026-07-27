@@ -1,0 +1,154 @@
+{% extends 'admin/base.html.twig' %}
+{% import 'admin/_macros.html.twig' as fmt %}
+
+{% block page_title %}Inventaire n° {{ inventaire.id }}{% endblock %}
+
+{% block page_actions %}
+    {# `data-turbo="false"` : la feuille imprimable s'ouvre dans un nouvel onglet,
+       Turbo n'a pas à intercepter ce clic. #}
+    <a href="{{ path('admin_inventaire_feuille', {id: inventaire.id}) }}" target="_blank" data-turbo="false"
+       class="rounded-lg border border-stone-300 px-3 py-2 text-sm font-medium hover:bg-stone-50">
+        Imprimer la feuille
+    </a>
+{% endblock %}
+
+{% block admin_content %}
+
+{% if erreur is defined %}
+    <div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{{ erreur }}</div>
+{% endif %}
+
+<div class="mb-5 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl bg-white p-4 shadow-sm text-sm">
+    <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-medium
+                 {{ inventaire.estEnCours ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800' }}">
+        {{ inventaire.statut.libelle }}
+    </span>
+    <span class="text-stone-600">Ouvert le {{ inventaire.createdAt|date('d/m/Y à H:i') }} par {{ inventaire.auteur.nom }}</span>
+    {% if inventaire.valideAt %}
+        <span class="text-stone-600">
+            Validé le {{ inventaire.valideAt|date('d/m/Y à H:i') }}
+            {{ inventaire.validePar ? 'par ' ~ inventaire.validePar.nom }}
+        </span>
+    {% endif %}
+    <span class="ml-auto text-stone-500">
+        {{ inventaire.lignesComptees|length }} / {{ inventaire.lignes|length }} ligne(s) comptée(s)
+    </span>
+</div>
+
+{% if inventaire.commentaire %}
+    <div class="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        {{ inventaire.commentaire }}
+    </div>
+{% endif %}
+
+<form method="post" action="{{ path(inventaire.estEnCours ? 'admin_inventaire_saisir' : 'admin_inventaire_show', {id: inventaire.id}) }}">
+    <input type="hidden" name="_token" value="{{ csrf_token('inventaire_' ~ inventaire.id) }}">
+
+    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <table class="w-full text-sm">
+            <thead class="text-left text-stone-500 bg-stone-50">
+                <tr>
+                    <th class="px-5 py-3 font-medium">Produit / matière</th>
+                    <th class="px-5 py-3 font-medium">Unité</th>
+                    <th class="px-5 py-3 font-medium text-right">Théorique</th>
+                    <th class="px-5 py-3 font-medium text-right">Compté</th>
+                    <th class="px-5 py-3 font-medium text-right">Écart</th>
+                    <th class="px-5 py-3 font-medium text-right">Valorisé</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ligne in inventaire.lignes %}
+                    <tr class="border-t border-stone-100">
+                        <td class="px-5 py-2.5 font-medium text-stone-800">
+                            {{ ligne.libelle }}
+                            {% if ligne.article %}
+                                <span class="ml-1 rounded bg-stone-100 px-1.5 py-0.5 text-[11px] text-stone-500">article</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-5 py-2.5 text-stone-500">{{ ligne.unite }}</td>
+                        <td class="px-5 py-2.5 text-right tabular-nums text-stone-600">{{ fmt.unites(ligne.quantiteTheorique) }}</td>
+                        <td class="px-5 py-2.5 text-right">
+                            {% if inventaire.estEnCours %}
+                                {# Case vide = « pas comptée », et non zéro : c'est
+                                   toute la différence entre une ligne qu'on n'a pas
+                                   eu le temps de relever et un produit épuisé. #}
+                                <input type="text" inputmode="decimal" autocomplete="off"
+                                       name="comptee[{{ ligne.id }}]"
+                                       value="{{ ligne.estComptee ? fmt.unites(ligne.quantiteComptee)|trim : '' }}"
+                                       class="w-28 rounded-lg border border-stone-300 px-2 py-1.5 text-right tabular-nums
+                                              focus:outline-none focus:ring-2 focus:ring-stone-400">
+                            {% else %}
+                                <span class="tabular-nums">{{ ligne.estComptee ? fmt.unites(ligne.quantiteComptee) : '—' }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-5 py-2.5 text-right tabular-nums font-semibold">
+                            {% if not ligne.estComptee %}
+                                <span class="text-stone-300">—</span>
+                            {% elseif ligne.ecart == 0 %}
+                                <span class="text-green-600">0</span>
+                            {% else %}
+                                <span class="{{ ligne.ecart > 0 ? 'text-amber-600' : 'text-red-600' }}">
+                                    {{ ligne.ecart > 0 ? '+' }}{{ fmt.unites(ligne.ecart) }}
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td class="px-5 py-2.5 text-right tabular-nums text-stone-600">
+                            {{ ligne.estComptee and ligne.ecart != 0 ? fmt.fcfa(ligne.ecartValorise) : '—' }}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+            {% if not inventaire.estEnCours %}
+                <tfoot>
+                    <tr class="border-t-2 border-stone-200 bg-stone-50 font-semibold">
+                        <td class="px-5 py-3" colspan="5">Écart total valorisé</td>
+                        <td class="px-5 py-3 text-right tabular-nums">
+                            {% set total = inventaire.ecartValorise %}
+                            <span class="{{ total == 0 ? 'text-green-600' : (total > 0 ? 'text-amber-600' : 'text-red-600') }}">
+                                {{ total > 0 ? '+' }}{{ fmt.fcfa(total) }}
+                            </span>
+                        </td>
+                    </tr>
+                </tfoot>
+            {% endif %}
+        </table>
+    </div>
+
+    {% if inventaire.estEnCours %}
+        <div class="mt-5 rounded-xl bg-white p-4 shadow-sm">
+            <label for="commentaire" class="block text-sm font-medium text-stone-700">
+                Commentaire
+                <span class="font-normal text-stone-500">— obligatoire dès qu'un écart est constaté</span>
+            </label>
+            <textarea id="commentaire" name="commentaire" rows="2"
+                      placeholder="Ce qui explique l'écart : casse non déclarée, erreur de réception, coupure de courant…"
+                      class="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2 text-sm
+                             focus:outline-none focus:ring-2 focus:ring-stone-400"></textarea>
+
+            <div class="mt-4 flex flex-wrap items-center gap-3">
+                <button class="rounded-lg border border-stone-300 px-4 py-2 text-sm font-medium hover:bg-stone-50">
+                    Enregistrer le comptage
+                </button>
+                {# Vert : c'est l'action qui engage, comme l'encaissement en caisse.
+                   Elle écrit dans le stock et ne se défait pas. #}
+                <button formaction="{{ path('admin_inventaire_valider', {id: inventaire.id}) }}"
+                        class="rounded-lg bg-green-800 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700">
+                    Valider l'inventaire
+                </button>
+                <span class="text-xs text-stone-500">
+                    La validation reporte les écarts au stock et ne peut pas être annulée.
+                </span>
+            </div>
+        </div>
+    {% endif %}
+</form>
+
+{% if inventaire.estEnCours %}
+    <form method="post" action="{{ path('admin_inventaire_abandonner', {id: inventaire.id}) }}" class="mt-4">
+        <input type="hidden" name="_token" value="{{ csrf_token('inventaire_' ~ inventaire.id) }}">
+        <button class="text-xs text-stone-400 underline hover:text-red-700">
+            Abandonner cette feuille (aucun stock ne sera modifié)
+        </button>
+    </form>
+{% endif %}
+{% endblock %}

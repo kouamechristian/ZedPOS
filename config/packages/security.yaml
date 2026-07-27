@@ -44,13 +44,21 @@ security:
     access_control:
         - { path: ^/login$, roles: PUBLIC_ACCESS }
         - { path: ^/caisse/login$, roles: PUBLIC_ACCESS }
+        # Amorçage du premier compte : publique par nécessité — sur une base
+        # vierge, il n'existe personne pour s'authentifier. Le contrôleur la
+        # referme (404) dès qu'un compte existe, sans quoi n'importe qui
+        # s'ouvrirait un accès dirigeante à tout moment.
+        - { path: ^/installation$, roles: PUBLIC_ACCESS }
         # L'API d'encaissement exige au minimum un caissier ; l'annulation exige
         # ROLE_GERANT (contrôlé au niveau du contrôleur).
         - { path: ^/api, roles: ROLE_CAISSIER }
         - { path: ^/caisse, roles: ROLE_CAISSIER }
         - { path: ^/admin, roles: ROLE_GERANT }
         - { path: ^/pilotage, roles: ROLE_DIRIGEANTE }
-        - { path: ^/comptabilite, roles: ROLE_COMPTABLE }
+        # ROLE_COMPTABLE reste autonome : il n'est dans la hiérarchie d'aucun
+        # autre rôle, il doit donc être nommé ici. ROLE_GERANT couvre du même
+        # coup la dirigeante, qui en hérite.
+        - { path: ^/comptabilite, roles: [ROLE_COMPTABLE, ROLE_GERANT] }
 
 when@test:
     security:

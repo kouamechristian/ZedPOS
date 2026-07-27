@@ -18,6 +18,11 @@ final readonly class SyntheseJournee
      * @param list<array{nom: string, quantite: int, montant: int}>                 $topProduits
      * @param list<array{jour: string, ca: int}>                                    $serie30Jours
      * @param list<string>                                                          $rupturesStock noms des matières sous seuil
+     * @param list<array{
+     *     id: int, nom: string, tickets: int, ca: int, panierMoyen: int, partBp: int,
+     *     remisesNombre: int, remisesMontant: int, annulationsNombre: int, annulationsMontant: int,
+     *     ecart: ?int, sessionOuverte: bool
+     * }> $parCaissiere
      */
     public function __construct(
         public \DateTimeImmutable $jour,
@@ -40,6 +45,12 @@ final readonly class SyntheseJournee
         public int $pertesNombre,
         public array $topProduits,
         public array $serie30Jours,
+        /**
+         * Une entrée par caissière ayant encaissé dans la journée, du plus gros
+         * chiffre au plus petit. Une caissière sans vente n'y figure pas : la
+         * liste répond à « qui a vendu quoi », pas « qui était de service ».
+         */
+        public array $parCaissiere = [],
     ) {
     }
 

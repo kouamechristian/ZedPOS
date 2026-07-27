@@ -275,6 +275,16 @@ class AppFixtures extends Fixture
      */
     private function creerUtilisateurs(ObjectManager $manager): array
     {
+        // Des comptes existent déjà : on les **réutilise** au lieu d'en fabriquer.
+        // C'est le cas quand la table `utilisateur` a été exclue de la purge
+        // (`app:demo:reset --garder-utilisateurs`) : recréer par-dessus
+        // « koffi.nguessan@zedpos.ci » échouerait sur l'unicité de l'e-mail, et
+        // surtout écraserait des comptes réels par des comptes de démonstration.
+        $existants = $manager->getRepository(Utilisateur::class)->findAll();
+        if ([] !== $existants) {
+            return $this->caissiersExistants($manager, $existants);
+        }
+
         $dirigeante = new Utilisateur('aya.kone@zedpos.ci', 'Aya Koné (Abidjan)');
         $dirigeante->setRoles([RoleUtilisateur::DIRIGEANTE->value]);
         $dirigeante->setMotDePasse($this->hasher->hashPassword($dirigeante, 'dirigeante123'));
@@ -284,6 +294,12 @@ class AppFixtures extends Fixture
         $gerant->setRoles([RoleUtilisateur::GERANT->value]);
         $gerant->setMotDePasse($this->hasher->hashPassword($gerant, 'gerant123'));
         $manager->persist($gerant);
+
+        // Cabinet extérieur : n'accède qu'à /comptabilite, en lecture seule.
+        $comptable = new Utilisateur('cabinet@zedpos.ci', 'Cabinet Adjoua & Associés');
+        $comptable->setRoles([RoleUtilisateur::COMPTABLE->value]);
+        $comptable->setMotDePasse($this->hasher->hashPassword($comptable, 'comptable123'));
+        $manager->persist($comptable);
 
         $caissiers = [];
         foreach ([['fatou.traore@zedpos.ci', 'Fatou Traoré', '1234'], ['yao.kouassi@zedpos.ci', 'Yao Kouassi', '5678']] as [$email, $nom, $pin]) {
@@ -296,6 +312,36 @@ class AppFixtures extends Fixture
 
         // Les identifiants ne sont disponibles qu'après le flush du load().
         return $caissiers;
+    }
+
+    /**
+     * Caissiers à qui attribuer l'historique quand les comptes sont conservés.
+     *
+     * S'il n'y en a aucun — une base où seule la dirigeante s'est inscrite — on en
+     * crée un : trente jours de ventes ont besoin de quelqu'un derrière la caisse,
+     * et une session sans utilisateur n'existe pas.
+     *
+     * @param list<Utilisateur> $existants
+     *
+     * @return list<Utilisateur>
+     */
+    private function caissiersExistants(ObjectManager $manager, array $existants): array
+    {
+        $caissiers = array_values(array_filter(
+            $existants,
+            static fn (Utilisateur $u): bool => \in_array(RoleUtilisateur::CAISSIER->value, $u->getRoles(), true),
+        ));
+
+        if ([] !== $caissiers) {
+            return $caissiers;
+        }
+
+        $caissier = new Utilisateur('caisse@zedpos.ci', 'Caisse (démonstration)');
+        $caissier->setRoles([RoleUtilisateur::CAISSIER->value]);
+        $caissier->setCodePin($this->hasher->hashPassword($caissier, '1234'));
+        $manager->persist($caissier);
+
+        return [$caissier];
     }
 
     /**

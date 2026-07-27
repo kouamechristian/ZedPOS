@@ -1,0 +1,85 @@
+{# Corps du ticket 80 mm — source de vérité unique du format.
+
+   Inclus par :
+     - ticket/ticket.html.twig  (page autonome, impression thermique) ;
+     - l'aperçu affiché sur l'écran de caisse après encaissement.
+   Ce qui est imprimé et ce qui est montré à la caissière ne peuvent donc pas
+   diverger. #}
+{% import 'admin/_macros.html.twig' as fmt %}
+
+<div class="ticket">
+    <div class="center bold big">{{ ticket.raisonSociale }}</div>
+    <div class="center">{{ ticket.adresse }}</div>
+    {% if ticket.telephone %}<div class="center">Tél : {{ ticket.telephone }}</div>{% endif %}
+    {% if ticket.email %}<div class="center">{{ ticket.email }}</div>{% endif %}
+    {% if ticket.ncc %}<div class="center">NCC : {{ ticket.ncc }}</div>{% endif %}
+    {% if ticket.rccm %}<div class="center">RCCM : {{ ticket.rccm }}</div>{% endif %}
+
+    <div class="sep"></div>
+    <div>Ticket : {{ ticket.numero }}</div>
+    <div>Date&nbsp;&nbsp; : {{ ticket.dateHeure|date('d/m/Y H:i') }}</div>
+    <div>Caisse : {{ ticket.caissier }}</div>
+    <div class="sep"></div>
+
+    {% for ligne in ticket.lignes %}
+        <div class="row">
+            <span class="g">{{ (ligne.quantiteMillimes / 1000)|number_format((ligne.quantiteMillimes % 1000) ? 3 : 0, ',', ' ') }} × {{ ligne.nom }}</span>
+            <span class="d">{{ fmt.fcfa(ligne.montant) }}</span>
+        </div>
+        {% if ligne.commentaire %}<div class="commentaire">{{ ligne.commentaire }}</div>{% endif %}
+    {% endfor %}
+
+    <div class="sep"></div>
+    {% if ticket.remise > 0 %}
+        <div class="row"><span class="g">Remise</span><span class="d">− {{ fmt.fcfa(ticket.remise) }}</span></div>
+    {% endif %}
+    <div class="row total"><span class="g">TOTAL</span><span class="d">{{ fmt.fcfa(ticket.totalTtc) }}</span></div>
+
+    <div class="sep"></div>
+    <div class="muted">Ventilation TVA</div>
+    {% for tva in ticket.ventilationTva %}
+        <div class="row">
+            <span class="g">TVA {{ (tva.tauxBp / 100)|number_format((tva.tauxBp % 100) ? 2 : 0, ',', ' ') }} % — base {{ fmt.fcfa(tva.base) }}</span>
+            <span class="d">{{ fmt.fcfa(tva.montant) }}</span>
+        </div>
+    {% endfor %}
+    <div class="row"><span class="g">Total HT</span><span class="d">{{ fmt.fcfa(ticket.totalHt) }}</span></div>
+    <div class="row"><span class="g">Total TVA</span><span class="d">{{ fmt.fcfa(ticket.totalTva) }}</span></div>
+
+    {# Règlements : le montant porté ici est ce que le client a **tendu**, pas le
+       total du ticket. C'est de l'écart entre les deux que vient le rendu — et
+       c'est aussi ce montant que le rapport Z retranche du rendu pour retrouver
+       les espèces réellement en tiroir. #}
+    <div class="sep"></div>
+    {% for reglement in ticket.reglements %}
+        <div class="row"><span class="g">{{ reglement.libelle }}</span><span class="d">{{ fmt.fcfa(reglement.montant) }}</span></div>
+    {% endfor %}
+    {% if ticket.rendu > 0 %}
+        {# La monnaie est le second chiffre que le client vérifie, après le total :
+           elle est mise en avant comme lui. #}
+        <div class="row rendu"><span class="g">Rendu</span><span class="d">{{ fmt.fcfa(ticket.rendu) }}</span></div>
+    {% endif %}
+
+    {# Code-barres du numéro de ticket (Code 128, jeu B), pour retrouver une vente
+       en la scannant plutôt qu'en la cherchant.
+
+       Un SVG et non des <div> : les barres sont vectorielles, donc nettes quelle
+       que soit la résolution. Des blocs en pixels seraient arrondis au sous-pixel
+       par le navigateur, et deux barres voisines finiraient par se toucher — un
+       code qui ne se scanne plus, sans que rien ne paraisse anormal à l'œil.
+
+       Le numéro est répété en clair sous le code : si le lecteur refuse, la
+       caissière le lit et le saisit. #}
+    {% if ticket.codeBarres %}
+        <svg class="code-barres" viewBox="0 0 {{ ticket.codeBarres.modules }} 100"
+             preserveAspectRatio="none" role="img"
+             aria-label="Code-barres du ticket {{ ticket.codeBarres.valeur }}">
+            {% for barre in ticket.codeBarres.barres %}
+                <rect x="{{ barre.x }}" y="0" width="{{ barre.largeur }}" height="100"/>
+            {% endfor %}
+        </svg>
+        <div class="code-barres-valeur">{{ ticket.codeBarres.valeur }}</div>
+    {% endif %}
+
+    {% if ticket.pied %}<div class="center">{{ ticket.pied }}</div>{% endif %}
+</div>

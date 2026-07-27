@@ -53,8 +53,8 @@ export default class extends Controller {
         const dots = this.dotsTarget.querySelectorAll('[data-dot]');
         dots.forEach((dot, index) => {
             const rempli = index < this.code.length;
-            dot.classList.toggle('bg-white', rempli);
-            dot.classList.toggle('border-white', rempli);
+            dot.classList.toggle('bg-amber-400', rempli);
+            dot.classList.toggle('border-amber-400', rempli);
         });
     }
 }

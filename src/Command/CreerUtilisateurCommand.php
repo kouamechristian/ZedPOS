@@ -2,11 +2,9 @@
 
 namespace App\Command;
 
-use App\Entity\Utilisateur;
 use App\Enum\RoleUtilisateur;
-use App\Repository\UtilisateurRepository;
-use App\Service\AuditLogger;
-use Doctrine\ORM\EntityManagerInterface;
+use App\Service\CreationUtilisateur;
+use App\Service\CreationUtilisateurException;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
@@ -14,8 +12,6 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
-use Symfony\Component\PasswordHasher\Hasher\PasswordHasherFactoryInterface;
-use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
 #[AsCommand(
     name: 'app:creer-utilisateur',
@@ -24,11 +20,7 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 class CreerUtilisateurCommand extends Command
 {
     public function __construct(
-        private readonly EntityManagerInterface $em,
-        private readonly UtilisateurRepository $utilisateurs,
-        private readonly UserPasswordHasherInterface $hasher,
-        private readonly PasswordHasherFactoryInterface $hasherFactory,
-        private readonly AuditLogger $audit,
+        private readonly CreationUtilisateur $creation,
     ) {
         parent::__construct();
     }
@@ -63,43 +55,25 @@ class CreerUtilisateurCommand extends Command
             return Command::INVALID;
         }
 
-        if (null !== $this->utilisateurs->findOneBy(['email' => $email])) {
-            $io->error(\sprintf('Un utilisateur existe déjà avec l\'e-mail "%s".', $email));
+        $secret = $role->utiliseCodePin()
+            ? $input->getOption('code-pin') ?? $io->askHidden('Code PIN à 4 chiffres')
+            : $input->getOption('mot-de-passe') ?? $io->askHidden('Mot de passe');
+
+        if (!is_string($secret)) {
+            $io->error($role->utiliseCodePin() ? 'Code PIN manquant.' : 'Mot de passe manquant.');
+
+            return Command::INVALID;
+        }
+
+        // Unicité de l'e-mail et du PIN, hachage et trace d'audit : tout est porté
+        // par le service, partagé avec /admin/utilisateurs/nouveau.
+        try {
+            $this->creation->creer($email, $nom, $role, $secret);
+        } catch (CreationUtilisateurException $e) {
+            $io->error($e->getMessage());
 
             return Command::FAILURE;
         }
-
-        $utilisateur = new Utilisateur($email, $nom);
-        $utilisateur->setRoles([$role->value]);
-
-        if ($role->utiliseCodePin()) {
-            $pin = $input->getOption('code-pin') ?? $io->askHidden('Code PIN à 4 chiffres');
-            if (!is_string($pin) || 1 !== preg_match('/^\d{4}$/', $pin)) {
-                $io->error('Le code PIN doit comporter exactement 4 chiffres.');
-
-                return Command::INVALID;
-            }
-            if ($this->pinDejaUtilise($pin)) {
-                $io->error('Ce code PIN est déjà utilisé par un autre caissier actif.');
-
-                return Command::FAILURE;
-            }
-            $utilisateur->setCodePin($this->hasher->hashPassword($utilisateur, $pin));
-        } else {
-            $motDePasse = $input->getOption('mot-de-passe') ?? $io->askHidden('Mot de passe');
-            if (!is_string($motDePasse) || \strlen($motDePasse) < 6) {
-                $io->error('Le mot de passe doit comporter au moins 6 caractères.');
-
-                return Command::INVALID;
-            }
-            $utilisateur->setMotDePasse($this->hasher->hashPassword($utilisateur, $motDePasse));
-        }
-
-        $this->em->persist($utilisateur);
-        $this->em->flush();
-
-        // Création en console : aucun auteur authentifié ni IP à rattacher.
-        $this->audit->utilisateurCree($utilisateur);
 
         $io->success(\sprintf('Utilisateur "%s" (%s) créé.', $email, $role->libelle()));
 
@@ -123,19 +97,5 @@ class CreerUtilisateurCommand extends Command
         $normalise = str_starts_with($normalise, 'ROLE_') ? $normalise : 'ROLE_'.$normalise;
 
         return RoleUtilisateur::tryFrom($normalise);
-    }
-
-    private function pinDejaUtilise(string $pin): bool
-    {
-        $hasher = $this->hasherFactory->getPasswordHasher(Utilisateur::class);
-
-        foreach ($this->utilisateurs->findActifsAvecCodePin() as $utilisateur) {
-            $hash = $utilisateur->getCodePin();
-            if (null !== $hash && $hasher->verify($hash, $pin)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 }

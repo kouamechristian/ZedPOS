@@ -48,6 +48,11 @@ class SecurityTest extends WebTestCase
 
     public function testPagesDeConnexionAccessibles(): void
     {
+        // Il faut un compte : sur une base vierge, toute l'application mène à
+        // l'écran d'installation — un écran de connexion sur lequel aucun
+        // identifiant ne marche n'aurait aucun sens. Voir InstallationTest.
+        $this->creerUtilisateur('dirigeante@zedpos.ci', 'ROLE_DIRIGEANTE', motDePasse: 'secret123');
+
         $this->client->request('GET', '/login');
         $this->assertResponseIsSuccessful();
 

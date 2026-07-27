@@ -5,7 +5,10 @@
  * cache que ce dont la caisse a besoin :
  *   - la page /caisse et le catalogue JSON  (réseau d'abord, cache en secours) ;
  *   - les assets versionnés /assets/…       (cache d'abord : leur URL contient un
- *                                            condensé, ils ne changent jamais).
+ *                                            condensé, ils ne changent jamais) ;
+ *   - les photos des touches /uploads/…     (cache d'abord : leur nom est tiré au
+ *                                            sort, une URL ne change donc jamais
+ *                                            d'image).
  *
  * Ce qu'il ne fait JAMAIS :
  *   - intercepter autre chose qu'un GET — un encaissement (POST /api/vente) doit
@@ -16,12 +19,14 @@
  * Écrit sans import : un Service Worker classique ne bénéficie pas de l'importmap.
  */
 
-const VERSION = 'zedpos-v1';
+const VERSION = 'zedpos-v2';
 const CACHE_COQUILLE = `${VERSION}-coquille`;
 const CACHE_ASSETS = `${VERSION}-assets`;
+const CACHE_IMAGES = `${VERSION}-images`;
 
 const PAGE_CAISSE = '/caisse';
 const CATALOGUE = '/caisse/catalogue.json';
+const IMAGES = '/uploads/';
 
 self.addEventListener('install', (evenement) => {
     // Le nouveau worker prend la main sans attendre la fermeture des onglets :
@@ -86,6 +91,19 @@ self.addEventListener('fetch', (evenement) => {
 
     if (url.pathname.startsWith('/assets/')) {
         evenement.respondWith(cacheDAbord(requete, CACHE_ASSETS));
+
+        return;
+    }
+
+    // Photos des touches produits. « Cache d'abord » comme les assets, et pour la
+    // même raison : leur nom de fichier est tiré au sort à chaque téléversement,
+    // donc remplacer une photo change son URL. Une adresse donnée désigne
+    // toujours la même image — elle ne périme jamais.
+    //
+    // Sans cette règle, la grille de caisse perdrait ses photos dès la coupure de
+    // réseau, alors que tout le reste continuerait de fonctionner.
+    if (url.pathname.startsWith(IMAGES)) {
+        evenement.respondWith(cacheDAbord(requete, CACHE_IMAGES));
 
         return;
     }

@@ -10,10 +10,12 @@ use Symfony\Component\Form\CallbackTransformer;
 use Symfony\Component\Form\Extension\Core\Type\CheckboxType;
 use Symfony\Component\Form\Extension\Core\Type\ChoiceType;
 use Symfony\Component\Form\Extension\Core\Type\ColorType;
+use Symfony\Component\Form\Extension\Core\Type\FileType;
 use Symfony\Component\Form\Extension\Core\Type\IntegerType;
 use Symfony\Component\Form\Extension\Core\Type\TextType;
 use Symfony\Component\Form\FormBuilderInterface;
 use Symfony\Component\OptionsResolver\OptionsResolver;
+use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * Formulaire d'article.
@@ -42,6 +44,31 @@ class ArticleType extends AbstractType
                 'choices' => ['Exonéré (0 %)' => 0, '18 %' => 1800],
             ])
             ->add('couleur', ColorType::class, ['label' => 'Couleur touche', 'required' => false])
+            // Champ **non mappé** : l'entité ne porte qu'un nom de fichier, le
+            // dépôt sur disque appartient à App\Service\ImageArticle.
+            ->add('imageFichier', FileType::class, [
+                'label' => 'Photo de la touche',
+                'mapped' => false,
+                'required' => false,
+                'help' => 'JPEG, PNG ou WebP. L\'image est réduite automatiquement.',
+                'constraints' => [
+                    new Assert\Image(
+                        maxSize: '5M',
+                        mimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+                        mimeTypesMessage: 'Choisissez une image JPEG, PNG ou WebP.',
+                        maxSizeMessage: 'L\'image ne doit pas dépasser {{ limit }} {{ suffix }}.',
+                    ),
+                ],
+                'attr' => ['accept' => 'image/jpeg,image/png,image/webp'],
+            ])
+            // Retirer une photo est une action à part : téléverser un fichier vide
+            // ne veut rien dire, et sans case dédiée on ne pourrait jamais revenir
+            // à la touche colorée.
+            ->add('supprimerImage', CheckboxType::class, [
+                'label' => 'Retirer la photo',
+                'mapped' => false,
+                'required' => false,
+            ])
             ->add('positionCaisse', IntegerType::class, ['label' => 'Position dans la caisse'])
             ->add('actif', CheckboxType::class, ['label' => 'Actif', 'required' => false]);
 

@@ -43,6 +43,18 @@ class Article
     #[ORM\Column(length: 7, nullable: true)]
     private ?string $couleur = null;
 
+    /**
+     * Nom du fichier image de la touche, dans `public/uploads/articles/`.
+     *
+     * Le **nom seul**, jamais un chemin ni une URL : déplacer le répertoire de
+     * stockage ne doit pas obliger à réécrire la table. Le chemin public se
+     * compose à l'affichage ({@see \App\Service\ImageArticle::chemin()}).
+     *
+     * `null` — le cas courant — laisse la touche à son aplat de couleur.
+     */
+    #[ORM\Column(length: 120, nullable: true)]
+    private ?string $image = null;
+
     /** Position sur la grille de caisse (ordre d'affichage). */
     #[ORM\Column(type: Types::SMALLINT, options: ['default' => 0])]
     private int $positionCaisse = 0;
@@ -157,6 +169,18 @@ class Article
     public function setCouleur(?string $couleur): self
     {
         $this->couleur = $couleur;
+
+        return $this;
+    }
+
+    public function getImage(): ?string
+    {
+        return $this->image;
+    }
+
+    public function setImage(?string $image): self
+    {
+        $this->image = $image;
 
         return $this;
     }

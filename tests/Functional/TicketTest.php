@@ -73,7 +73,43 @@ class TicketTest extends WebTestCase
         $this->assertSelectorTextContains('body', 'V260725-00001');     // numéro
         $this->assertSelectorTextContains('body', 'TVA 18');            // ventilation
         $this->assertSelectorTextContains('body', 'Rendu');             // rendu de monnaie
-        $this->assertSelectorTextContains('body', 'QR RNE/DGI');        // emplacement réservé
+    }
+
+    /**
+     * Le numéro de ticket est imprimé en code-barres, pour retrouver une vente en
+     * la scannant. Le SVG est vérifié pour ce qu'il est — des barres — et non par
+     * sa seule présence : un `<svg>` vide passerait inaperçu à l'écran comme au
+     * test, et ne se scannerait jamais.
+     */
+    public function testLeTicketPorteLeCodeBarresDuNumero(): void
+    {
+        $this->client->request('GET', '/caisse/ticket/'.$this->uuid);
+
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorExists('svg.code-barres');
+        $this->assertGreaterThan(20, $this->client->getCrawler()->filter('svg.code-barres rect')->count());
+
+        // Numéro répété en clair : si le lecteur refuse, la caissière le saisit.
+        $this->assertSelectorTextContains('.code-barres-valeur', 'V260725-00001');
+
+        // L'ancien emplacement réservé n'a plus lieu d'être.
+        $this->assertSelectorNotExists('.qr');
+    }
+
+    /**
+     * Le reçu affiché à la caissière juste après l'encaissement passe par ce
+     * fragment. C'est le même gabarit que la page imprimable — le code-barres
+     * qu'elle voit à l'écran est donc celui qu'elle tend au client.
+     */
+    public function testLApercuApresEncaissementPorteLeMemeCodeBarres(): void
+    {
+        $this->client->request('GET', '/caisse/ticket/'.$this->uuid.'/apercu');
+
+        $this->assertResponseIsSuccessful();
+
+        $fragment = $this->client->getCrawler();
+        $this->assertGreaterThan(20, $fragment->filter('svg.code-barres rect')->count());
+        $this->assertSame('V260725-00001', trim($fragment->filter('.code-barres-valeur')->text()));
     }
 
     public function testEndpointEscPosRenvoieUneCommandeBinaire(): void

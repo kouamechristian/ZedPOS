@@ -1,0 +1,91 @@
+{% extends 'admin/base.html.twig' %}
+{% import 'admin/_macros.html.twig' as fmt %}
+{% import '_pagination.html.twig' as pagination %}
+{% import 'admin/_recherche.html.twig' as recherche %}
+
+{% block page_title %}Inventaires{% endblock %}
+
+{% block page_actions %}
+    {# Une seule feuille ouverte à la fois : deux figeraient le même théorique et
+       la seconde validation écraserait les écarts de la première. Le bouton mène
+       donc à la feuille en cours plutôt que d'en ouvrir une seconde. #}
+    {% if en_cours %}
+        <a href="{{ path('admin_inventaire_show', {id: en_cours.id}) }}"
+           class="rounded-lg bg-amber-700 text-white px-3 py-2 text-sm font-semibold hover:bg-amber-600">
+            Reprendre le comptage
+        </a>
+    {% else %}
+        <form method="post" action="{{ path('admin_inventaire_new') }}">
+            <input type="hidden" name="_token" value="{{ csrf_token('inventaire_nouveau') }}">
+            <button class="rounded-lg bg-stone-800 text-white px-3 py-2 text-sm font-semibold hover:bg-stone-700">
+                + Nouvel inventaire
+            </button>
+        </form>
+    {% endif %}
+{% endblock %}
+
+{% block admin_content %}
+
+{{ recherche.barre('admin_inventaires', 'Auteur ou commentaire') }}
+
+<div class="bg-white rounded-xl shadow-sm overflow-hidden">
+    <table class="w-full text-sm">
+        <thead class="text-left text-stone-500 bg-stone-50">
+            <tr>
+                <th class="px-5 py-3 font-medium">N°</th>
+                <th class="px-5 py-3 font-medium">Ouvert le</th>
+                <th class="px-5 py-3 font-medium">Par</th>
+                <th class="px-5 py-3 font-medium">Validé le</th>
+                <th class="px-5 py-3 font-medium text-right">Écart valorisé</th>
+                <th class="px-5 py-3 font-medium">Statut</th>
+                <th class="px-5 py-3"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for inventaire in inventaires.items %}
+                <tr class="border-t border-stone-100 hover:bg-stone-50">
+                    <td class="px-5 py-3 font-medium text-stone-800">{{ inventaire.id }}</td>
+                    <td class="px-5 py-3 text-stone-600">{{ inventaire.createdAt|date('d/m/Y H:i') }}</td>
+                    <td class="px-5 py-3 text-stone-600">{{ inventaire.auteur.nom }}</td>
+                    <td class="px-5 py-3 text-stone-600">
+                        {{ inventaire.valideAt ? inventaire.valideAt|date('d/m/Y H:i') : '—' }}
+                    </td>
+                    <td class="px-5 py-3 text-right tabular-nums font-semibold">
+                        {% if inventaire.statut.value != 'VALIDE' %}
+                            <span class="text-stone-400">—</span>
+                        {% else %}
+                            {% set ecart = inventaire.ecartValorise %}
+                            {# Un manquant est une perte sèche : rouge. Un excédent
+                               signale plutôt une erreur de saisie antérieure. #}
+                            <span class="{{ ecart == 0 ? 'text-green-600' : (ecart > 0 ? 'text-amber-600' : 'text-red-600') }}">
+                                {{ ecart > 0 ? '+' }}{{ fmt.fcfa(ecart) }}
+                            </span>
+                        {% endif %}
+                    </td>
+                    <td class="px-5 py-3">
+                        <span class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium
+                                     {{ inventaire.estEnCours ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800' }}">
+                            {{ inventaire.statut.libelle }}
+                        </span>
+                    </td>
+                    <td class="px-5 py-3 text-right">
+                        <a href="{{ path('admin_inventaire_show', {id: inventaire.id}) }}"
+                           class="rounded-lg border border-stone-300 px-3 py-1.5 text-xs font-medium hover:bg-stone-100">
+                            {{ inventaire.estEnCours ? 'Compter' : 'Consulter' }}
+                        </a>
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="7" class="px-5 py-6 text-center text-stone-400">Aucun inventaire.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{{ pagination.barre(inventaires, 'admin_inventaires') }}
+
+<p class="mt-3 text-xs text-stone-400">
+    Valider une feuille reporte chaque écart en mouvement de stock et le trace au
+    journal d'audit. C'est le seul chemin par lequel un stock se corrige.
+</p>
+{% endblock %}

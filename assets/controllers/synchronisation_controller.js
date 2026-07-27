@@ -44,42 +44,41 @@ export default class extends Controller {
         this.detailTarget.textContent = detail;
     }
 
+    /**
+     * Pastille discrète : l'état de synchronisation doit être lisible d'un coup
+     * d'œil sans jamais disputer l'attention au ticket ni au bouton Encaisser.
+     * Seuls les états qui demandent une action prennent de la couleur.
+     */
     decrire(etat) {
         if (etat.bloquees > 0) {
             return {
-                classes: 'bg-red-600 text-white',
+                classes: 'bg-red-50 text-red-700 ring-1 ring-red-200',
                 libelle: `${etat.bloquees} vente${etat.bloquees > 1 ? 's' : ''} à vérifier`,
-                detail: 'Refusée(s) par le serveur — prévenez le gérant, rien n\'est perdu.',
+                detail: '',
             };
         }
 
         if (etat.synchronisation) {
-            return {
-                classes: 'bg-blue-600 text-white',
-                libelle: 'Synchronisation…',
-                detail: etat.enAttente > 0 ? `${etat.enAttente} restante(s)` : '',
-            };
+            return { classes: 'bg-stone-100 text-stone-500', libelle: 'Synchronisation', detail: '' };
         }
 
         if (!etat.enLigne) {
             return {
-                classes: 'bg-amber-500 text-amber-950',
-                libelle: etat.enAttente > 0
-                    ? `Hors ligne — ${etat.enAttente} vente${etat.enAttente > 1 ? 's' : ''} en attente`
-                    : 'Hors ligne',
-                detail: 'Les encaissements continuent, ils partiront au retour du réseau.',
+                classes: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
+                libelle: 'Hors ligne',
+                detail: etat.enAttente > 0 ? `· ${etat.enAttente} en attente` : '',
             };
         }
 
         if (etat.enAttente > 0) {
             return {
-                classes: 'bg-amber-500 text-amber-950',
-                libelle: `${etat.enAttente} vente${etat.enAttente > 1 ? 's' : ''} en attente`,
-                detail: 'Transmission en cours…',
+                classes: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
+                libelle: `${etat.enAttente} en attente`,
+                detail: '',
             };
         }
 
-        return { classes: 'bg-green-600 text-white', libelle: 'Synchronisé', detail: '' };
+        return { classes: 'bg-stone-100 text-stone-500', libelle: 'Synchronisé', detail: '' };
     }
 
     async installerServiceWorker() {

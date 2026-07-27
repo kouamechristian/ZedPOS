@@ -11,23 +11,23 @@
 
 {%- block form_label -%}
     {%- if label is not same as(false) -%}
-        {%- set label_attr = label_attr|merge({class: (label_attr.class|default('') ~ ' block text-sm font-semibold text-slate-600 mb-1.5')|trim}) -%}
+        {%- set label_attr = label_attr|merge({class: (label_attr.class|default('') ~ ' block text-sm font-semibold text-stone-600 mb-1.5')|trim}) -%}
     {%- endif -%}
     {{- parent() -}}
 {%- endblock -%}
 
 {%- block form_widget_simple -%}
-    {%- set attr = attr|merge({class: (attr.class|default('') ~ ' w-full rounded-xl border-2 border-slate-300 px-4 py-3 text-xl font-semibold tabular-nums focus:outline-none focus:ring-2 focus:ring-slate-500')|trim}) -%}
+    {%- set attr = attr|merge({class: (attr.class|default('') ~ ' w-full rounded-xl border-2 border-stone-300 px-4 py-3 text-xl font-semibold tabular-nums focus:outline-none focus:ring-2 focus:ring-stone-500')|trim}) -%}
     {{- parent() -}}
 {%- endblock -%}
 
 {%- block textarea_widget -%}
-    {%- set attr = attr|merge({class: (attr.class|default('') ~ ' w-full rounded-xl border-2 border-slate-300 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-slate-500')|trim}) -%}
+    {%- set attr = attr|merge({class: (attr.class|default('') ~ ' w-full rounded-xl border-2 border-stone-300 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-stone-500')|trim}) -%}
     {{- parent() -}}
 {%- endblock -%}
 
 {%- block choice_widget_collapsed -%}
-    {%- set attr = attr|merge({class: (attr.class|default('') ~ ' w-full rounded-xl border-2 border-slate-300 px-4 py-3 text-base bg-white focus:outline-none focus:ring-2 focus:ring-slate-500')|trim}) -%}
+    {%- set attr = attr|merge({class: (attr.class|default('') ~ ' w-full rounded-xl border-2 border-stone-300 px-4 py-3 text-base bg-white focus:outline-none focus:ring-2 focus:ring-stone-500')|trim}) -%}
     {{- parent() -}}
 {%- endblock -%}
 

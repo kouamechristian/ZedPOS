@@ -1,0 +1,75 @@
+{# Format visuel du ticket 80 mm — source de vérité unique, pendant de _contenu.html.twig.
+
+   Inclus par :
+     - ticket/ticket.html.twig    (page autonome, impression thermique) ;
+     - caisse/index.html.twig     (reçu affiché après encaissement).
+
+   Toutes les règles sont portées par `.ticket`, la racine du fragment. Elles
+   s'appliquent donc à l'identique que le fragment soit seul dans une page ou
+   injecté dans l'écran de caisse — sans wrapper ni classe supplémentaire, et
+   sans rien déborder sur le reste de la page qui l'accueille.
+
+   Ce fichier a été extrait parce que les deux copies avaient déjà divergé : la
+   caisse avait oublié `.ticket` lui-même, et le reçu s'étirait donc à la largeur
+   du panneau au lieu des 80 mm du papier.
+
+   Aucune couleur ici : le ticket sort sur une imprimante thermique. L'habillage
+   « papier » (ombre, bords dentelés) est réservé à l'écran, côté caisse. #}
+<style>
+    .ticket {
+        width: 80mm;
+        padding: 4mm;
+        background: #fff;
+        color: #000;
+        font-family: 'Courier New', ui-monospace, monospace;
+        font-size: 12px;
+        line-height: 1.35;
+    }
+
+    .ticket .center { text-align: center; }
+    .ticket .bold   { font-weight: bold; }
+    .ticket .big    { font-size: 16px; }
+    .ticket .muted  { color: #333; }
+
+    /* Libellé à gauche, montant à droite : l'alignement des montants est ce qui
+       rend un ticket lisible d'un coup d'œil. */
+    .ticket .row      { display: flex; justify-content: space-between; gap: 8px; }
+    .ticket .row .g   { flex: 1; overflow: hidden; }
+    .ticket .row .d   { white-space: nowrap; text-align: right; }
+
+    .ticket .sep         { border-top: 1px dashed #000; margin: 5px 0; }
+    .ticket .commentaire { font-size: 10px; padding-left: 10px; font-style: italic; }
+    .ticket .total .g,
+    .ticket .total .d    { font-size: 16px; font-weight: bold; }
+
+    /* Le rendu de monnaie est le second chiffre que le client vérifie, après le
+       total — un peu en dessous de lui, nettement au-dessus du reste. */
+    .ticket .rendu .g,
+    .ticket .rendu .d    { font-size: 14px; font-weight: bold; }
+
+    /* Code-barres du numéro de ticket. La largeur est fixée en millimètres et le
+       SVG est étiré dessus (preserveAspectRatio="none") : les proportions entre
+       barres, elles, viennent du viewBox et restent donc exactes.
+
+       68 mm dans 80 mm de papier : les zones de silence sont déjà comptées dans
+       le viewBox, ce qui reste de part et d'autre est du confort de lecture.
+
+       `fill` plutôt qu'un fond : une barre SVG est du contenu, pas une couleur
+       d'arrière-plan — elle s'imprime donc sans dépendre du réglage
+       « imprimer les arrière-plans » du navigateur, qui est désactivé par défaut
+       et effacerait purement et simplement le code. */
+    .ticket .code-barres {
+        display: block;
+        width: 68mm;
+        height: 13mm;
+        margin: 8px auto 2px;
+        fill: #000;
+    }
+
+    .ticket .code-barres-valeur {
+        text-align: center;
+        font-size: 11px;
+        letter-spacing: 1px;
+        margin-bottom: 6px;
+    }
+</style>

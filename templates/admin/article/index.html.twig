@@ -1,11 +1,12 @@
 {% extends 'admin/base.html.twig' %}
 {% import 'admin/_macros.html.twig' as fmt %}
+{% import '_pagination.html.twig' as pagination %}
 
 {% block page_title %}Articles{% endblock %}
 
 {% block page_actions %}
-    <a href="{{ path('admin_famille_index') }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50">Familles</a>
-    <a href="{{ path('admin_article_new') }}" class="rounded-lg bg-slate-800 text-white px-3 py-2 text-sm font-semibold hover:bg-slate-700">+ Nouvel article</a>
+    <a href="{{ path('admin_famille_index') }}" class="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-medium hover:bg-stone-50">Familles</a>
+    <a href="{{ path('admin_article_new') }}" class="rounded-lg bg-stone-800 text-white px-3 py-2 text-sm font-semibold hover:bg-stone-700">+ Nouvel article</a>
 {% endblock %}
 
 {% block admin_content %}
@@ -15,13 +16,13 @@
 
 <form method="get" class="bg-white rounded-xl shadow-sm p-4 mb-5 flex flex-wrap items-end gap-3">
     <div>
-        <label class="block text-xs font-medium text-slate-500 mb-1">Recherche</label>
+        <label class="block text-xs font-medium text-stone-500 mb-1">Recherche</label>
         <input type="search" name="q" value="{{ recherche }}" placeholder="Nom de l'article"
-               class="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400">
+               class="rounded-lg border border-stone-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-400">
     </div>
     <div>
-        <label class="block text-xs font-medium text-slate-500 mb-1">Famille</label>
-        <select name="famille" class="rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-400">
+        <label class="block text-xs font-medium text-stone-500 mb-1">Famille</label>
+        <select name="famille" class="rounded-lg border border-stone-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-stone-400">
             <option value="">Toutes</option>
             {% for famille in familles %}
                 <option value="{{ famille.id }}" {{ famille_active and famille_active.id == famille.id ? 'selected' }}>{{ famille.nom }}</option>
@@ -29,22 +30,22 @@
         </select>
     </div>
     <div>
-        <label class="block text-xs font-medium text-slate-500 mb-1">Statut</label>
-        <select name="statut" class="rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-400">
+        <label class="block text-xs font-medium text-stone-500 mb-1">Statut</label>
+        <select name="statut" class="rounded-lg border border-stone-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-stone-400">
             <option value="">Tous</option>
             <option value="actifs" {{ statut == 'actifs' ? 'selected' }}>Actifs</option>
             <option value="inactifs" {{ statut == 'inactifs' ? 'selected' }}>Inactifs</option>
         </select>
     </div>
-    <button class="rounded-lg bg-slate-700 text-white px-4 py-2 text-sm font-medium hover:bg-slate-600">Filtrer</button>
+    <button class="rounded-lg bg-stone-700 text-white px-4 py-2 text-sm font-medium hover:bg-stone-600">Filtrer</button>
     {% if recherche or famille_active or statut %}
-        <a href="{{ path('admin_article_index') }}" class="text-sm text-slate-500 hover:text-slate-800 underline">Réinitialiser</a>
+        <a href="{{ path('admin_article_index') }}" class="text-sm text-stone-500 hover:text-stone-800 underline">Réinitialiser</a>
     {% endif %}
 </form>
 
 <div class="bg-white rounded-xl shadow-sm overflow-hidden">
     <table class="w-full text-sm">
-        <thead class="text-left text-slate-500 bg-slate-50">
+        <thead class="text-left text-stone-500 bg-stone-50">
             <tr>
                 <th class="px-5 py-3 font-medium">Article</th>
                 <th class="px-5 py-3 font-medium">Famille</th>
@@ -58,34 +59,42 @@
             </tr>
         </thead>
         <tbody>
-            {% for article in articles %}
-                <tr class="border-t border-slate-100 hover:bg-slate-50">
+            {% for article in articles.items %}
+                <tr class="border-t border-stone-100 hover:bg-stone-50">
                     <td class="px-5 py-3">
                         <div class="flex items-center gap-2">
-                            <span class="inline-block h-3 w-3 rounded-full" style="background: {{ article.couleur ?: '#cbd5e1' }}"></span>
+                            {# La photo remplace la pastille de couleur quand il y
+                               en a une : c'est elle que la caissière verra. #}
+                            {% if article.image %}
+                                <img src="{{ image_article(article.image) }}" alt="" loading="lazy"
+                                     onerror="this.remove()"
+                                     class="h-8 w-8 shrink-0 rounded object-cover">
+                            {% else %}
+                                <span class="inline-block h-3 w-3 rounded-full" style="background: {{ article.couleur ?: '#cbd5e1' }}"></span>
+                            {% endif %}
                             {# _top : ouvrir la fiche remplace la page entière, pas le frame. #}
                             <a href="{{ path('admin_article_show', {id: article.id}) }}" data-turbo-frame="_top"
-                               class="font-medium text-slate-800 hover:underline">{{ article.nom }}</a>
+                               class="font-medium text-stone-800 hover:underline">{{ article.nom }}</a>
                         </div>
                     </td>
-                    <td class="px-5 py-3 text-slate-600">{{ article.familleProduit ? article.familleProduit.nom : '—' }}</td>
+                    <td class="px-5 py-3 text-stone-600">{{ article.familleProduit ? article.familleProduit.nom : '—' }}</td>
                     <td class="px-5 py-3 text-right font-medium">{{ fmt.fcfa(article.prixVenteTtc) }}</td>
-                    <td class="px-5 py-3 text-slate-600">{{ fmt.pourcent(article.tauxTva) }}</td>
+                    <td class="px-5 py-3 text-stone-600">{{ fmt.pourcent(article.tauxTva) }}</td>
                     {% if is_granted('ARTICLE_VOIR_COUT') %}
                         {% set cout = couts[article.id] %}
                         <td class="px-5 py-3 text-right">
                             {% if cout and cout.calculable %}
-                                <div class="text-slate-500">Revient {{ fmt.fcfa(cout.coutRevient) }}</div>
+                                <div class="text-stone-500">Revient {{ fmt.fcfa(cout.coutRevient) }}</div>
                                 <div class="mt-0.5 flex items-center justify-end gap-2">
-                                    <span class="font-medium {{ cout.margeBrute < 0 ? 'text-red-600' : 'text-slate-800' }}">{{ fmt.fcfa(cout.margeBrute) }}</span>
-                                    <span class="text-xs text-slate-500">{{ cout.tauxMargePourcent|number_format(1, ',', ' ') }} %</span>
+                                    <span class="font-medium {{ cout.margeBrute < 0 ? 'text-red-600' : 'text-stone-800' }}">{{ fmt.fcfa(cout.margeBrute) }}</span>
+                                    <span class="text-xs text-stone-500">{{ cout.tauxMargePourcent|number_format(1, ',', ' ') }} %</span>
                                     {% if cout.sousSeuil %}
                                         <span class="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700"
                                               title="Marge sous le seuil de {{ cout.seuilPourcent|number_format(0, ',', ' ') }} %">Marge basse</span>
                                     {% endif %}
                                 </div>
                             {% else %}
-                                <span class="text-slate-400">—</span>
+                                <span class="text-stone-400">—</span>
                             {% endif %}
                         </td>
                     {% endif %}
@@ -96,22 +105,31 @@
                                hors du frame, il serait perdu sinon. #}
                             <form method="post" action="{{ path('admin_article_toggle', {id: article.id}) }}" data-turbo-frame="_top">
                                 <input type="hidden" name="_token" value="{{ csrf_token('basculer_article_' ~ article.id) }}">
-                                <button class="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-medium hover:bg-slate-100">
+                                <button class="rounded-md border border-stone-300 px-2.5 py-1 text-xs font-medium hover:bg-stone-100">
                                     {{ article.actif ? 'Désactiver' : 'Activer' }}
                                 </button>
                             </form>
+                            {# La fiche technique est la raison la plus fréquente
+                               d'ouvrir un article, et c'était jusqu'ici le seul
+                               écran du back-office sans bouton pour y entrer : on
+                               ne pouvait y accéder qu'en devinant que le nom, dans
+                               la première colonne, était cliquable. Le lien mène
+                               directement à l'onglet. #}
+                            <a href="{{ path('admin_article_show', {id: article.id, onglet: 'fiche'}) }}" data-turbo-frame="_top"
+                               class="rounded-md border border-stone-300 px-2.5 py-1 text-xs font-medium hover:bg-stone-100">Fiche technique</a>
                             <a href="{{ path('admin_article_edit', {id: article.id}) }}" data-turbo-frame="_top"
-                               class="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-medium hover:bg-slate-100">Modifier</a>
+                               class="rounded-md border border-stone-300 px-2.5 py-1 text-xs font-medium hover:bg-stone-100">Modifier</a>
                         </div>
                     </td>
                 </tr>
             {% else %}
-                <tr><td colspan="{{ is_granted('ARTICLE_VOIR_COUT') ? 7 : 6 }}" class="px-5 py-6 text-center text-slate-400">Aucun article ne correspond aux filtres.</td></tr>
+                <tr><td colspan="{{ is_granted('ARTICLE_VOIR_COUT') ? 7 : 6 }}" class="px-5 py-6 text-center text-stone-400">Aucun article ne correspond aux filtres.</td></tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
-<p class="mt-3 text-xs text-slate-400">{{ articles|length }} article(s)</p>
-
+{# La barre conserve les filtres en cours (famille, recherche, statut) : changer
+   de page ne doit pas les effacer. #}
+{{ pagination.barre(articles, 'admin_article_index') }}
 </turbo-frame>
 {% endblock %}

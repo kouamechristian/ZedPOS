@@ -1,0 +1,198 @@
+{% extends 'comptabilite/base.html.twig' %}
+{% import 'admin/_macros.html.twig' as fmt %}
+
+{% block page_title %}Exports comptables SYSCOHADA{% endblock %}
+
+{% block comptabilite_content %}
+
+{# --- Période -------------------------------------------------------------- #}
+<section class="bg-white rounded-xl shadow-sm p-5">
+    <form method="get" class="flex flex-wrap items-end gap-4">
+        <div>
+            <label for="du" class="block text-xs font-medium text-stone-500 mb-1">Du</label>
+            <input type="date" id="du" name="du" value="{{ du|date('Y-m-d') }}"
+                   class="rounded-lg border border-stone-300 px-3 py-2 text-sm focus:border-amber-500 focus:ring-amber-500">
+        </div>
+        <div>
+            <label for="au" class="block text-xs font-medium text-stone-500 mb-1">Au</label>
+            <input type="date" id="au" name="au" value="{{ au|date('Y-m-d') }}"
+                   class="rounded-lg border border-stone-300 px-3 py-2 text-sm focus:border-amber-500 focus:ring-amber-500">
+        </div>
+        <button class="rounded-lg bg-amber-700 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-800">
+            Afficher
+        </button>
+
+        <div class="flex flex-wrap items-center gap-2 sm:ml-auto" data-turbo-prefetch="true">
+            {% for raccourci in raccourcis %}
+                {% set actif = du|date('Y-m-d') == raccourci.du and au|date('Y-m-d') == raccourci.au %}
+                <a href="{{ path('app_comptabilite', {du: raccourci.du, au: raccourci.au}) }}"
+                   class="rounded-full px-3 py-1.5 text-xs font-semibold transition
+                          {{ actif ? 'bg-amber-700 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200' }}">
+                    {{ raccourci.label }}
+                </a>
+            {% endfor %}
+        </div>
+    </form>
+</section>
+
+{% if jeu.estVide %}
+    <div class="mt-5 rounded-xl border border-stone-200 bg-white px-5 py-10 text-center text-stone-500">
+        Aucune écriture sur cette période.
+    </div>
+{% else %}
+
+{# --- Contrôles ------------------------------------------------------------
+   Ce bloc est le cœur de l'écran : avant de transmettre un fichier, on vérifie
+   qu'il dit la même chose que la caisse. Il vire à l'ambre au moindre écart. #}
+<section class="mt-5 rounded-xl border p-5 {{ jeu.controlesSontBons
+        ? 'border-green-200 bg-green-50/60'
+        : 'border-amber-300 bg-amber-50' }}">
+    <div class="flex items-center gap-2">
+        <h2 class="titre text-lg font-bold {{ jeu.controlesSontBons ? 'text-green-900' : 'text-amber-900' }}">
+            {{ jeu.controlesSontBons ? 'Contrôles conformes' : 'Contrôles à vérifier' }}
+        </h2>
+        <span class="text-sm {{ jeu.controlesSontBons ? 'text-green-700' : 'text-amber-800' }}">
+            — {{ jeu.nombreEcritures }} écriture{{ jeu.nombreEcritures > 1 ? 's' }},
+            {{ jeu.nombreLignes }} ligne{{ jeu.nombreLignes > 1 ? 's' }}
+        </span>
+    </div>
+
+    <div class="mt-3 overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead class="text-left text-stone-500">
+                <tr>
+                    <th class="py-1.5 pr-4 font-medium">Rapprochement</th>
+                    <th class="py-1.5 px-4 font-medium text-right">Application</th>
+                    <th class="py-1.5 px-4 font-medium text-right">Écritures</th>
+                    <th class="py-1.5 pl-4 font-medium text-right">Écart</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for controle in jeu.controles %}
+                    <tr class="border-t border-stone-200/70">
+                        <td class="py-1.5 pr-4">
+                            <span class="{{ controle.estBon ? 'text-green-700' : 'text-amber-800 font-semibold' }}">
+                                {{ controle.estBon ? '✓' : '⚠' }}
+                            </span>
+                            {{ controle.libelle }}
+                            {% if not controle.estBon %}
+                                <div class="text-xs text-amber-800">{{ controle.explication }}</div>
+                            {% endif %}
+                        </td>
+                        <td class="py-1.5 px-4 text-right tabular-nums">{{ fmt.fcfa(controle.attendu) }}</td>
+                        <td class="py-1.5 px-4 text-right tabular-nums">{{ fmt.fcfa(controle.obtenu) }}</td>
+                        <td class="py-1.5 pl-4 text-right tabular-nums {{ controle.estBon ? 'text-stone-400' : 'text-amber-900 font-semibold' }}">
+                            {{ fmt.fcfa(controle.ecart) }}
+                        </td>
+                    </tr>
+                {% endfor %}
+                <tr class="border-t border-stone-200/70">
+                    <td class="py-1.5 pr-4">
+                        <span class="{{ jeu.estEquilibre ? 'text-green-700' : 'text-amber-800 font-semibold' }}">
+                            {{ jeu.estEquilibre ? '✓' : '⚠' }}
+                        </span>
+                        Équilibre débit / crédit
+                    </td>
+                    <td class="py-1.5 px-4 text-right tabular-nums">{{ fmt.fcfa(jeu.totalDebit) }}</td>
+                    <td class="py-1.5 px-4 text-right tabular-nums">{{ fmt.fcfa(jeu.totalCredit) }}</td>
+                    <td class="py-1.5 pl-4 text-right tabular-nums text-stone-400">
+                        {{ fmt.fcfa(jeu.totalDebit - jeu.totalCredit) }}
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+{# --- Téléchargements ------------------------------------------------------
+   `data-turbo="false"` est indispensable : Turbo intercepte les clics sur les
+   liens et attend une page HTML en retour. Sans lui, le fichier ne se
+   téléchargerait pas — la navigation échouerait silencieusement. #}
+<section class="mt-5 grid gap-4 sm:grid-cols-3">
+    {% for format in formats %}
+        <a href="{{ path('comptabilite_telecharger', {format: format.value, du: du|date('Y-m-d'), au: au|date('Y-m-d')}) }}"
+           data-turbo="false"
+           class="group rounded-xl border border-stone-200 bg-white p-5 shadow-sm transition hover:border-amber-400 hover:shadow">
+            <div class="flex items-center justify-between gap-2">
+                <span class="titre font-bold text-stone-900">{{ format.libelle }}</span>
+                <span class="rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-amber-800">
+                    .{{ format.extension }}
+                </span>
+            </div>
+            <p class="mt-2 text-xs leading-relaxed text-stone-500">{{ format.description }}</p>
+            <span class="mt-3 inline-block text-sm font-semibold text-amber-700 group-hover:text-amber-800">
+                Télécharger →
+            </span>
+        </a>
+    {% endfor %}
+</section>
+
+{# --- Journaux -------------------------------------------------------------- #}
+<section class="mt-5 grid gap-4 sm:grid-cols-3">
+    {% for ligne in jeu.parJournal %}
+        <div class="rounded-xl border border-stone-200 bg-white p-4">
+            <div class="text-xs font-semibold uppercase tracking-wide text-stone-400">
+                {{ ligne.journal.value }} — {{ ligne.journal.libelle }}
+            </div>
+            <div class="titre mt-1 text-2xl font-bold text-amber-800 tabular-nums">{{ fmt.fcfa(ligne.total) }}</div>
+            <div class="text-xs text-stone-500">{{ ligne.ecritures }} écriture{{ ligne.ecritures > 1 ? 's' }}</div>
+        </div>
+    {% endfor %}
+</section>
+
+{# --- Balance --------------------------------------------------------------- #}
+<section class="mt-5 overflow-hidden rounded-xl bg-white shadow-sm">
+    <h2 class="titre border-b border-stone-100 px-5 py-3 text-lg font-bold text-stone-900">
+        Balance générale
+    </h2>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead class="bg-stone-50 text-left text-stone-500">
+                <tr>
+                    <th class="px-5 py-2.5 font-medium">Compte</th>
+                    <th class="px-5 py-2.5 font-medium">Libellé</th>
+                    <th class="px-5 py-2.5 font-medium text-right">Débit</th>
+                    <th class="px-5 py-2.5 font-medium text-right">Crédit</th>
+                    <th class="px-5 py-2.5 font-medium text-right">Solde</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for compte in jeu.balance %}
+                    <tr class="border-t border-stone-100">
+                        <td class="px-5 py-2 font-mono text-xs text-stone-700">{{ compte.compte }}</td>
+                        <td class="px-5 py-2 text-stone-700">{{ compte.libelle }}</td>
+                        <td class="px-5 py-2 text-right tabular-nums text-stone-600">
+                            {{ compte.debit ? fmt.fcfa(compte.debit) : '—' }}
+                        </td>
+                        <td class="px-5 py-2 text-right tabular-nums text-stone-600">
+                            {{ compte.credit ? fmt.fcfa(compte.credit) : '—' }}
+                        </td>
+                        <td class="px-5 py-2 text-right tabular-nums font-medium {{ compte.solde < 0 ? 'text-stone-500' : 'text-stone-800' }}">
+                            {{ fmt.fcfa(compte.solde) }}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot class="border-t-2 border-stone-200 bg-stone-50 font-semibold">
+                <tr>
+                    <td class="px-5 py-2.5" colspan="2">Total</td>
+                    <td class="px-5 py-2.5 text-right tabular-nums">{{ fmt.fcfa(jeu.totalDebit) }}</td>
+                    <td class="px-5 py-2.5 text-right tabular-nums">{{ fmt.fcfa(jeu.totalCredit) }}</td>
+                    <td class="px-5 py-2.5"></td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</section>
+
+<p class="mt-4 text-xs leading-relaxed text-stone-500">
+    Plan de comptes <strong>SYSCOHADA révisé</strong>. Le journal des ventes centralise
+    les tickets par rapport Z : une écriture par session de caisse et par journée,
+    la pièce justificative étant le Z correspondant. Les ventes annulées sont exclues.
+    Le compte de produits d'une famille se règle dans le back-office
+    (<em>Familles → Compte de vente</em>) ; à défaut, les articles avec fiche technique
+    sont traités en produits finis et les autres en marchandises.
+</p>
+
+{% endif %}
+{% endblock %}

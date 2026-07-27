@@ -79,7 +79,107 @@ class SyntheseJourneeService
             pertesNombre: (int) ($pertes['nombre'] ?? 0),
             topProduits: $this->topProduits($jour),
             serie30Jours: $this->serie($jour),
+            parCaissiere: $this->parCaissiere($jour, $caJour),
         );
+    }
+
+    /**
+     * Ventes de la journée ventilées par caissière.
+     *
+     * Quatre requêtes plutôt qu'une seule à rallonge : ventes validées,
+     * annulations et sessions de caisse ne se comptent pas sur les mêmes lignes,
+     * et les joindre d'un bloc multiplierait les lignes entre elles — une
+     * caissière avec deux sessions verrait son chiffre doublé.
+     *
+     * @param int $caJour chiffre d'affaires total, pour calculer les parts
+     *
+     * @return list<array{
+     *     id: int, nom: string, tickets: int, ca: int, panierMoyen: int, partBp: int,
+     *     remisesNombre: int, remisesMontant: int, annulationsNombre: int, annulationsMontant: int,
+     *     ecart: ?int, sessionOuverte: bool
+     * }>
+     */
+    private function parCaissiere(\DateTimeImmutable $jour, int $caJour): array
+    {
+        $date = $jour->format('Y-m-d');
+        $caissieres = [];
+
+        foreach ($this->connexion->fetchAllAssociative(
+            "SELECT u.id, u.nom,
+                    COUNT(*) AS tickets,
+                    COALESCE(SUM(v.total_ttc), 0) AS ca,
+                    COALESCE(SUM(v.remise), 0) AS remises,
+                    COALESCE(SUM(CASE WHEN v.remise > 0 THEN 1 ELSE 0 END), 0) AS nb_remises
+             FROM vente v
+             JOIN session_caisse s ON s.id = v.session_caisse_id
+             JOIN utilisateur u ON u.id = s.utilisateur_id
+             WHERE DATE(v.created_at) = ? AND v.statut = 'VALIDEE'
+             GROUP BY u.id, u.nom",
+            [$date],
+        ) as $ligne) {
+            $tickets = (int) $ligne['tickets'];
+            $ca = (int) $ligne['ca'];
+
+            $caissieres[(int) $ligne['id']] = [
+                'id' => (int) $ligne['id'],
+                'nom' => (string) $ligne['nom'],
+                'tickets' => $tickets,
+                'ca' => $ca,
+                'panierMoyen' => $tickets > 0 ? intdiv($ca, $tickets) : 0,
+                // Part du chiffre d'affaires en points de base, comme les
+                // variations : jamais de float pour une grandeur dérivée d'argent.
+                'partBp' => $caJour > 0 ? (int) round($ca * 10000 / $caJour) : 0,
+                'remisesNombre' => (int) $ligne['nb_remises'],
+                'remisesMontant' => (int) $ligne['remises'],
+                'annulationsNombre' => 0,
+                'annulationsMontant' => 0,
+                'ecart' => null,
+                'sessionOuverte' => false,
+            ];
+        }
+
+        foreach ($this->connexion->fetchAllAssociative(
+            "SELECT u.id, COUNT(*) AS nombre, COALESCE(SUM(v.total_ttc), 0) AS montant
+             FROM vente v
+             JOIN session_caisse s ON s.id = v.session_caisse_id
+             JOIN utilisateur u ON u.id = s.utilisateur_id
+             WHERE DATE(v.created_at) = ? AND v.statut = 'ANNULEE'
+             GROUP BY u.id",
+            [$date],
+        ) as $ligne) {
+            $id = (int) $ligne['id'];
+            if (!isset($caissieres[$id])) {
+                continue; // Que des annulations, aucune vente : rien à ventiler.
+            }
+            $caissieres[$id]['annulationsNombre'] = (int) $ligne['nombre'];
+            $caissieres[$id]['annulationsMontant'] = (int) $ligne['montant'];
+        }
+
+        // Écart de caisse : seules les sessions clôturées en ont un. Une session
+        // encore ouverte laisse `ecart` à null — afficher « 0 » laisserait croire
+        // à une caisse juste, même convention que pour la journée entière.
+        foreach ($this->connexion->fetchAllAssociative(
+            "SELECT s.utilisateur_id AS id,
+                    COALESCE(SUM(CASE WHEN s.statut = 'CLOTUREE' THEN s.ecart ELSE 0 END), 0) AS ecart,
+                    COALESCE(SUM(CASE WHEN s.statut = 'CLOTUREE' THEN 1 ELSE 0 END), 0) AS cloturees,
+                    COALESCE(SUM(CASE WHEN s.statut = 'OUVERTE' THEN 1 ELSE 0 END), 0) AS ouvertes
+             FROM session_caisse s
+             WHERE DATE(s.ouverture_at) = ?
+             GROUP BY s.utilisateur_id",
+            [$date],
+        ) as $ligne) {
+            $id = (int) $ligne['id'];
+            if (!isset($caissieres[$id])) {
+                continue;
+            }
+            $caissieres[$id]['ecart'] = ((int) $ligne['cloturees']) > 0 ? (int) $ligne['ecart'] : null;
+            $caissieres[$id]['sessionOuverte'] = ((int) $ligne['ouvertes']) > 0;
+        }
+
+        $caissieres = array_values($caissieres);
+        usort($caissieres, static fn (array $a, array $b): int => [$b['ca'], $a['nom']] <=> [$a['ca'], $b['nom']]);
+
+        return $caissieres;
     }
 
     private function caDuJour(\DateTimeImmutable $jour): int

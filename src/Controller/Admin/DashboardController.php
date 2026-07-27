@@ -58,7 +58,7 @@ class DashboardController extends AbstractController
             'ventes_jour' => $ventesJour,
             'ca_30j' => $ca30j,
             'panier_moyen' => $ventes30j > 0 ? intdiv($ca30j, $ventes30j) : 0,
-            'articles_actifs' => \count($articles->findBy(['actif' => true])),
+            'articles_actifs' => $articles->compterActifs(),
             'matieres_alerte' => $matieresAlerte,
             'top_articles' => $topArticles,
         ]);
@@ -66,20 +66,28 @@ class DashboardController extends AbstractController
 
     #[Route('/ventes', name: 'admin_ventes', methods: ['GET'])]
     #[IsGranted(Permission::VOIR_TOUTES_VENTES)]
-    public function ventes(VenteRepository $ventes): Response
+    public function ventes(Request $request, VenteRepository $ventes): Response
     {
         return $this->render('admin/ventes.html.twig', [
-            'ventes' => $ventes->findBy([], ['createdAt' => 'DESC'], 100),
+            'ventes' => $ventes->paginees(
+                $request->query->getInt('page', 1),
+                $request->query->get('q'),
+            ),
         ]);
     }
 
     // Coûts matières et marges par fiche technique : donnée de gestion.
     #[Route('/production', name: 'admin_production', methods: ['GET'])]
     #[IsGranted(Permission::ARTICLE_VOIR_COUT)]
-    public function production(FicheTechniqueRepository $fiches): Response
+    public function production(Request $request, FicheTechniqueRepository $fiches): Response
     {
+        $page = $fiches->avecMatieres(
+            $request->query->getInt('page', 1),
+            $request->query->get('q'),
+        );
+
         $lignes = [];
-        foreach ($fiches->findAll() as $fiche) {
+        foreach ($page->items as $fiche) {
             $coutMatieres = 0;
             foreach ($fiche->getLignes() as $ligne) {
                 $coutMatieres += intdiv($ligne->getMatierePremiere()->getCoutMoyenPondere() * $ligne->getQuantite(), 1000);
@@ -93,14 +101,22 @@ class DashboardController extends AbstractController
             ];
         }
 
-        return $this->render('admin/production.html.twig', ['fiches' => $lignes]);
+        // Les lignes calculées remplacent les fiches, mais la pagination reste
+        // celle de la requête : c'est la base qui a découpé, pas PHP.
+        return $this->render('admin/production.html.twig', [
+            'fiches' => $lignes,
+            'page' => $page,
+        ]);
     }
 
     #[Route('/clotures', name: 'admin_clotures', methods: ['GET'])]
-    public function clotures(SessionCaisseRepository $sessions): Response
+    public function clotures(Request $request, SessionCaisseRepository $sessions): Response
     {
         return $this->render('admin/clotures.html.twig', [
-            'sessions' => $sessions->findBy([], ['ouvertureAt' => 'DESC'], 60),
+            'sessions' => $sessions->paginees(
+                $request->query->getInt('page', 1),
+                $request->query->get('q'),
+            ),
         ]);
     }
 
@@ -114,19 +130,24 @@ class DashboardController extends AbstractController
     }
 
     #[Route('/utilisateurs', name: 'admin_utilisateurs', methods: ['GET'])]
-    public function utilisateurs(UtilisateurRepository $utilisateurs): Response
+    public function utilisateurs(Request $request, UtilisateurRepository $utilisateurs): Response
     {
         return $this->render('admin/utilisateurs.html.twig', [
-            'utilisateurs' => $utilisateurs->findBy([], ['nom' => 'ASC']),
+            'utilisateurs' => $utilisateurs->pagines(
+                $request->query->getInt('page', 1),
+                $request->query->get('q'),
+            ),
         ]);
     }
 
     /**
-     * Active ou désactive un compte. Réservé à la dirigeante : couper l'accès d'un
-     * collaborateur ne relève pas de la gestion courante. Tracé au journal d'audit.
+     * Active ou désactive un compte. Ouvert au gérant et à la dirigeante, mais la
+     * permission porte sur **le compte visé** : un gérant ne bascule pas une
+     * dirigeante, sinon il pourrait couper l'établissement de son seul accès au
+     * pilotage et à l'audit. Tracé au journal d'audit.
      */
     #[Route('/utilisateurs/{id}/basculer', name: 'admin_utilisateur_toggle', methods: ['POST'], requirements: ['id' => '\d+'])]
-    #[IsGranted('ROLE_DIRIGEANTE')]
+    #[IsGranted(Permission::UTILISATEUR_GERER, subject: 'utilisateur')]
     public function basculerUtilisateur(
         Request $request,
         Utilisateur $utilisateur,

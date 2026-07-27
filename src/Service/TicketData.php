@@ -30,6 +30,15 @@ final readonly class TicketData
         public int $totalTtc,
         public int $remise,
         public int $rendu,
+        // Mentions légales facultatives, imprimées si elles sont renseignées.
+        public string $rccm = '',
+        public string $email = '',
+        /**
+         * Code-barres du numéro de ticket. Null si le numéro n'est pas encodable :
+         * un ticket sans code-barres reste un ticket valable, alors qu'un ticket
+         * qui refuse de s'imprimer bloque la caisse.
+         */
+        public ?CodeBarres $codeBarres = null,
     ) {
     }
 }

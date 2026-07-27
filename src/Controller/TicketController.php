@@ -32,6 +32,20 @@ class TicketController extends AbstractController
     }
 
     /**
+     * Aperçu du ticket sans page hôte : le fragment 80 mm seul, injecté dans
+     * l'écran de caisse juste après l'encaissement. Même gabarit que le ticket
+     * imprimé, donc aucun risque d'écart entre ce que voit la caissière et ce
+     * qui sort de l'imprimante.
+     */
+    #[Route('/{uuid}/apercu', name: 'app_caisse_ticket_apercu', methods: ['GET'])]
+    public function apercu(string $uuid, VenteRepository $ventes, TicketBuilder $builder): Response
+    {
+        return $this->render('ticket/_contenu.html.twig', [
+            'ticket' => $builder->construire($this->vente($uuid, $ventes)),
+        ]);
+    }
+
+    /**
      * Commande ESC/POS (base64) destinée à un pont d'impression thermique local.
      */
     #[Route('/{uuid}/escpos', name: 'app_caisse_ticket_escpos', methods: ['GET'])]

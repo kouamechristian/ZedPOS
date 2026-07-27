@@ -30,5 +30,30 @@ services:
         arguments:
             $seuilMargeParDefautBp: '%app.seuil_marge_bp%'
 
+    # Les informations de la boutique viennent de la table `parametre`
+    # (back-office : /admin/parametres), plus des variables d'environnement.
+    App\Service\ParametresTicket:
+        factory: ['@App\Service\ParametresBoutique', 'pourTicket']
+
+    # Images des touches produits. Sous `public/` : elles sont servies en statique
+    # par le serveur web, sans passer par PHP — la grille de caisse en charge une
+    # par touche, il n'y a pas de raison d'amorcer le noyau pour chacune.
+    App\Service\ImageArticle:
+        arguments:
+            $repertoire: '%kernel.project_dir%/public/uploads/articles'
+
+when@test:
+    services:
+        _defaults:
+            autowire: true
+            autoconfigure: true
+
+        # Les tests écrivent de vrais fichiers : ailleurs que dans `public/`, pour
+        # qu'ils ne se mélangent pas aux images de la boutique et disparaissent
+        # avec le cache.
+        App\Service\ImageArticle:
+            arguments:
+                $repertoire: '%kernel.cache_dir%/images-articles'
+
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones

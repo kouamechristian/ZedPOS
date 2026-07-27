@@ -6,19 +6,27 @@
 {# Pastille de variation : verte si en hausse, rouge si en baisse, neutre sinon. #}
 {% macro variation(bp, libelle) %}
     {% if bp is null %}
-        <span class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500">
+        <span class="inline-flex items-center rounded-full bg-stone-100 px-2.5 py-1 text-xs font-medium text-stone-500">
             {{ libelle }} : —
         </span>
     {% else %}
         {% set hausse = bp > 0 %}
         {% set nul = bp == 0 %}
         <span class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold
-                     {{ nul ? 'bg-slate-100 text-slate-600' : (hausse ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800') }}">
+                     {{ nul ? 'bg-stone-100 text-stone-600' : (hausse ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800') }}">
             {{ nul ? '=' : (hausse ? '▲' : '▼') }}
             {{ hausse ? '+' }}{{ (bp / 100)|number_format(1, ',', ' ') }} %
             <span class="font-normal opacity-75">{{ libelle }}</span>
         </span>
     {% endif %}
+{% endmacro %}
+
+{# En-tête de carte : même traitement partout, pour que l'œil se repère. #}
+{% macro titre(texte, complement) %}
+    <h2 class="mb-3 flex items-baseline justify-between gap-2">
+        <span class="font-semibold text-stone-800">{{ texte }}</span>
+        {% if complement %}<span class="text-xs text-stone-400">{{ complement }}</span>{% endif %}
+    </h2>
 {% endmacro %}
 
 {% block pilotage_content %}
@@ -49,163 +57,292 @@
     </section>
 {% endif %}
 
-{# ---- Sélecteur de journée ---- #}
-<form method="get" class="mb-4 flex items-center gap-2">
-    <label for="jour" class="sr-only">Journée</label>
-    <input type="date" id="jour" name="jour" value="{{ synthese.jour|date('Y-m-d') }}"
-           class="flex-1 rounded-xl border border-slate-300 px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-slate-400">
-    <button class="rounded-xl bg-slate-900 text-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-700">Voir</button>
-</form>
+{# ---- Barre d'outils : journée consultée et téléchargements ----
+   Les liens de téléchargement portent `data-turbo="false"` : Turbo intercepte
+   les clics et attend une page HTML en retour — sans lui, le fichier ne se
+   télécharge pas et la navigation échoue en silence. #}
+<section class="mb-4 flex flex-wrap items-center gap-2">
+    <form method="get" class="flex items-center gap-2" data-controller="soumission-auto">
+        <label for="jour" class="sr-only">Journée</label>
+        <input type="date" id="jour" name="jour" value="{{ synthese.jour|date('Y-m-d') }}"
+               data-action="change->soumission-auto#soumettre"
+               class="rounded-xl border border-stone-300 px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-amber-500">
+        {# Repli sans JavaScript : le bouton reste, il est simplement inutile
+           quand le champ se soumet tout seul. #}
+        <noscript>
+            <button class="rounded-xl bg-stone-900 text-white px-4 py-2.5 text-sm font-semibold">Voir</button>
+        </noscript>
+    </form>
 
-{# ---- CA du jour, en très gros ---- #}
-<section class="bg-white rounded-2xl shadow-sm p-5 mb-4">
-    <div class="text-sm font-medium text-slate-500">Chiffre d'affaires</div>
-    <div class="mt-1 text-5xl sm:text-6xl font-black tabular-nums tracking-tight text-slate-900 break-words">
-        {{ (synthese.caJour / 100)|number_format(0, ',', ' ') }}
-        <span class="text-2xl font-bold text-slate-400">FCFA</span>
+    <div class="flex items-center gap-2" data-turbo-prefetch="true">
+        {% for raccourci in raccourcis %}
+            <a href="{{ path('app_pilotage', {jour: raccourci.jour}) }}"
+               class="rounded-full px-3 py-1.5 text-xs font-semibold transition
+                      {{ raccourci.jour == synthese.jour|date('Y-m-d')
+                         ? 'bg-amber-700 text-white'
+                         : 'bg-white text-stone-600 ring-1 ring-stone-200 hover:bg-stone-50' }}">
+                {{ raccourci.label }}
+            </a>
+        {% endfor %}
     </div>
 
-    <div class="mt-4 flex flex-wrap gap-2">
-        {{ ui.variation(synthese.variationVeilleBp, 'vs veille') }}
-        {{ ui.variation(synthese.variationSemaineBp, 'vs sem. dern.') }}
+    <div class="flex items-center gap-2 sm:ml-auto">
+        <a href="{{ path('pilotage_rapport_texte', {jour: synthese.jour|date('Y-m-d')}) }}" data-turbo="false"
+           class="inline-flex items-center gap-1.5 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-stone-700 ring-1 ring-stone-200 hover:bg-stone-50">
+            <svg class="h-4 w-4 text-amber-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M4 20h16"/>
+            </svg>
+            Rapport <span class="text-stone-400">.txt</span>
+        </a>
+        <a href="{{ path('pilotage_rapport_csv', {jour: synthese.jour|date('Y-m-d')}) }}" data-turbo="false"
+           class="inline-flex items-center gap-1.5 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-stone-700 ring-1 ring-stone-200 hover:bg-stone-50">
+            <svg class="h-4 w-4 text-amber-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M4 20h16"/>
+            </svg>
+            Ventes <span class="text-stone-400">.csv</span>
+        </a>
     </div>
-
-    <dl class="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 gap-3 text-sm">
-        <div>
-            <dt class="text-slate-500">Veille</dt>
-            <dd class="font-semibold tabular-nums">{{ fmt.fcfa(synthese.caVeille) }}</dd>
-        </div>
-        <div>
-            <dt class="text-slate-500">Même jour, semaine dernière</dt>
-            <dd class="font-semibold tabular-nums">{{ fmt.fcfa(synthese.caSemainePrecedente) }}</dd>
-        </div>
-    </dl>
 </section>
 
-{# ---- Tickets et panier moyen ---- #}
-<div class="grid grid-cols-2 gap-3 mb-4">
-    <div class="bg-white rounded-2xl shadow-sm p-4">
-        <div class="text-xs uppercase tracking-wide text-slate-400">Tickets</div>
-        <div class="mt-1 text-3xl font-black tabular-nums text-slate-900">{{ synthese.nombreTickets }}</div>
-    </div>
-    <div class="bg-white rounded-2xl shadow-sm p-4">
-        <div class="text-xs uppercase tracking-wide text-slate-400">Panier moyen</div>
-        <div class="mt-1 text-3xl font-black tabular-nums text-slate-900">{{ (synthese.panierMoyen / 100)|number_format(0, ',', ' ') }}</div>
-        <div class="text-xs text-slate-400">FCFA</div>
-    </div>
-</div>
+{# ---- Indicateurs du jour ---- #}
+<section class="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div class="relative overflow-hidden bg-white rounded-2xl shadow-sm ring-1 ring-amber-100 p-5 sm:col-span-2">
+        <span class="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-amber-500 via-orange-400 to-amber-500"></span>
+        <div class="text-xs uppercase tracking-wide font-semibold text-amber-700">Chiffre d'affaires</div>
+        <div class="mt-1 text-5xl font-black tabular-nums tracking-tight text-stone-900 break-words">
+            {{ (synthese.caJour / 100)|number_format(0, ',', ' ') }}
+            <span class="text-2xl font-bold text-amber-600/70">FCFA</span>
+        </div>
 
-{# ---- Ventilation par mode de règlement ---- #}
-<section class="bg-white rounded-2xl shadow-sm p-5 mb-4">
-    <h2 class="font-semibold text-slate-800 mb-3">Modes de règlement</h2>
-    {% if synthese.parReglement is empty %}
-        <p class="text-sm text-slate-400">Aucun règlement aujourd'hui.</p>
-    {% else %}
-        <ul class="space-y-3">
-            {% for ligne in synthese.parReglement %}
-                {% set part = synthese.caJour > 0 ? (ligne.montant * 100 / synthese.caJour) : 0 %}
-                <li>
-                    <div class="flex items-baseline justify-between gap-3 text-sm">
-                        <span class="font-medium text-slate-700">{{ ligne.libelle }}</span>
-                        <span class="font-bold tabular-nums text-slate-900">{{ fmt.fcfa(ligne.montant) }}</span>
-                    </div>
-                    <div class="mt-1 flex items-center gap-2">
-                        <div class="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
-                            <div class="h-full rounded-full bg-slate-800" style="width: {{ part|round }}%"></div>
-                        </div>
-                        <span class="w-12 text-right text-xs tabular-nums text-slate-400">{{ part|round }} %</span>
-                    </div>
-                </li>
-            {% endfor %}
-        </ul>
-    {% endif %}
-</section>
+        <div class="mt-4 flex flex-wrap gap-2">
+            {{ ui.variation(synthese.variationVeilleBp, 'vs veille') }}
+            {{ ui.variation(synthese.variationSemaineBp, 'vs sem. dern.') }}
+        </div>
 
-{# ---- Points de vigilance ---- #}
-<section class="rounded-2xl shadow-sm p-5 mb-4 {{ synthese.aDesPointsDeVigilance ? 'bg-amber-50 border border-amber-200' : 'bg-white' }}">
-    <h2 class="font-semibold text-slate-800 mb-3">
-        Points de vigilance
-        {% if not synthese.aDesPointsDeVigilance %}
-            <span class="ml-1 text-sm font-normal text-green-700">— journée propre</span>
-        {% endif %}
-    </h2>
-
-    <ul class="space-y-2.5 text-sm">
-        <li class="flex items-baseline justify-between gap-3">
-            <span class="text-slate-600">Annulations</span>
-            <span class="font-semibold tabular-nums {{ synthese.annulationsNombre > 0 ? 'text-red-700' : 'text-slate-400' }}">
-                {{ synthese.annulationsNombre }}{% if synthese.annulationsNombre > 0 %} · {{ fmt.fcfa(synthese.annulationsMontant) }}{% endif %}
-            </span>
-        </li>
-        <li class="flex items-baseline justify-between gap-3">
-            <span class="text-slate-600">Remises accordées</span>
-            <span class="font-semibold tabular-nums {{ synthese.remisesNombre > 0 ? 'text-amber-700' : 'text-slate-400' }}">
-                {{ synthese.remisesNombre }}{% if synthese.remisesNombre > 0 %} · {{ fmt.fcfa(synthese.remisesMontant) }}{% endif %}
-            </span>
-        </li>
-        <li class="flex items-baseline justify-between gap-3">
-            <span class="text-slate-600">Écart de caisse</span>
-            <span class="font-semibold tabular-nums
-                         {{ synthese.ecartCaisse is null ? 'text-slate-400' : (synthese.ecartCaisse == 0 ? 'text-green-700' : 'text-red-700') }}">
-                {% if synthese.ecartCaisse is null %}
-                    caisse non clôturée
-                {% else %}
-                    {{ synthese.ecartCaisse > 0 ? '+' }}{{ fmt.fcfa(synthese.ecartCaisse) }}
-                {% endif %}
-            </span>
-        </li>
-        <li class="flex items-baseline justify-between gap-3">
-            <span class="text-slate-600">Pertes valorisées</span>
-            <span class="font-semibold tabular-nums {{ synthese.pertesMontant > 0 ? 'text-amber-700' : 'text-slate-400' }}">
-                {{ synthese.pertesNombre }}{% if synthese.pertesMontant > 0 %} · {{ fmt.fcfa(synthese.pertesMontant) }}{% endif %}
-            </span>
-        </li>
-        <li>
-            <div class="flex items-baseline justify-between gap-3">
-                <span class="text-slate-600">Ruptures de stock</span>
-                <span class="font-semibold tabular-nums {{ synthese.rupturesStock is not empty ? 'text-red-700' : 'text-slate-400' }}">
-                    {{ synthese.rupturesStock|length }}
-                </span>
+        <dl class="mt-4 pt-4 border-t border-stone-100 grid grid-cols-2 gap-3 text-sm">
+            <div>
+                <dt class="text-stone-500">Veille</dt>
+                <dd class="font-semibold tabular-nums">{{ fmt.fcfa(synthese.caVeille) }}</dd>
             </div>
-            {% if synthese.rupturesStock is not empty %}
-                <p class="mt-1 text-xs text-slate-500">{{ synthese.rupturesStock|join(', ') }}</p>
-            {% endif %}
-        </li>
-    </ul>
-</section>
+            <div>
+                <dt class="text-stone-500">Même jour, semaine dernière</dt>
+                <dd class="font-semibold tabular-nums">{{ fmt.fcfa(synthese.caSemainePrecedente) }}</dd>
+            </div>
+        </dl>
+    </div>
 
-{# ---- Courbe du CA sur 30 jours ---- #}
-<section class="bg-white rounded-2xl shadow-sm p-5 mb-4">
-    <h2 class="font-semibold text-slate-800 mb-3">Tendance sur 30 jours</h2>
-    <div class="relative h-56"
-         data-controller="graphique-ca"
-         data-graphique-ca-libelles-value="{{ courbe.libelles|json_encode }}"
-         data-graphique-ca-valeurs-value="{{ courbe.valeurs|json_encode }}">
-        <canvas data-graphique-ca-target="canvas" role="img" aria-label="Évolution du chiffre d'affaires sur 30 jours"></canvas>
+    <div class="bg-white rounded-2xl shadow-sm p-5 flex flex-col justify-center">
+        <div class="text-xs uppercase tracking-wide text-stone-400">Tickets</div>
+        <div class="mt-1 text-4xl font-black tabular-nums text-stone-900">{{ synthese.nombreTickets }}</div>
+        <div class="mt-1 text-xs text-stone-400">
+            {{ synthese.parCaissiere|length }} caissière{{ synthese.parCaissiere|length > 1 ? 's' }} en poste
+        </div>
+    </div>
+
+    <div class="bg-white rounded-2xl shadow-sm p-5 flex flex-col justify-center">
+        <div class="text-xs uppercase tracking-wide text-stone-400">Panier moyen</div>
+        <div class="mt-1 text-4xl font-black tabular-nums text-stone-900">
+            {{ (synthese.panierMoyen / 100)|number_format(0, ',', ' ') }}
+        </div>
+        <div class="mt-1 text-xs text-stone-400">FCFA</div>
     </div>
 </section>
 
-{# ---- Top 10 des produits ---- #}
-<section class="bg-white rounded-2xl shadow-sm p-5 mb-4">
-    <h2 class="font-semibold text-slate-800 mb-3">Top 10 des produits</h2>
-    {% if synthese.topProduits is empty %}
-        <p class="text-sm text-slate-400">Aucune vente aujourd'hui.</p>
-    {% else %}
-        <ol class="divide-y divide-slate-100">
-            {% for produit in synthese.topProduits %}
-                <li class="flex items-center gap-3 py-2.5">
-                    <span class="w-6 shrink-0 text-sm font-bold text-slate-300 tabular-nums">{{ loop.index }}</span>
-                    <span class="flex-1 min-w-0 font-medium text-slate-700 truncate">{{ produit.nom }}</span>
-                    <span class="shrink-0 text-sm tabular-nums text-slate-500">×{{ fmt.unites(produit.quantite) }}</span>
-                    <span class="shrink-0 w-24 text-right font-semibold tabular-nums text-slate-900">{{ fmt.fcfa(produit.montant) }}</span>
-                </li>
-            {% endfor %}
-        </ol>
-    {% endif %}
-</section>
+{# ---- Corps : une colonne sur téléphone, trois à partir de lg ---- #}
+<div class="grid gap-4 lg:grid-cols-3">
 
-<a href="{{ path('pilotage_ventes', {jour: synthese.jour|date('Y-m-d')}) }}"
-   class="block rounded-2xl bg-slate-900 text-white text-center font-semibold py-4 hover:bg-slate-700">
-    Voir les {{ synthese.nombreTickets }} ticket{{ synthese.nombreTickets > 1 ? 's' }} du jour →
-</a>
+    {# ---- Ventes par caissière ---- #}
+    <section class="bg-white rounded-2xl shadow-sm p-5 lg:col-span-2">
+        {{ ui.titre('Ventes par caissière', synthese.parCaissiere ? 'sur ' ~ fmt.fcfa(synthese.caJour) : '') }}
+
+        {% if synthese.parCaissiere is empty %}
+            <p class="text-sm text-stone-400">Aucune vente encaissée ce jour-là.</p>
+        {% else %}
+            <div class="relative"
+                 style="height: {{ 56 + synthese.parCaissiere|length * 42 }}px"
+                 data-controller="graphique-caissieres"
+                 data-graphique-caissieres-libelles-value="{{ caissieres.libelles|json_encode }}"
+                 data-graphique-caissieres-valeurs-value="{{ caissieres.valeurs|json_encode }}"
+                 data-graphique-caissieres-couleurs-value="{{ caissieres.couleurs|json_encode }}">
+                <canvas data-graphique-caissieres-target="canvas" role="img"
+                        aria-label="Chiffre d'affaires par caissière"></canvas>
+            </div>
+
+            <ul class="mt-4 divide-y divide-stone-100">
+                {% for caissiere in synthese.parCaissiere %}
+                    <li class="py-3">
+                        <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                            <span class="font-semibold text-stone-800">{{ caissiere.nom }}</span>
+                            <span class="tabular-nums font-bold text-stone-900">{{ fmt.fcfa(caissiere.ca) }}</span>
+                        </div>
+
+                        <div class="mt-1.5 flex items-center gap-2">
+                            <div class="flex-1 h-2 rounded-full bg-stone-100 overflow-hidden">
+                                <div class="h-full rounded-full bg-amber-700"
+                                     style="width: {{ (caissiere.partBp / 100)|round }}%"></div>
+                            </div>
+                            <span class="w-10 text-right text-xs tabular-nums text-stone-400">
+                                {{ (caissiere.partBp / 100)|round }} %
+                            </span>
+                        </div>
+
+                        <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-stone-500">
+                            <span>{{ caissiere.tickets }} ticket{{ caissiere.tickets > 1 ? 's' }}</span>
+                            <span>panier {{ fmt.fcfa(caissiere.panierMoyen) }}</span>
+
+                            {% if caissiere.remisesNombre > 0 %}
+                                <span class="rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-800">
+                                    {{ caissiere.remisesNombre }} remise{{ caissiere.remisesNombre > 1 ? 's' }}
+                                    · {{ fmt.fcfa(caissiere.remisesMontant) }}
+                                </span>
+                            {% endif %}
+
+                            {% if caissiere.annulationsNombre > 0 %}
+                                <span class="rounded-full bg-red-50 px-2 py-0.5 font-medium text-red-800">
+                                    {{ caissiere.annulationsNombre }} annulation{{ caissiere.annulationsNombre > 1 ? 's' }}
+                                    · {{ fmt.fcfa(caissiere.annulationsMontant) }}
+                                </span>
+                            {% endif %}
+
+                            {# Caisse encore ouverte : l'écart n'existe pas, il ne
+                               vaut pas zéro. Afficher « 0 » laisserait croire à une
+                               caisse juste. #}
+                            {% if caissiere.sessionOuverte %}
+                                <span class="rounded-full bg-stone-100 px-2 py-0.5 font-medium text-stone-600">caisse ouverte</span>
+                            {% elseif caissiere.ecart is null %}
+                                <span class="rounded-full bg-stone-100 px-2 py-0.5 font-medium text-stone-500">non clôturée</span>
+                            {% elseif caissiere.ecart == 0 %}
+                                <span class="rounded-full bg-green-50 px-2 py-0.5 font-medium text-green-800">caisse juste</span>
+                            {% else %}
+                                <span class="rounded-full bg-red-50 px-2 py-0.5 font-medium text-red-800">
+                                    écart {{ caissiere.ecart > 0 ? '+' }}{{ fmt.fcfa(caissiere.ecart) }}
+                                </span>
+                            {% endif %}
+                        </div>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    </section>
+
+    {# ---- Ventilation par mode de règlement ---- #}
+    <section class="bg-white rounded-2xl shadow-sm p-5">
+        {{ ui.titre('Modes de règlement', '') }}
+        {% if synthese.parReglement is empty %}
+            <p class="text-sm text-stone-400">Aucun règlement ce jour-là.</p>
+        {% else %}
+            <ul class="space-y-3">
+                {% for ligne in synthese.parReglement %}
+                    {% set part = synthese.caJour > 0 ? (ligne.montant * 100 / synthese.caJour) : 0 %}
+                    <li>
+                        <div class="flex items-baseline justify-between gap-3 text-sm">
+                            <span class="font-medium text-stone-700">{{ ligne.libelle }}</span>
+                            <span class="font-bold tabular-nums text-stone-900">{{ fmt.fcfa(ligne.montant) }}</span>
+                        </div>
+                        <div class="mt-1 flex items-center gap-2">
+                            <div class="flex-1 h-2 rounded-full bg-stone-100 overflow-hidden">
+                                <div class="h-full rounded-full bg-stone-800" style="width: {{ part|round }}%"></div>
+                            </div>
+                            <span class="w-10 text-right text-xs tabular-nums text-stone-400">{{ part|round }} %</span>
+                        </div>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    </section>
+
+    {# ---- Courbe du CA sur 30 jours ---- #}
+    <section class="bg-white rounded-2xl shadow-sm p-5 lg:col-span-2">
+        {{ ui.titre('Tendance sur 30 jours', 'jusqu’au ' ~ synthese.jour|date('d/m')) }}
+        <div class="relative h-56 lg:h-72"
+             data-controller="graphique-ca"
+             data-graphique-ca-libelles-value="{{ courbe.libelles|json_encode }}"
+             data-graphique-ca-valeurs-value="{{ courbe.valeurs|json_encode }}">
+            <canvas data-graphique-ca-target="canvas" role="img"
+                    aria-label="Évolution du chiffre d'affaires sur 30 jours"></canvas>
+        </div>
+    </section>
+
+    {# ---- Points de vigilance ---- #}
+    <section class="rounded-2xl shadow-sm p-5 {{ synthese.aDesPointsDeVigilance ? 'bg-amber-50 ring-1 ring-amber-200' : 'bg-white' }}">
+        <h2 class="font-semibold text-stone-800 mb-3">
+            Points de vigilance
+            {% if not synthese.aDesPointsDeVigilance %}
+                <span class="ml-1 text-sm font-normal text-green-700">— journée propre</span>
+            {% endif %}
+        </h2>
+
+        <ul class="space-y-2.5 text-sm">
+            <li class="flex items-baseline justify-between gap-3">
+                <span class="text-stone-600">Annulations</span>
+                <span class="font-semibold tabular-nums {{ synthese.annulationsNombre > 0 ? 'text-red-700' : 'text-stone-400' }}">
+                    {{ synthese.annulationsNombre }}{% if synthese.annulationsNombre > 0 %} · {{ fmt.fcfa(synthese.annulationsMontant) }}{% endif %}
+                </span>
+            </li>
+            <li class="flex items-baseline justify-between gap-3">
+                <span class="text-stone-600">Remises accordées</span>
+                <span class="font-semibold tabular-nums {{ synthese.remisesNombre > 0 ? 'text-amber-700' : 'text-stone-400' }}">
+                    {{ synthese.remisesNombre }}{% if synthese.remisesNombre > 0 %} · {{ fmt.fcfa(synthese.remisesMontant) }}{% endif %}
+                </span>
+            </li>
+            <li class="flex items-baseline justify-between gap-3">
+                <span class="text-stone-600">Écart de caisse</span>
+                <span class="font-semibold tabular-nums
+                             {{ synthese.ecartCaisse is null ? 'text-stone-400' : (synthese.ecartCaisse == 0 ? 'text-green-700' : 'text-red-700') }}">
+                    {% if synthese.ecartCaisse is null %}
+                        caisse non clôturée
+                    {% else %}
+                        {{ synthese.ecartCaisse > 0 ? '+' }}{{ fmt.fcfa(synthese.ecartCaisse) }}
+                    {% endif %}
+                </span>
+            </li>
+            <li class="flex items-baseline justify-between gap-3">
+                <span class="text-stone-600">Pertes valorisées</span>
+                <span class="font-semibold tabular-nums {{ synthese.pertesMontant > 0 ? 'text-amber-700' : 'text-stone-400' }}">
+                    {{ synthese.pertesNombre }}{% if synthese.pertesMontant > 0 %} · {{ fmt.fcfa(synthese.pertesMontant) }}{% endif %}
+                </span>
+            </li>
+            <li>
+                <div class="flex items-baseline justify-between gap-3">
+                    <span class="text-stone-600">Ruptures de stock</span>
+                    <span class="font-semibold tabular-nums {{ synthese.rupturesStock is not empty ? 'text-red-700' : 'text-stone-400' }}">
+                        {{ synthese.rupturesStock|length }}
+                    </span>
+                </div>
+                {% if synthese.rupturesStock is not empty %}
+                    <p class="mt-1 text-xs text-stone-500">{{ synthese.rupturesStock|join(', ') }}</p>
+                {% endif %}
+            </li>
+        </ul>
+    </section>
+
+    {# ---- Top 10 des produits ---- #}
+    <section class="bg-white rounded-2xl shadow-sm p-5 lg:col-span-2">
+        {{ ui.titre('Top 10 des produits', '') }}
+        {% if synthese.topProduits is empty %}
+            <p class="text-sm text-stone-400">Aucune vente ce jour-là.</p>
+        {% else %}
+            <ol class="divide-y divide-stone-100">
+                {% for produit in synthese.topProduits %}
+                    <li class="flex items-center gap-3 py-2.5">
+                        <span class="w-6 shrink-0 text-sm font-bold text-stone-300 tabular-nums">{{ loop.index }}</span>
+                        <span class="flex-1 min-w-0 font-medium text-stone-700 truncate">{{ produit.nom }}</span>
+                        <span class="shrink-0 text-sm tabular-nums text-stone-500">×{{ fmt.unites(produit.quantite) }}</span>
+                        <span class="shrink-0 w-24 text-right font-semibold tabular-nums text-stone-900">{{ fmt.fcfa(produit.montant) }}</span>
+                    </li>
+                {% endfor %}
+            </ol>
+        {% endif %}
+    </section>
+
+    {# ---- Accès aux tickets ---- #}
+    <section class="flex">
+        <a href="{{ path('pilotage_ventes', {jour: synthese.jour|date('Y-m-d')}) }}"
+           class="flex w-full flex-col items-center justify-center rounded-2xl bg-stone-900 p-5 text-center text-white hover:bg-stone-700">
+            <span class="text-3xl font-black tabular-nums">{{ synthese.nombreTickets }}</span>
+            <span class="mt-1 font-semibold">ticket{{ synthese.nombreTickets > 1 ? 's' }} du jour</span>
+            <span class="mt-2 text-sm text-amber-200">Voir le détail →</span>
+        </a>
+    </section>
+</div>
 {% endblock %}

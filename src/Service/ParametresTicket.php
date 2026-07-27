@@ -2,19 +2,27 @@
 
 namespace App\Service;
 
-use Symfony\Component\DependencyInjection\Attribute\Autowire;
-
 /**
- * Informations de la boutique imprimées sur le ticket (paramétrables via .env).
+ * Informations de la boutique imprimées sur les tickets et les rapports Z.
+ *
+ * Simple valeur immuable : elle est construite par
+ * {@see ParametresBoutique::pourTicket()}, déclarée comme fabrique dans
+ * `config/services.yaml`. Les consommateurs (TicketBuilder, ImpressionService,
+ * RapportQuotidienTexte) continuent d'injecter ce type sans rien savoir du
+ * stockage.
+ *
+ * La saisie se fait dans le back-office (`/admin/parametres`), plus dans `.env`.
  */
 final readonly class ParametresTicket
 {
     public function __construct(
-        #[Autowire('%env(TICKET_RAISON_SOCIALE)%')] public string $raisonSociale,
-        #[Autowire('%env(TICKET_ADRESSE)%')] public string $adresse,
-        #[Autowire('%env(TICKET_NCC)%')] public string $ncc,
-        #[Autowire('%env(TICKET_TELEPHONE)%')] public string $telephone,
-        #[Autowire('%env(TICKET_PIED)%')] public string $pied,
+        public string $raisonSociale,
+        public string $adresse,
+        public string $ncc,
+        public string $telephone,
+        public string $pied,
+        public string $rccm = '',
+        public string $email = '',
     ) {
     }
 }

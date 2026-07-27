@@ -19,6 +19,25 @@ class SessionCaisseRepository extends ServiceEntityRepository
     }
 
     /**
+     * Sessions paginées, avec leur caissier — la liste des clôtures affiche son
+     * nom sur chaque ligne, à charger donc en une seule requête.
+     *
+     * @return Pagination<SessionCaisse>
+     */
+    public function paginees(int $page = 1, ?string $recherche = null): Pagination
+    {
+        $qb = $this->createQueryBuilder('s')
+            ->join('s.utilisateur', 'u')->addSelect('u')
+            ->orderBy('s.ouvertureAt', 'DESC');
+
+        // On revient sur une clôture pour une caissière donnée : c'est par son nom
+        // qu'on la cherche, jamais par un identifiant de session.
+        Recherche::appliquer($qb, $recherche, 'u.nom');
+
+        return Pagination::depuis($qb, $page);
+    }
+
+    /**
      * Session ouverte d'un caissier — il ne peut y en avoir qu'une à la fois.
      */
     public function ouvertePour(Utilisateur $utilisateur): ?SessionCaisse

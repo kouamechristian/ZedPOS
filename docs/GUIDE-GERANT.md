@@ -10,12 +10,14 @@ Le menu de gauche est votre point de départ :
 ZedPOS  Back-office
 ┌────────────────────┐
 │ ▸ Tableau de bord  │   CA du jour, ventes, alertes
-│ ▸ Ventes           │   les 100 derniers tickets
-│ ▸ Articles         │   catalogue + coût / marge
+│ ▸ Ventes           │   tickets, recherche par numéro
+│ ▸ Articles         │   catalogue, photos, coût / marge
 │ ▸ Stock            │   matières premières
+│ ▸ Inventaire       │   feuille de comptage et écarts
 │ ▸ Production       │   fiches techniques et marges
 │ ▸ Pertes           │   saisie et synthèse
 │ ▸ Clôtures         │   rapports Z et écarts de caisse
+│ ▸ Comptabilité     │   écritures SYSCOHADA, exports
 │ ▸ Utilisateurs     │   comptes
 └────────────────────┘
 ```
@@ -55,19 +57,36 @@ Le bouton **Fournisseurs**, en haut de cette page, mène à leur gestion.
 | Champ | À quoi ça sert |
 |---|---|
 | Coût moyen pondéré | Prix de revient au kilo/litre — sert à valoriser les pertes et calculer vos marges |
-| Stock actuel | La quantité en magasin |
 | Seuil d'alerte | En dessous, le bandeau ambre s'affiche partout, y compris en caisse |
 | Fournisseur | Pour savoir qui rappeler |
+
+> **Le stock actuel ne se modifie pas ici.** Il ne figure que dans le formulaire de
+> *création*, pour saisir la quantité de départ. Ensuite il se **compte**, par un
+> inventaire (§ 3) : écrire directement la quantité ne laissait aucune trace, et
+> l'historique des mouvements finissait par ne plus correspondre au stock affiché.
 
 Réglez le seuil sur **ce qu'il vous faut pour tenir jusqu'à la prochaine livraison**,
 pas sur zéro : une alerte qui arrive quand le sac est vide ne sert à rien.
 
 ### Les fiches techniques
 
-**Production** dans le menu montre, pour chaque recette, le coût matières et la
-marge. Pour modifier une recette : **Articles** → l'article → onglet
-**Fiche technique** → ajoutez ou retirez une matière avec sa quantité et son
-pourcentage de perte.
+Une fiche technique, c'est la **recette** d'un produit : ce qu'il faut de chaque
+matière première pour en fabriquer **une unité**.
+
+**Où la composer :** **Articles** → bouton **Fiche technique** sur la ligne du
+produit. Choisissez la matière, la quantité et le pourcentage de perte, puis
+**Ajouter**.
+
+> **Il n'y a pas de « nouvelle fiche technique » à créer.** La fiche naît toute
+> seule quand vous ajoutez sa première matière première. Si vous cherchez un
+> bouton pour la créer, c'est pour cela que vous ne le trouvez pas.
+
+> **La quantité est celle d'une seule unité.** Pour une baguette, c'est la farine
+> d'**une** baguette, pas d'une fournée.
+
+**Production** dans le menu ne fait que **consulter** : elle montre, pour chaque
+recette, le coût matières et la marge. Le bouton **Modifier la fiche** de chaque
+ligne ramène à l'onglet de l'article.
 
 > Une fiche technique fausse fausse **tout** : le déstockage, le coût de revient et
 > la marge. C'est le réglage le plus important du logiciel.
@@ -99,25 +118,56 @@ sélecteur en haut.
 
 ---
 
+## 2 bis. Les photos des touches
+
+**Articles** → **Modifier** → **Photo de la touche**. La photo apparaît en caisse,
+au-dessus du nom du produit : la caissière reconnaît un pain de mie avant d'avoir
+lu son libellé.
+
+- JPEG, PNG ou WebP. **Inutile de redimensionner** : ZedPOS réduit l'image tout
+  seul. Une photo prise au téléphone convient.
+- **Cadrez serré sur le produit.** La touche est petite : un plan large ne donne
+  rien. L'aperçu à droite du formulaire montre exactement ce que verra la caisse.
+- Le nom reste écrit **sous** la photo, sur la couleur de la touche — jamais
+  par-dessus l'image, où il deviendrait illisible selon la photo.
+- Pour revenir à une touche de couleur : cochez **Retirer la photo**.
+- Les photos fonctionnent **hors ligne** : elles sont mises en réserve sur la
+  tablette avec le reste de la caisse.
+
+---
+
 ## 3. L'inventaire
 
-**Aujourd'hui, ZedPOS n'a pas d'écran d'inventaire.** Voici comment procéder en
-attendant, et ce que cela implique.
+Entrée **Inventaire**. C'est le **seul** endroit où un stock se corrige : le champ
+« stock actuel » a disparu de la fiche matière, parce qu'y écrire ne laissait
+aucune trace.
 
-Pour corriger un stock après comptage : **Stock** → **Modifier** sur la matière →
-changez **Stock actuel** → **Enregistrer**.
+**Le déroulé, en quatre temps :**
 
-> ⚠️ **Limite importante à connaître.** Cette correction écrit directement la
-> nouvelle quantité : elle **ne crée aucun mouvement de stock** et **n'apparaît pas
-> au journal d'audit**. L'historique des mouvements ne correspondra donc plus au
-> stock affiché, et personne ne pourra retrouver qui a corrigé quoi.
->
-> En attendant un vrai module d'inventaire (voir la liste des travaux restants dans
-> `CLAUDE.md`), **tenez une trace papier de vos comptages** : date, matière, stock
-> compté, écart, votre nom.
+1. **+ Nouvel inventaire.** ZedPOS fige l'état de tout ce qui est suivi en stock —
+   matières premières et boissons revendues telles quelles.
+2. **Imprimer la feuille**, et compter en réserve. La feuille **ne montre pas les
+   quantités attendues** : lire « 42 » avant de compter suffit à en trouver 42.
+3. **Reporter les quantités** à l'écran. Vous pouvez enregistrer et revenir plus
+   tard, la feuille vous attend.
+4. **Valider l'inventaire.**
 
-Pour un écart que vous savez expliquer (produit jeté, casse), **préférez la saisie
-d'une perte** : elle, est valorisée, tracée et chiffrée dans vos rapports.
+**Trois choses à savoir :**
+
+- **Une case laissée vide n'est pas comptée** ; un **zéro** veut dire qu'il n'en
+  reste aucun. Ne mettez jamais de zéro pour « je n'ai pas eu le temps ».
+- **Un écart exige un commentaire.** Écrivez ce que vous croyez être arrivé, pas
+  « écart ». Dans trois mois c'est la seule chose qui restera.
+- **La validation ne s'annule pas.** Elle écrit dans le stock, comme la clôture de
+  caisse. Tant que vous n'avez pas validé, vous pouvez tout abandonner : rien
+  n'aura bougé.
+
+Chaque écart devient un **mouvement de stock** et une **entrée au journal d'audit**,
+à votre nom. L'écart total vous est chiffré en FCFA.
+
+Pour un écart que vous savez expliquer sur le moment (produit jeté, casse),
+**préférez la saisie d'une perte** : elle est valorisée par motif et ressort dans
+la synthèse mensuelle. L'inventaire est là pour ce qu'on ne sait pas expliquer.
 
 ---
 
@@ -173,12 +223,74 @@ Deux règles à connaître :
 
 ---
 
-## 6. Ce que vous ne pouvez pas faire
+## 6. La comptabilité
+
+Entrée **Comptabilité** dans la barre de gauche. Vous y trouvez, pour la période de
+votre choix, les **écritures au plan SYSCOHADA** produites à partir des ventes, des
+dépenses et des pertes — c'est ce que le cabinet attend.
+
+- Les **raccourcis** en haut (mois en cours, mois précédent, depuis le 1er janvier)
+  évitent de saisir deux dates.
+- Les **cinq contrôles** en bas de l'écran rapprochent l'application et les
+  écritures (CA TTC, TVA, espèces, mouvements de caisse, écarts). S'ils sont
+  conformes, le fichier est bon à transmettre.
+- Trois **téléchargements** : *Écritures* (tableur), *FEC* (pour le logiciel du
+  cabinet), *Balance* (contrôle d'un coup d'œil).
+
+**C'est un espace de lecture seule.** Rien de ce que vous y faites ne modifie une
+vente : une erreur se corrige en caisse, par une annulation motivée (§ 5), jamais
+dans les écritures.
+
+---
+
+## 7. Les comptes
+
+Entrée **Utilisateurs**. Vous créez les comptes de l'équipe, vous les **modifiez**
+et vous les désactivez — un caissier qui part, un remplaçant qui arrive.
+
+- **Caissier** : vous lui donnez un code à 4 chiffres pour le pavé de la caisse.
+- **Gérant** : mot de passe, 6 caractères minimum.
+- Le rôle **Dirigeante** ne vous est pas proposé, et le compte de la dirigeante n'a
+  ni **Modifier** ni **Désactiver** : ce sont ses accès, pas les vôtres.
+- Vous ne pouvez ni désactiver votre propre compte, ni changer votre propre rôle.
+
+### Modifier un compte
+
+Bouton **Modifier** sur la ligne. Vous corrigez le nom, l'e-mail, le rôle.
+
+- **Un caissier a oublié son code ?** Tapez-lui-en un nouveau et enregistrez.
+- **Vous ne changez que le nom ?** Laissez le mot de passe et le code PIN **vides** :
+  ils ne bougent pas. C'est le cas normal.
+- **Vous changez le rôle ?** Le nouveau rôle ne se connecte pas de la même façon :
+  il faut donc lui donner son nouveau secret. Un caissier qui devient gérant a
+  besoin d'un mot de passe — son ancien code PIN est effacé et **ne lui ouvre plus
+  la caisse**.
+
+Créations, modifications et désactivations sont **tracées au journal d'audit**, à
+votre nom. Les mots de passe et codes PIN, eux, n'y figurent jamais.
+
+---
+
+## 8. Chercher dans un tableau
+
+Chaque écran à tableau porte une **barre de recherche** en haut. Tapez trois
+lettres, ce n'est pas la peine d'écrire le mot entier.
+
+Ce que chaque écran cherche : le **numéro de ticket ou le nom de la caissière**
+dans Ventes, le **fournisseur autant que la matière** dans Stock, la **matière
+d'une fiche** dans Production (« quelles fiches utilisent du beurre ? » avant une
+hausse de prix). La recherche **s'ajoute** au filtre déjà posé : chercher dans les
+pertes d'un mois donné reste dans ce mois. **Réinitialiser** l'annule.
+
+---
+
+## 9. Ce que vous ne pouvez pas faire
 
 | Action | Qui |
 |---|---|
 | **Fixer ou changer un prix de vente** | La dirigeante uniquement — le champ n'apparaît pas dans votre formulaire |
-| Désactiver un compte utilisateur | La dirigeante uniquement |
+| Créer un compte **Dirigeante** ou **Comptable** | La dirigeante uniquement — ces rôles ne vous sont pas proposés |
+| Désactiver le compte de la dirigeante | Elle seule |
 | Supprimer une vente | Personne, jamais |
 | Modifier le journal d'audit | Personne, jamais |
 

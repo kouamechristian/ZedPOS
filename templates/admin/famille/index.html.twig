@@ -1,40 +1,52 @@
 {% extends 'admin/base.html.twig' %}
 {% import 'admin/_macros.html.twig' as fmt %}
+{% import '_pagination.html.twig' as pagination %}
+{% import 'admin/_recherche.html.twig' as recherche %}
 
 {% block page_title %}Familles de produits{% endblock %}
 
 {% block page_actions %}
-    <a href="{{ path('admin_article_index') }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50">Articles</a>
-    <a href="{{ path('admin_famille_new') }}" class="rounded-lg bg-slate-800 text-white px-3 py-2 text-sm font-semibold hover:bg-slate-700">+ Nouvelle famille</a>
+    <a href="{{ path('admin_article_index') }}" class="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-medium hover:bg-stone-50">Articles</a>
+    <a href="{{ path('admin_famille_new') }}" class="rounded-lg bg-stone-800 text-white px-3 py-2 text-sm font-semibold hover:bg-stone-700">+ Nouvelle famille</a>
 {% endblock %}
 
 {% block admin_content %}
+
+{{ recherche.barre('admin_famille_index', 'Nom de la famille') }}
 <div class="bg-white rounded-xl shadow-sm overflow-hidden">
     <table class="w-full text-sm">
-        <thead class="text-left text-slate-500 bg-slate-50">
+        <thead class="text-left text-stone-500 bg-stone-50">
             <tr>
                 <th class="px-5 py-3 font-medium">Famille</th>
                 <th class="px-5 py-3 font-medium">Position</th>
                 <th class="px-5 py-3 font-medium text-right">Articles</th>
+                <th class="px-5 py-3 font-medium">Compte de vente</th>
                 <th class="px-5 py-3 font-medium">Statut</th>
                 <th class="px-5 py-3 font-medium text-right">Actions</th>
             </tr>
         </thead>
         <tbody>
-            {% for famille in familles %}
-                <tr class="border-t border-slate-100 hover:bg-slate-50">
+            {% for famille in familles.items %}
+                <tr class="border-t border-stone-100 hover:bg-stone-50">
                     <td class="px-5 py-3">
                         <div class="flex items-center gap-2">
                             <span class="inline-block h-3 w-3 rounded-full" style="background: {{ famille.couleur ?: '#cbd5e1' }}"></span>
-                            <span class="font-medium text-slate-800">{{ famille.nom }}</span>
+                            <span class="font-medium text-stone-800">{{ famille.nom }}</span>
                         </div>
                     </td>
-                    <td class="px-5 py-3 text-slate-600">{{ famille.position }}</td>
-                    <td class="px-5 py-3 text-right text-slate-600">{{ famille.articles|length }}</td>
+                    <td class="px-5 py-3 text-stone-600">{{ famille.position }}</td>
+                    <td class="px-5 py-3 text-right text-stone-600">{{ famille.articles|length }}</td>
+                    <td class="px-5 py-3 text-stone-600">
+                        {% if famille.compteVente %}
+                            <span class="font-mono text-xs">{{ famille.compteVente }}</span>
+                        {% else %}
+                            <span class="text-stone-400">Automatique</span>
+                        {% endif %}
+                    </td>
                     <td class="px-5 py-3">{{ fmt.badge(famille.actif) }}</td>
                     <td class="px-5 py-3">
                         <div class="flex items-center justify-end gap-2">
-                            <a href="{{ path('admin_famille_edit', {id: famille.id}) }}" class="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-medium hover:bg-slate-100">Modifier</a>
+                            <a href="{{ path('admin_famille_edit', {id: famille.id}) }}" class="rounded-md border border-stone-300 px-2.5 py-1 text-xs font-medium hover:bg-stone-100">Modifier</a>
                             <form method="post" action="{{ path('admin_famille_delete', {id: famille.id}) }}" data-turbo-confirm="Supprimer cette famille ?">
                                 <input type="hidden" name="_token" value="{{ csrf_token('supprimer_famille_' ~ famille.id) }}">
                                 <button class="rounded-md border border-red-300 text-red-700 px-2.5 py-1 text-xs font-medium hover:bg-red-50">Supprimer</button>
@@ -43,9 +55,10 @@
                     </td>
                 </tr>
             {% else %}
-                <tr><td colspan="5" class="px-5 py-6 text-center text-slate-400">Aucune famille.</td></tr>
+                <tr><td colspan="6" class="px-5 py-6 text-center text-stone-400">Aucune famille.</td></tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
+{{ pagination.barre(familles, 'admin_famille_index') }}
 {% endblock %}

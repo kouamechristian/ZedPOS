@@ -6,6 +6,7 @@ use App\Entity\Utilisateur;
 use App\Repository\ArticleRepository;
 use App\Repository\FamilleProduitRepository;
 use App\Repository\SessionCaisseRepository;
+use App\Service\ImageArticle;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
@@ -62,7 +63,7 @@ class CaisseController extends AbstractController
      * recalcule toujours côté serveur.
      */
     #[Route('/catalogue.json', name: 'app_caisse_catalogue', methods: ['GET'])]
-    public function catalogue(FamilleProduitRepository $familles, ArticleRepository $articles): JsonResponse
+    public function catalogue(FamilleProduitRepository $familles, ArticleRepository $articles, ImageArticle $images): JsonResponse
     {
         $donnees = [];
 
@@ -78,6 +79,10 @@ class CaisseController extends AbstractController
                     'prix' => $article->getPrixVenteTtc(),
                     'tva' => $article->getTauxTva(),
                     'couleur' => $article->getCouleur(),
+                    // Chemin public, pas le nom de fichier : le client s'en sert
+                    // tel quel dans un `src`, et le Service Worker le met en cache
+                    // pour que la grille reste identique hors ligne.
+                    'image' => $images->chemin($article->getImage()),
                 ];
             }
 

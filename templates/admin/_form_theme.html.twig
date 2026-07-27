@@ -6,39 +6,48 @@
         {{- form_label(form) -}}
         {{- form_widget(form) -}}
         {{- form_errors(form) -}}
+        {#- L'aide vient après l'erreur : c'est l'erreur qu'on doit lire d'abord. -#}
+        {{- form_help(form) -}}
     </div>
 {%- endblock -%}
 
 {%- block form_label -%}
     {%- if label is not same as(false) -%}
-        {%- set label_attr = label_attr|merge({class: (label_attr.class|default('') ~ ' block text-sm font-medium text-slate-700 mb-1')|trim}) -%}
+        {%- set label_attr = label_attr|merge({class: (label_attr.class|default('') ~ ' block text-sm font-medium text-stone-700 mb-1')|trim}) -%}
     {%- endif -%}
     {{- parent() -}}
 {%- endblock -%}
 
 {%- block form_widget_simple -%}
-    {%- set attr = attr|merge({class: (attr.class|default('') ~ ' w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400')|trim}) -%}
+    {%- set attr = attr|merge({class: (attr.class|default('') ~ ' w-full rounded-lg border border-stone-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-400')|trim}) -%}
     {{- parent() -}}
 {%- endblock -%}
 
 {%- block textarea_widget -%}
-    {%- set attr = attr|merge({class: (attr.class|default('') ~ ' w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400')|trim}) -%}
+    {%- set attr = attr|merge({class: (attr.class|default('') ~ ' w-full rounded-lg border border-stone-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-400')|trim}) -%}
     {{- parent() -}}
 {%- endblock -%}
 
 {%- block choice_widget_collapsed -%}
-    {%- set attr = attr|merge({class: (attr.class|default('') ~ ' w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-400')|trim}) -%}
+    {%- set attr = attr|merge({class: (attr.class|default('') ~ ' w-full rounded-lg border border-stone-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-stone-400')|trim}) -%}
     {{- parent() -}}
 {%- endblock -%}
 
 {%- block checkbox_widget -%}
-    {%- set attr = attr|merge({class: (attr.class|default('') ~ ' h-4 w-4 rounded border-slate-300 text-slate-800 focus:ring-slate-400')|trim}) -%}
+    {%- set attr = attr|merge({class: (attr.class|default('') ~ ' h-4 w-4 rounded border-stone-300 text-stone-800 focus:ring-stone-400')|trim}) -%}
     {{- parent() -}}
 {%- endblock -%}
 
 {%- block color_widget -%}
-    {%- set attr = attr|merge({class: (attr.class|default('') ~ ' h-10 w-16 rounded border border-slate-300 cursor-pointer')|trim}) -%}
+    {%- set attr = attr|merge({class: (attr.class|default('') ~ ' h-10 w-16 rounded border border-stone-300 cursor-pointer')|trim}) -%}
     {{- parent() -}}
+{%- endblock -%}
+
+{%- block form_help -%}
+    {%- if help is not empty -%}
+        {%- set help_attr = help_attr|merge({class: (help_attr.class|default('') ~ ' mt-1 text-xs text-stone-500')|trim}) -%}
+        {{- parent() -}}
+    {%- endif -%}
 {%- endblock -%}
 
 {%- block form_errors -%}

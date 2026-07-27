@@ -20,10 +20,13 @@ class FournisseurController extends AbstractController
     use ReponseFormulaire;
 
     #[Route('', name: 'admin_fournisseur_index', methods: ['GET'])]
-    public function index(FournisseurRepository $fournisseurs): Response
+    public function index(Request $request, FournisseurRepository $fournisseurs): Response
     {
         return $this->render('admin/fournisseur/index.html.twig', [
-            'fournisseurs' => $fournisseurs->findBy([], ['nom' => 'ASC']),
+            'fournisseurs' => $fournisseurs->paginees(
+                $request->query->getInt('page', 1),
+                $request->query->get('q'),
+            ),
         ]);
     }
 

@@ -1,0 +1,49 @@
+{# Barre de recherche des tableaux du back-office — pendant de _pagination.html.twig.
+
+   Un seul rendu pour toutes les listes : neuf formulaires recopiés auraient
+   divergé, comme la pagination avant d'être mise en commun.
+
+   L'écran Articles garde son propre formulaire : il combine la recherche avec
+   deux filtres (famille, statut) et ne se ramène pas à cette barre.
+
+   Usage :
+       {% import 'admin/_recherche.html.twig' as recherche %}
+       {{ recherche.barre('admin_fournisseur_index', 'Nom, téléphone…') }}
+#}
+
+{% macro barre(route, placeholder) %}
+    {% set terme = app.request.query.get('q') %}
+    {# Les autres paramètres de l'URL sont reconduits : chercher dans les pertes
+       d'un mois donné ne doit pas ramener au mois en cours. `page` est au
+       contraire volontairement abandonné — une nouvelle recherche repart de la
+       première page, sinon on atterrit sur une page qui n'existe plus dans le
+       résultat filtré, et le tableau paraît vide. #}
+    {% set conserves = app.request.query.all|filter((valeur, cle) => cle not in ['q', 'page'] and valeur is not iterable) %}
+
+    {# `role="search"` : repère sémantique, et c'est lui qui distingue ce
+       formulaire des actions du tableau. Là où une fiche ou un bouton d'action
+       doivent **sortir** du Turbo Frame (`data-turbo-frame="_top"`), la
+       recherche reste **dedans** — au même titre que la pagination : elle ne
+       redessine que le tableau. `TurboNavigationTest` fige les deux sens. #}
+    <form method="get" role="search" aria-label="Recherche dans le tableau"
+          class="mb-5 flex flex-wrap items-center gap-2">
+        {% for cle, valeur in conserves %}
+            <input type="hidden" name="{{ cle }}" value="{{ valeur }}">
+        {% endfor %}
+
+        <input type="search" name="q" value="{{ terme }}" placeholder="{{ placeholder }}"
+               class="w-64 max-w-full rounded-lg border border-stone-300 px-3 py-2 text-sm
+                      focus:outline-none focus:ring-2 focus:ring-stone-400">
+        <button class="rounded-lg bg-stone-700 px-4 py-2 text-sm font-medium text-white hover:bg-stone-600">
+            Rechercher
+        </button>
+
+        {# Le lien de réinitialisation n'apparaît que s'il y a quelque chose à
+           annuler, et il ne retire que la recherche : les autres filtres restent. #}
+        {% if terme %}
+            <a href="{{ path(route, conserves) }}" class="text-sm text-stone-500 underline hover:text-stone-800">
+                Réinitialiser
+            </a>
+        {% endif %}
+    </form>
+{% endmacro %}

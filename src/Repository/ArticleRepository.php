@@ -18,11 +18,26 @@ class ArticleRepository extends ServiceEntityRepository
     }
 
     /**
+     * Nombre d'articles actifs, compté en base.
+     *
+     * Le tableau de bord n'affiche que ce total : hydrater les entités pour les
+     * compter ensuite en PHP faisait travailler Doctrine pour rien.
+     */
+    public function compterActifs(): int
+    {
+        return (int) $this->createQueryBuilder('a')
+            ->select('COUNT(a.id)')
+            ->andWhere('a.actif = true')
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
+
+    /**
      * Recherche filtrée des articles (famille, texte, statut d'activation).
      *
-     * @return Article[]
+     * @return Pagination<Article>
      */
-    public function rechercher(?FamilleProduit $famille, ?string $recherche, ?bool $actif): array
+    public function rechercher(?FamilleProduit $famille, ?string $recherche, ?bool $actif, int $page = 1): Pagination
     {
         $qb = $this->createQueryBuilder('a')
             ->leftJoin('a.familleProduit', 'f')
@@ -41,14 +56,18 @@ class ArticleRepository extends ServiceEntityRepository
             $qb->andWhere('a.familleProduit = :famille')->setParameter('famille', $famille);
         }
 
-        if (null !== $recherche && '' !== trim($recherche)) {
-            $qb->andWhere('a.nom LIKE :recherche')->setParameter('recherche', '%'.trim($recherche).'%');
-        }
+        // Même mécanisme que les autres tableaux du back-office — c'est lui qui
+        // porte l'échappement des jokers SQL et le groupement des conditions.
+        Recherche::appliquer($qb, $recherche, 'a.nom');
 
         if (null !== $actif) {
             $qb->andWhere('a.actif = :actif')->setParameter('actif', $actif);
         }
 
-        return $qb->getQuery()->getResult();
+        // `fetchJoinCollection` : la requête joint `ft.lignes`, une collection.
+        // Sans lui, Doctrine compterait les lignes du produit cartésien — un
+        // article à cinq matières compterait pour cinq — et découperait la page
+        // au milieu d'une fiche technique.
+        return Pagination::depuis($qb, $page, fetchJoinCollection: true);
     }
 }

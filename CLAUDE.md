@@ -75,6 +75,42 @@ Ces conventions sont **impératives**. Toute contribution doit les respecter.
   DBAL (`src/Doctrine/DBAL/`) substitue une plateforme MariaDB corrigée : ne pas le
   retirer tant que le serveur reste en 10.4.
 
+### Amorçage — premier démarrage sur une base vierge
+
+L'œuf et la poule : `/admin/utilisateurs` exige d'être déjà gérant, et personne ne
+peut se connecter sans compte. `App\Controller\InstallationController` est la seule
+porte d'entrée.
+
+- `App\EventSubscriber\InstallationSubscriber` redirige **tout** vers
+  `/installation` tant que `UtilisateurRepository::aucunCompte()` est vrai. Sans
+  lui, une base vierge n'offrirait qu'un écran de connexion sur lequel aucun
+  identifiant ne marche : porte close, sans indication de la marche à suivre.
+- **Priorité 20** : après le routeur (32), qui renseigne `_route`, mais **avant le
+  pare-feu** (8). Sinon `/admin` partirait d'abord vers `/login`, et l'exploitant
+  ferait un détour par un écran de connexion inutilisable.
+- **La route se referme (404) dès qu'un compte existe** — `aucunCompte()`, pas
+  « aucune dirigeante » : c'est l'existence d'un compte qui compte, sinon un
+  caissier créé en console rouvrirait la porte. Elle est `PUBLIC_ACCESS` par
+  nécessité ; laissée ouverte, n'importe qui s'ouvrirait un accès dirigeante.
+  404 et non 403 : inutile d'annoncer qu'il existe ici un écran de création.
+- Le compte créé est **toujours `ROLE_DIRIGEANTE`**, sans choix possible :
+  installer une caisse sans personne au-dessus d'elle rendrait la dirigeante
+  incréable ensuite.
+- Passe par `CreationUtilisateur` comme partout ailleurs — unicité, hachage et
+  trace d'audit ne se réimplémentent pas pour le premier compte. L'auteur de
+  l'entrée d'audit est **nul** (personne n'était connecté), et c'est exact.
+- **Mot de passe saisi deux fois** (`RepeatedType`). C'est le seul du système :
+  une faute de frappe et l'installation est perdue, sans second compte pour la
+  rattraper. Ailleurs la confirmation ne se justifie pas, la dirigeante pouvant
+  réinitialiser n'importe quel mot de passe.
+- Pas de connexion automatique après création : mieux vaut vérifier le mot de
+  passe tout de suite, tant qu'on l'a en tête.
+- `exclusion` : le sous-abonné laisse passer `/_*` (profileur, barre de débogage)
+  et `/assets` — les intercepter casserait l'écran d'installation lui-même.
+
+`InstallationTest` fige les deux moitiés : tout mène à l'installation tant que la
+base est vide, et plus rien n'y mène ensuite.
+
 ### Sécurité et rôles
 
 - **Rôles** : `ROLE_DIRIGEANTE` > `ROLE_GERANT` > `ROLE_CAISSIER` (hiérarchie) ;
@@ -91,8 +127,48 @@ Ces conventions sont **impératives**. Toute contribution doit les respecter.
 - Chaque connexion / déconnexion / échec est tracé dans `JournalAudit` via
   `App\Service\AuditLogger` (`App\EventSubscriber\AuditConnexionSubscriber`) —
   voir « Journal d'audit inaltérable » plus bas.
-- Créer un compte : `php bin/console app:creer-utilisateur <email> <nom>
-  --role=GERANT --mot-de-passe=…` (ou `--role=CAISSIER --code-pin=1234`).
+- **Créer un compte** — deux chemins, un seul service :
+  - back-office `/admin/utilisateurs/nouveau` (bouton « + Nouvel utilisateur »),
+    ouvert au **gérant et à la dirigeante** (`Permission::UTILISATEUR_GERER`,
+    `UtilisateurVoter`) — gérer une équipe qui tourne en fait partie.
+    **Ce qui les sépare n'est pas la porte, c'est le rôle attribuable** :
+    `RoleUtilisateur::attribuablesPar()` ne propose au gérant que `GERANT` et
+    `CAISSIER`. `DIRIGEANTE` lui est refusé — il s'octroierait sinon les prix de
+    vente, le pilotage et l'audit en s'ouvrant un second compte — et `COMPTABLE`
+    aussi : ouvrir l'accès au cabinet extérieur relève du contrat, pas du magasin.
+    Le rôle interdit n'est **pas affiché** dans la liste déroulante, donc rejeté à
+    la soumission même en forgeant la requête — même technique que le prix de vente.
+  - console : `php bin/console app:creer-utilisateur <email> <nom> --role=GERANT
+    --mot-de-passe=…` (ou `--role=CAISSIER --code-pin=1234`).
+- **Modifier un compte** — `/admin/utilisateurs/{id}/modifier` (nom, e-mail, rôle,
+  réinitialisation du secret), même permission portant sur **le compte visé** : un
+  gérant ne modifie pas une dirigeante, il n'aurait qu'à changer son e-mail pour
+  s'emparer de son accès. Quatre règles, toutes dans `CreationUtilisateur::modifier()` :
+  - **Secret laissé vide = inchangé.** Corriger une faute de frappe dans un nom ne
+    doit pas réinitialiser un identifiant — personne ne reteste sa connexion après.
+  - **Changer de rôle exige le secret du nouveau rôle** si le compte ne l'a pas
+    déjà : promouvoir un caissier en gérant sans mot de passe l'enfermerait dehors.
+    Le refus tombe **avant** toute modification.
+  - **Le secret devenu sans objet est effacé.** `CaisseAuthenticator` accepte tout
+    compte actif porteur d'un code PIN : un caissier promu gérant qui garderait le
+    sien continuerait d'ouvrir la caisse au pavé numérique, sans que rien ne le
+    signale.
+  - **Le plafond de rôle vaut aussi en promotion** — sinon il suffirait de
+    promouvoir une dirigeante au lieu d'en créer une. Et **nul ne change son propre
+    rôle** : seul le rôle en place lui est proposé, un gérant qui se rétrograderait
+    perdrait `/admin` séance tenante. Même esprit que l'interdiction de se
+    désactiver soi-même.
+  - Le rôle **en place** figure toujours dans la liste, même hors de portée de
+    l'auteur : sans lui, le formulaire s'ouvrirait sur un choix vide et le simple
+    fait d'enregistrer rétrograderait le compte.
+  - Les deux passent par `App\Service\CreationUtilisateur`, qui porte l'unicité de
+    l'e-mail, l'**unicité du code PIN** (comparée hachage par hachage : deux
+    caissiers au même PIN seraient indistinguables à la connexion), le hachage et
+    la trace d'audit. **Ne pas réimplémenter la création ailleurs.**
+  - Le secret attendu suit le rôle : `CreerUtilisateurType` affiche les deux champs
+    et n'exige que celui du rôle choisi (`POST_SUBMIT`) ; le contrôleur Stimulus
+    `secret_role_controller.js` masque l'autre — confort d'affichage seulement, la
+    règle est tranchée côté serveur.
 
 ### Habilitations fines (Security Voters)
 
@@ -109,6 +185,10 @@ contrôleurs et gabarits testent une **permission**, jamais un rôle.
 | Modifier un prix de vente    | non      | **non**| **oui**    | non       |
 | Modifier un article          | non      | oui    | oui        | non       |
 | Annuler une vente encaissée  | non      | **oui**| oui        | non       |
+| Exporter la comptabilité     | non      | oui    | oui        | oui (L)   |
+| Gérer les comptes            | non      | oui    | oui        | non       |
+| Agir sur un compte dirigeante| non      | **non**| oui        | non       |
+| Attribuer le rôle dirigeante | non      | **non**| oui        | non       |
 
 (L) = lecture seule. Le comptable ne reçoit **aucune** permission d'écriture.
 
@@ -118,7 +198,20 @@ contrôleurs et gabarits testent une **permission**, jamais un rôle.
 - **`VenteVoter`** — `VENTE_VOIR` : un caissier n'accède qu'aux ventes de **ses**
   sessions de caisse, y compris via `/caisse/ticket/{uuid}` et sa sortie ESC/POS.
   `VENTE_ANNULER` : gérant et au-dessus.
-- **`DonneesGlobalesVoter`** — `VOIR_CA_GLOBAL`, `VOIR_TOUTES_VENTES` (sujet `null`).
+- **`UtilisateurVoter`** — `UTILISATEUR_GERER`. Sujet `null` : « puis-je gérer des
+  comptes ? » (l'écran, le bouton de création). Sujet `Utilisateur` : « puis-je
+  agir sur **ce** compte ? » — un gérant ne bascule pas une dirigeante, il
+  couperait l'établissement de son seul accès au pilotage et à l'audit. Le rôle
+  attribuable est plafonné à part, par `RoleUtilisateur::attribuablesPar()`.
+- **`DonneesGlobalesVoter`** — `VOIR_CA_GLOBAL`, `VOIR_TOUTES_VENTES` et
+  `EXPORTER_COMPTABILITE` (sujet `null`). Les trois partagent la **même audience** :
+  gérant, dirigeante et comptable ; le caissier est exclu. Le voter n'a donc plus
+  qu'une seule règle — les trois constantes subsistent parce que les points d'appel
+  expriment des intentions différentes, pas parce que l'arbitrage diffère.
+  > `EXPORTER_COMPTABILITE` a longtemps fait exception, le gérant en étant écarté
+  > (un export sort de l'application l'intégralité du CA, des charges et des écarts
+  > de caisse). **Cette restriction a été levée** : ne pas la réintroduire sans
+  > décision explicite.
 
 **Prix de vente** : le champ `prixVenteTtc` n'est **pas ajouté** au formulaire sans
 l'habilitation (`ArticleType`, option `modifier_prix`). Un champ absent ne peut pas
@@ -151,7 +244,12 @@ php bin/phpunit
 node --test "tests/js/*.test.js"
 
 # Serveur de développement (ou `symfony serve` si la CLI Symfony est installée)
-php -S localhost:8000 -t public/
+# Le dernier argument est le **script de routage** : sans lui, le serveur intégré
+# de PHP renvoie 404 sur tout fichier absent du disque — c'est-à-dire sur tout ce
+# qu'AssetMapper sert à la volée. La page s'affiche alors sans aucun style, et
+# rien n'indique pourquoi. Le piège reste invisible tant qu'un `public/assets/`
+# compilé traîne (voir le piège inverse plus bas).
+php -S localhost:8000 -t public/ public/index.php
 
 # Compiler les assets Tailwind
 php bin/console tailwind:build          # une fois
@@ -168,6 +266,127 @@ php bin/console doctrine:migrations:migrate
 ```
 
 **Commande de test : `php bin/phpunit`**
+
+### Performance du poste de développement
+
+Symptôme déjà rencontré : **chaque lien et chaque bouton mettait 5 à 20 secondes**.
+Le code n'y était pour rien — `php bin/console about`, qui ne fait qu'amorcer le
+noyau, prenait déjà 20 s. **Vérifier l'environnement avant de suspecter le code.**
+
+- **OPcache doit être activé** (`zend_extension=opcache` dans `C:\xampp\php\php.ini`).
+  Sans lui, PHP recompile les ~8 700 fichiers de `vendor/` à chaque requête.
+  Réglages importants : `opcache.enable_cli=1` (le serveur de développement et
+  `bin/console` utilisent le SAPI **CLI**), `opcache.max_accelerated_files=30000`
+  (10 000 par défaut ne suffit pas), `opcache.revalidate_freq=2` et
+  `opcache.file_cache` — ce dernier est le seul à survivre entre deux processus,
+  donc le seul à accélérer les commandes console.
+- **Un `stat` coûte ~2 ms sur ce poste** : deux antivirus temps réel tournent en
+  parallèle (Windows Defender **et** Reason Cybersecurity). Exclure
+  `C:\xampp\htdocs\zedpos` et `C:\xampp\php` du scan, et n'en garder qu'un.
+- Mesurer le noyau seul (`php bin/console about`) sépare d'emblée un problème
+  d'environnement d'un problème applicatif.
+
+**Requêtes** : les listes chargent leurs relations en **une seule requête**
+(`VenteRepository::recentes()`, `SessionCaisseRepository::recentes()`,
+`FicheTechniqueRepository::avecMatieres()`, `ArticleRepository::rechercher()`).
+Afficher `vente.sessionCaisse.utilisateur.nom` sur 100 lignes sans jointure
+anticipée produisait plus de 100 requêtes. Compter se fait en base
+(`compterActifs()`, `fetch: 'EXTRA_LAZY'` sur `FamilleProduit::$articles`), jamais
+en hydratant des entités pour les dénombrer ensuite en PHP.
+
+### Identité visuelle
+
+Habillage « boulangerie » : chaleureux, lisible en plein jour, sans dépendance
+réseau. **Deux palettes Tailwind natives, rien de personnalisé à maintenir :**
+
+- **`amber`** — l'accent. `amber-700` (#b45309) pour les actions et les états
+  actifs, `amber-500` pour le logo et les liserés, `amber-50` (#fffbeb) en fond
+  de page. C'est la couleur de la croûte.
+- **`stone`** — le neutre. **Chaud**, contrairement au `slate` bleuté par défaut
+  de Tailwind : c'est ce qui empêche l'interface de « refroidir ».
+  **Ne jamais réintroduire de `slate-*`** — le remplacer par `stone-*`.
+
+Jetons dans `assets/styles/app.css` (`@theme`) : `--font-titre` (serif système),
+`--color-creme`, `--color-croute`. La classe `.titre` applique le serif — réservée
+aux titres d'écran et aux montants mis en avant, **jamais aux tableaux de chiffres**,
+plus lisibles en sans-serif.
+
+> **Polices exclusivement système.** Aucune police distante : l'écran de caisse
+> doit rester lisible hors ligne, et une requête Google Fonts échouerait de toute
+> façon (hors périmètre du Service Worker).
+
+Déclinaisons par espace :
+
+| Espace | Traitement |
+|---|---|
+| `/admin` | Barre latérale brun profond, liseré ambre sur l'entrée active, fond crème, en-tête translucide |
+| `/pilotage` | En-tête en dégradé chaud, onglets en pastilles ambre, cartes à liseré dégradé |
+| `/caisse` | Ambre sur les états actifs (famille, mode) — en plein jour la sélection doit sauter aux yeux. Les **règlements portent la couleur de leur opérateur** ; le bouton **Encaisser** reste vert : convention forte en caisse |
+
+**Détail de l'écran de caisse** — il avait dérivé vers le monochrome (états actifs
+en gris `#f5f4f2`, fond quasi blanc) ; `CaisseTest::testLesEtatsActifsSontEnAmbre`
+interdit maintenant ce retour en arrière.
+
+- **Famille active** : pastille `amber-700` pleine, texte blanc. Un gris clair ne se
+  distingue pas derrière un comptoir en plein jour.
+- **Moyens de paiement — aux couleurs des réseaux.** Seul endroit de l'application
+  où la couleur ne nous appartient pas : la caissière reconnaît le bleu Wave ou le
+  jaune MTN avant d'avoir lu le libellé, ce qui supprime une hésitation par vente.
+
+  | Mode | Teinte | Encre | Contraste |
+  |---|---|---|---|
+  | Espèces (pas d'opérateur) | `#44403c` | blanc | 10,3:1 |
+  | Wave | `#1dc8ff` | `#073b4c` | 6,2:1 |
+  | Orange Money | `#ff7900` | `#3d1c00` | 5,9:1 |
+  | MTN MoMo | `#ffcc00` | `#3d3000` | 8,6:1 |
+  | Moov Money | `#0a4ea3` | blanc | 7,9:1 |
+
+  **Le blanc est exclu sur l'orange (2,6:1) et sur le jaune MTN** — d'où l'encre
+  foncée déclinée de chaque teinte, jamais du noir pur.
+  ⚠ Le bleu de Wave et de Moov est une **exception assumée** au « ni bleu ni
+  lavande » des touches produits : ce sont des logos, pas un choix esthétique. Ne
+  pas les « réchauffer ».
+  Au repos les cinq boutons restent blancs, la marque tenant dans une **pastille** :
+  cinq aplats saturés côte à côte se disputeraient l'écran et plus rien ne
+  ressortirait. **Le règlement retenu prend l'aplat plein** de sa couleur. La
+  bordure change de teinte mais **jamais d'épaisseur** — une bordure qui grossit
+  décale le texte au clic. Source unique : la variable `reglements` de
+  `caisse/index.html.twig`, d'où le CSS est engendré ; ces boutons ne sont pas
+  reconstruits depuis IndexedDB, contrairement aux touches produits.
+  `CaisseTest::testLesReglementsPortentLesCouleursDesReseaux` fige les cinq teintes.
+- **Touches produits** : palette **fermée de 8 teintes chaudes** (pain doré,
+  terracotta, framboise, olive, brique, blé, prune, sauge), texte foncé de la même
+  teinte — jamais de noir pur sur fond coloré. **Ni bleu ni lavande** : ils
+  refroidissaient l'écran et juraient avec l'ambre. Toutes à ≥ 5,35:1 (AA).
+  ⚠ Cette palette est **écrite deux fois** — dans `caisse/index.html.twig`
+  (variable `teintes`, premier affichage) et dans `ticket_controller.teinte()`
+  (rendu depuis IndexedDB). Sans quoi les produits changeraient de couleur au
+  rechargement, ou hors ligne. `testLesTeintesProduitsSontIdentiquesCoteTwigEtCoteJs`
+  échoue si les deux divergent.
+- **Photo de touche** (facultative, `Article::$image`). Quand elle existe, elle
+  occupe une bande de 80 px **au-dessus** du libellé ; sans elle, la touche est
+  inchangée. Le **libellé reste sur l'aplat de couleur, jamais sur la photo** :
+  posé dessus, son contraste dépendrait de l'image téléversée — donc de personne —
+  et l'écran doit rester lisible en plein jour. C'est ce qui permet de garder la
+  palette et ses rapports de contraste vérifiés.
+  ⚠ Ce balisage est lui aussi **écrit deux fois**, `caisse/index.html.twig` et
+  `ticket_controller.vignette()`, pour la même raison que la palette.
+  `testLaPhotoEstRendueALIdentiqueCoteTwigEtCoteJs` fige les deux.
+  Un fichier disparu **retire l'image** (`onerror="this.remove()"`) et la touche
+  retombe sur son aplat : une icône d'image cassée en pleine grille de caisse ne
+  rend service à personne.
+- **Encaisser** : `green-800` (#166534), blanc à 7,0:1. Vert et jamais ambre —
+  c'est le seul bouton qui engage l'argent, il ne doit se confondre avec aucun état
+  actif. Il était en `emerald-700` (5,48:1) ; depuis que les règlements portent les
+  couleurs des réseaux, l'emerald se noyait dans la rangée colorée juste au-dessus,
+  et un vert plus dense reprend le dessus. **Ne pas remonter vers `emerald-600`** :
+  le blanc n'y atteint que 3,77:1, illisible en plein jour.
+- **Total** : `.titre` (serif) en `amber-800`, le plus gros chiffre de l'écran —
+  c'est le montant que la caissière annonce à voix haute.
+
+**Exception : les tickets imprimés.** `templates/ticket/ticket.html.twig` et
+`templates/caisse/rapport.html.twig` restent en noir et blanc neutre — ils sortent
+sur une imprimante thermique 80 mm, la couleur n'y a aucun sens.
 
 ### Navigation Turbo (pas de rechargement de page)
 
@@ -215,6 +434,29 @@ Chart.js ne se télécharge que sur le tableau de bord de la dirigeante, pas sur
 l'écran de caisse. `public/.htaccess` met `/assets/` en cache un an (`immutable` —
 les noms sont condensés) et interdit la mise en cache de `sw.js`.
 
+> **Piège : un `public/assets/` compilé gèle le mode développement.**
+> Dès que `php bin/console asset-map:compile` a été lancé une fois, le répertoire
+> `public/assets/` et son `manifest.json` existent — et AssetMapper **sert ce build
+> figé même en dev**. `tailwind:build`, une nouvelle classe utilitaire dans un
+> gabarit, un contrôleur Stimulus modifié : plus rien n'atteint le navigateur.
+> Symfony le dit lui-même à la fin de `asset-map:compile` (« Symfony will not serve
+> any changed assets until you delete the files in the public/assets directory »),
+> mais l'avertissement défile et se rate facilement.
+>
+> Le symptôme est déroutant car il est **muet** : aucune erreur, aucun 404. Une
+> classe absente du CSS figé ne s'applique simplement pas. Cas réellement
+> rencontré : le bouton **Encaisser** passé en `bg-green-800`, rendu sans fond,
+> donc blanc sur blanc — bouton invisible.
+>
+> - **En développement : supprimer `public/assets/`.** C'est un artefact de build,
+>   gitignoré et régénérable ; AssetMapper reprend alors le service à la volée.
+> - **Sinon, recompiler après chaque modification de gabarit** :
+>   `php bin/console tailwind:build && php bin/console asset-map:compile`.
+>
+> Vérifier ce qui est réellement servi plutôt que ce qui est construit :
+> `public/assets/manifest.json` donne le nom condensé du fichier, et c'est **lui**
+> qu'il faut inspecter — pas `var/tailwind/app.built.css`.
+
 ### Back-office gérant (`/admin`)
 
 - Réservé à `ROLE_GERANT` (donc aussi la dirigeante par hiérarchie). Layout Twig +
@@ -222,6 +464,18 @@ les noms sont condensés) et interdit la mise en cache de `sw.js`.
 - CRUD : Familles, Articles (filtre famille + recherche + activation), Matières
   premières, Fournisseurs. Onglet « Fiche technique » sur l'article (ajout/retrait
   de matières premières) via **Turbo Frame** — aucune dépendance JS lourde.
+- **Accès à la fiche technique.** Une fiche ne se « crée » pas : elle naît quand on
+  ajoute sa première matière à un article (`obtenirFiche()`). Il n'y a donc aucun
+  bouton « nouvelle fiche », et l'écran Production ne fait que consulter.
+  L'accès se fait par le bouton **« Fiche technique »** de chaque ligne
+  d'`/admin/articles`.
+  > Il a manqué longtemps : la ligne n'offrait que « Désactiver » et « Modifier »,
+  > et le seul chemin était le **nom** de l'article — un lien qui ne se souligne
+  > qu'au survol, sur un écran où rien n'annonçait qu'on pouvait entrer.
+  > Les onglets étant en CSS pur (radios masqués + `peer-checked`), ils n'ont pas
+  > d'URL propre : `?onglet=fiche` sélectionne lequel s'ouvre, sans quoi tout lien
+  > venant d'ailleurs retomberait sur « Détails ». `AdminSmokeTest` fige le bouton,
+  > le paramètre et son défaut.
 - Formulaires stylés par un thème Tailwind : `templates/admin/_form_theme.html.twig`
   (il fait `{% use 'form_div_layout.html.twig' %}` pour pouvoir appeler `parent()`).
 - Montants saisis en FCFA / unités entières et convertis en centimes / millièmes
@@ -233,6 +487,156 @@ les noms sont condensés) et interdit la mise en cache de `sw.js`.
   Ces informations sont **strictement réservées à `ROLE_GERANT`** (jamais un caissier) :
   page sous `access_control ^/admin` + garde `is_granted('ROLE_GERANT')` dans le template.
 
+### Pagination — un seul mécanisme pour tout le projet
+
+**Toute liste non bornée est paginée.** `App\Repository\Pagination` porte le
+calcul, `templates/_pagination.html.twig` le rendu. Il y avait déjà deux
+implémentations voisines mais non identiques (ventes, audit) et deux contrôles
+recopiés : ajouter huit listes en aurait fait dix.
+
+```php
+// Dans le repository — c'est la base qui découpe, jamais PHP.
+return Pagination::depuis($qb, $page);                              // relations ToOne
+return Pagination::depuis($qb, $page, fetchJoinCollection: true);   // une collection est jointe
+```
+
+```twig
+{% import '_pagination.html.twig' as pagination %}
+{% for article in articles.items %}…{% endfor %}
+{{ pagination.barre(articles, 'admin_article_index') }}
+```
+
+- **`fetchJoinCollection: true` dès qu'une collection est jointe** (`ft.lignes`,
+  `a.ficheTechnique.lignes`). Sans lui, Doctrine compte les lignes du produit
+  cartésien : un article à cinq matières compte pour cinq, la dernière page est
+  fausse et le découpage tombe au milieu d'une fiche. À laisser à `false` sinon —
+  le comptage par sous-requête est nettement plus coûteux.
+- **Les filtres survivent au changement de page.** La macro repart de
+  `app.request.query.all` : famille, recherche, statut, mois, date sont conservés.
+  C'est le défaut le plus pénible d'une pagination écrite à la main, et le plus
+  facile à ne pas voir en développement, où l'on teste sans filtre.
+- **Une page au-delà de la fin rend une liste vide, pas une erreur** : un lien
+  périmé ou une suppression entre deux clics n'immobilise pas un écran de gestion.
+- **Fenêtre de largeur constante** (`fenetre()`) : les numéros ne se déplacent pas
+  sous le curseur au moment du clic, et une année d'audit ne produit pas une barre
+  plus longue que le tableau.
+- `Pagination::surTableau()` existe pour les agrégats déjà calculés en PHP, mais
+  **pas pour une table** : charger 10 000 lignes pour n'en afficher 25 est un
+  contresens.
+- **Une liste vide n'affiche pas de barre** (`{% if page.total > 0 %}`) : « 0–0 sur
+  0 » et des flèches inertes n'apprennent rien, le message « aucun élément » du
+  tableau suffit. Le décompte reste en revanche visible sur une page unique — il
+  dit *combien d'éléments existent*, pas seulement où l'on se trouve.
+
+> **Turbo Frames.** Les liens de page vivent **dans** le frame et n'ont donc
+> **pas** de `data-turbo-frame="_top"` — c'est tout l'intérêt : seul le tableau se
+> redessine. Ils font exception à la règle des liens de détail, qui eux doivent en
+> sortir. `TurboNavigationTest` fige les deux sens :
+> `testLesActionsDuTableauDeStockSortentDuFrame` (les actions sortent) et
+> `testLesLiensDePaginationRestentDansLeFrame` (la navigation reste).
+
+**Listes paginées** : articles, ventes, stock, familles, fournisseurs, production,
+clôtures, détail des pertes, utilisateurs, inventaires, plus `/pilotage/ventes` et
+`/pilotage/audit`.
+
+### Recherche — un seul mécanisme, comme la pagination
+
+**Tous les tableaux du back-office se cherchent**, par le paramètre `q`.
+`App\Repository\Recherche` porte la requête, `templates/admin/_recherche.html.twig`
+le rendu. Neuf listes à équiper, c'était neuf occasions d'oublier l'échappement.
+
+```php
+// Dans le repository — le terme peut être null, la garde est dans le helper.
+Recherche::appliquer($qb, $recherche, 'u.nom', 'u.email');
+```
+
+```twig
+{% import 'admin/_recherche.html.twig' as recherche %}
+{{ recherche.barre('admin_utilisateurs', 'Nom, e-mail ou rôle') }}
+```
+
+| Tableau | Cherché sur |
+|---|---|
+| Articles | nom (avec les filtres famille et statut, formulaire propre à l'écran) |
+| Familles | nom |
+| Fournisseurs | nom, téléphone, e-mail |
+| Stock | matière, unité, **nom du fournisseur** |
+| Ventes | **numéro de ticket**, nom de la caissière |
+| Production | produit, **matière de la fiche** |
+| Clôtures | nom de la caissière |
+| Utilisateurs | nom, e-mail, rôle (valeur brute : `caissier` retombe sur `ROLE_CAISSIER`) |
+| Pertes | matière, article |
+| Inventaires | auteur, valideur, commentaire |
+
+- **`%` et `_` sont échappés** (`addcslashes`). C'est le défaut classique d'un
+  `LIKE` écrit à la main, et il est **muet** : chercher « 100% » ramène la table
+  entière au lieu de rien, le tableau se remplit et personne ne s'en aperçoit.
+- **Les conditions `OR` sont parenthésées.** Sans cela, le `OR` se lie au reste de
+  la requête et une recherche fait ressortir des lignes exclues par les autres
+  filtres — un mois, une période, un statut.
+- **La barre reconduit les autres paramètres** de l'URL en champs cachés, mais
+  **abandonne `page`** : une nouvelle recherche repart de la première page, sinon
+  on atterrit sur une page qui n'existe plus dans le résultat filtré et le tableau
+  paraît vide.
+- **Une recherche vide ne filtre rien** : `normaliser()` ramène `null`, la requête
+  ressort inchangée. Un champ effacé ne doit pas vider l'écran.
+- La recherche des ventes rend enfin exploitable le **code-barres du ticket** :
+  un lecteur USB se comporte comme un clavier, il saisit le numéro dans ce champ
+  et la vente sort. C'était l'écart signalé plus bas — le code était scannable
+  mais sans consommateur.
+
+> **Turbo Frames.** Comme la pagination, le formulaire de recherche vit **dans**
+> le frame et ne porte donc **pas** `data-turbo-frame="_top"` : filtrer ne
+> redessine que le tableau. Il se distingue des actions par `role="search"`, sur
+> lequel `TurboNavigationTest` s'appuie pour figer les deux sens
+> (`testLeFormulaireDeRechercheResteDansLeFrame`).
+
+> Le **commentaire d'une perte n'est pas cherchable** : `Perte` ne le stocke pas,
+> `PerteService` le concatène au motif du `MouvementStock` (« Casse — panne du
+> frigo »). Il faudrait un champ sur l'entité pour pouvoir y revenir.
+
+**Volontairement non paginés** : le top 10 du tableau de bord, le top 5 des pertes,
+la ventilation par motif et le rapport Z d'une session. Ces tableaux sont **bornés
+par construction** — paginer un top 10 n'a pas de sens.
+
+### Photos des touches produits
+
+`Article::$image` porte le **nom du fichier**, jamais un chemin ni une URL :
+déplacer le stockage ne doit pas obliger à réécrire la table. Le chemin public se
+compose dans `App\Service\ImageArticle::chemin()`, exposé aux gabarits par la
+fonction Twig `image_article()`.
+
+- **Stockage** : `public/uploads/articles/`, servi en statique par le serveur web
+  — la grille de caisse charge une image par touche, il n'y a pas de raison
+  d'amorcer le noyau pour chacune. Répertoire **gitignoré** : c'est du contenu
+  d'exploitation, il accompagne la base, pas le dépôt.
+- **Réduction à l'enregistrement**, grand côté ramené à 400 px (`ImageArticle`,
+  GD). Une photo prise au téléphone fait 4 000 px pour une touche qui en occupe
+  92 : servie telle quelle elle chargerait la tablette du comptoir, et surtout
+  elle gonflerait le cache du Service Worker — dont dépend la caisse hors ligne.
+  L'alpha est préservé (`imagealphablending` / `imagesavealpha`), sans quoi un
+  PNG transparent ressortirait sur du noir.
+- **Nom de fichier tiré au sort** à chaque téléversement. Ce n'est pas un détail :
+  remplacer une photo **change son URL**, ce qui autorise le « cache d'abord » du
+  Service Worker et le `Cache-Control: immutable` du `.htaccess`. Une adresse
+  donnée désigne toujours la même image.
+- **Le disque ne garde pas d'orphelin** : l'ancien fichier est effacé au
+  remplacement, au retrait explicite (case « Retirer la photo ») et à la
+  suppression de l'article. L'ancienne n'est retirée qu'**après** l'écriture de
+  la nouvelle : en cas d'échec, l'article garde la photo qu'il avait.
+- Le champ `imageFichier` est **non mappé** : l'entité ne connaît qu'un nom, le
+  dépôt sur disque appartient au service. Formats acceptés : JPEG, PNG, WebP, 5 Mo.
+- **Hors ligne** : `public/sw.js` met `/uploads/` en cache « cache d'abord »,
+  comme `/assets/`. Sans cette règle, la grille perdrait ses photos dès la coupure
+  alors que tout le reste continuerait de fonctionner.
+- En **test**, le service pointe vers `%kernel.cache_dir%/images-articles`
+  (`when@test` dans `services.yaml`) : les tests écrivent de vrais fichiers, ils
+  n'ont rien à faire dans les images de la boutique.
+
+Le catalogue `/caisse/catalogue.json` expose la clé `image` (chemin public ou
+`null`) — `FuiteDonneesCaisseTest` fige la liste blanche, l'y ajouter était donc
+une décision, pas un effet de bord.
+
 ### Interface de caisse tactile (`/caisse`)
 
 - Plein écran, sans navigation, réservée à `ROLE_CAISSIER`. 3 colonnes : familles +
@@ -241,12 +645,32 @@ les noms sont condensés) et interdit la mise en cache de `sw.js`.
 - Deux modes commutables : **BOULANGERIE** (un appui = +1 unité, aucune étape) et
   **FASTFOOD** (un appui ouvre un panneau variantes + commentaire libre avant ajout).
 - Tout l'état du ticket vit **côté client** dans le contrôleur Stimulus
-  `assets/controllers/caisse_controller.js` : aucun rechargement pendant la commande,
+  `assets/controllers/ticket_controller.js` : aucun rechargement pendant la commande,
   ajout d'article instantané. Seul l'**encaissement** appelle le serveur
   (`POST /api/vente`, JSON, idempotent) qui **recalcule tous les prix côté serveur**
   (jamais de confiance au client), crée la Vente/lignes/règlement dans la session
   de caisse **ouverte** du caissier, et renvoie le numéro de ticket. La vente est
   d'abord écrite en IndexedDB — voir « Caisse hors ligne ».
+- **Montant reçu et rendu de monnaie** (espèces uniquement). La caissière saisit ce
+  que le client lui tend ; l'écran affiche aussitôt la monnaie — ou, en rouge, ce
+  qui **manque** encore, et `Encaisser` reste alors bloqué. Quatre coupures sont
+  proposées d'un appui (le compte juste, puis le total arrondi aux coupures
+  supérieures : `suggestionsEspeces()`) — taper « 2 000 » chiffre par chiffre
+  pendant la file du matin coûte plus cher que le calcul.
+  - Le champ est **facultatif** : laissé vide il vaut compte juste, et
+    l'encaissement garde sa vitesse d'un seul appui. C'est la contrainte de la
+    boulangerie rapide, elle ne se négocie pas contre un champ à remplir.
+  - Le calcul se fait **à l'écran, sans réseau** (`renduMonnaie()` / `manquant()`
+    dans `assets/caisse/calculs.js`) : c'est le geste immédiatement suivant, et
+    hors ligne la réponse du serveur n'arriverait qu'au retour du réseau — d'où
+    aussi le rappel de la monnaie dans le message de repli hors ligne.
+  - Le règlement transmis est **la somme tendue**, pas le total : `EncaissementService`
+    en déduit le rendu (excédent, espèces seulement — un paiement électronique ne
+    peut pas dépasser le total), et le Z retranche ce rendu pour retrouver les
+    espèces réellement en tiroir. L'écran ne fait donc foi pour personne.
+  - Restitution : ligne **Rendu** sur le ticket 80 mm et en ESC/POS (mise en avant
+    comme le total, `.ticket .rendu`), plus un rappel en grand au-dessus du reçu
+    affiché après encaissement.
 - « Mise en attente » : tickets mémorisés côté client, repris en un appui.
 - L'écran exige une **session de caisse ouverte** : sans elle, `/caisse` redirige vers
   `/caisse/session/ouverture`. La barre supérieure donne accès à Dépense, Ticket X et
@@ -362,17 +786,59 @@ une **nouvelle** session. Couverture : `tests/Functional/SessionCaisseTest.php`.
 
 ### Espace de pilotage (`/pilotage`)
 
-Réservé à `ROLE_DIRIGEANTE` et **pensé mobile-first** : elle le consulte depuis son
-téléphone à Abidjan. Une seule colonne, en-tête collant, onglets défilables, aucun
-tableau large — les listes sont des cartes empilées. **Lecture seule.**
+Réservé à `ROLE_DIRIGEANTE`. **Lecture seule.**
+
+**Mobile-first, puis large.** La dirigeante consulte cet écran depuis son téléphone
+à Abidjan : la mise en page de base reste **une colonne**, en-tête collant, onglets
+défilables, aucun tableau large — les listes sont des cartes empilées. À partir de
+`lg`, le cadre s'élargit (`max-w-3xl lg:max-w-7xl`) et le tableau de bord se
+déplie en **grille à trois colonnes**, pour ne pas laisser deux bandes vides sur un
+ordinateur. **L'ordre de lecture ne change pas** : ce qui vient en premier sur
+téléphone reste en haut à gauche sur grand écran.
+
+La largeur passe par le bloc Twig `pilotage_largeur` (`pilotage/base.html.twig`) :
+une page qui gagnerait à rester étroite le redéfinit sans toucher au cadre.
 
 - **Écran principal** `/pilotage` (`?jour=AAAA-MM-JJ` pour rejouer une journée) :
   CA du jour en très gros, comparé à **la veille** et au **même jour de la semaine
-  précédente** (pastille verte/rouge, % signé) ; tickets et panier moyen ; ventilation
-  par mode de règlement avec barres de proportion ; **points de vigilance**
-  (annulations, remises, écart de caisse, ruptures de stock, pertes valorisées) —
-  le bloc vire à l'ambre dès qu'il y a quelque chose à signaler ; **top 10** des
-  produits ; **courbe du CA sur 30 jours** (Chart.js).
+  précédente** (pastille verte/rouge, % signé) ; tickets et panier moyen ;
+  **ventes par caissière** ; ventilation par mode de règlement avec barres de
+  proportion ; **points de vigilance** (annulations, remises, écart de caisse,
+  ruptures de stock, pertes valorisées) — le bloc vire à l'ambre dès qu'il y a
+  quelque chose à signaler ; **top 10** des produits ; **courbe du CA sur 30 jours**
+  (Chart.js). Sélecteur de journée **auto-soumis** (`soumission_auto_controller.js`,
+  `requestSubmit()` et jamais `submit()`) plus trois raccourcis.
+
+**Ventes par caissière.** `SyntheseJourneeService::parCaissiere()` produit, par
+caissière ayant encaissé : tickets, CA, panier moyen, **part du CA en points de
+base**, remises, annulations, écart de caisse et état de la session. Affiché en
+barres horizontales (`graphique_caissieres_controller.js`) puis en liste détaillée,
+et repris dans le rapport texte.
+
+> **Quatre requêtes, pas une.** Ventes validées, annulations et sessions de caisse
+> ne se comptent pas sur les mêmes lignes : une jointure unique les multiplierait
+> entre elles, et une caissière ayant tenu **deux sessions dans la journée** verrait
+> son chiffre doublé. `testDeuxSessionsPourUneMemeCaissiereNeDoublentPasSonChiffre`
+> fige le cas.
+
+Une caissière **sans vente n'apparaît pas** : la liste répond à « qui a vendu quoi »,
+pas « qui était de service ». Son `ecart` reste **null** tant que sa caisse n'est pas
+clôturée, même convention que pour la journée entière.
+
+**Téléchargements** (liens `data-turbo="false"` — sinon Turbo attend du HTML et le
+fichier ne descend pas) :
+
+| Route | Fichier | Usage |
+|---|---|---|
+| `/pilotage/rapport.txt` | synthèse du jour en texte | à transmettre par WhatsApp |
+| `/pilotage/rapport.csv` | une ligne par ticket | à trier dans un tableur |
+
+Le `.txt` réutilise `RapportQuotidienTexte` : ce que la dirigeante télécharge et ce
+que le cron envoie le soir sont le **même** message, au caractère près. Le `.csv`
+(`RapportVentesCsv`) **inclut les ventes annulées**, avec statut et motif — c'est ce
+qu'on vient y vérifier — mais les exclut de la ligne de total.
+Ne pas confondre avec `/comptabilite` : ici on trie à la main, là-bas on transmet
+des écritures équilibrées au cabinet.
 - **Tickets** `/pilotage/ventes?jour=…` (paginé, 30/page) et détail
   `/pilotage/ventes/{uuid}` : lignes, règlements, remise, motif d'annulation et
   **nom du caissier**.
@@ -406,6 +872,110 @@ Planification à 21h30, après la clôture des caisses :
   | mail -s "ZedPOS - rapport du jour" dirigeante@exemple.ci
 ```
 
+### Espace comptable — exports SYSCOHADA (`/comptabilite`)
+
+Traduit l'activité d'une période en **écritures du SYSCOHADA révisé** (le plan
+comptable OHADA applicable en Côte d'Ivoire), pour transmission au cabinet.
+**Lecture seule** : aucune route d'écriture, et il ne doit jamais en être ajoutée
+— la comptabilité lit ce que la caisse a produit, elle ne le corrige pas.
+
+Accès : `ROLE_COMPTABLE`, `ROLE_GERANT` et `ROLE_DIRIGEANTE` (qui hérite du gérant)
+— permission `Permission::EXPORTER_COMPTABILITE` (`DonneesGlobalesVoter`), écran
+**et** téléchargements. Le caissier reste exclu.
+
+Le gérant l'atteint par l'entrée **Comptabilité** de la barre latérale du
+back-office ; l'en-tête de `/comptabilite` lui rend le chemin inverse
+(« Back-office »), affiché sur `is_granted('ROLE_GERANT')` — on y reproduit le
+pare-feu `^/admin`, pas une décision métier, et le comptable ne voit donc pas un
+lien qui ne lui rendrait qu'un 403.
+
+> Le gérant en a longtemps été **exclu** : un export sort de l'application
+> l'intégralité du chiffre d'affaires, des charges et des écarts de caisse, et il
+> lisait les chiffres à l'écran sans emporter les comptes. **Restriction levée** —
+> ne pas la rétablir sans décision explicite.
+
+**Trois journaux.**
+
+| Journal | Contenu | Pièce |
+|---|---|---|
+| `VE` | Ventes, **centralisées par rapport Z** : une écriture par session de caisse et par journée | `Z{id session}` |
+| `CA` | Dépenses réglées en espèces, sorties de fonds, écarts constatés au Z | `CA{id}` / `Z{id}` |
+| `OD` | Pertes de stock valorisées | `PE{id}` |
+
+Le journal des ventes ne reprend **pas** les tickets un par un : un mois de
+boulangerie en compte plusieurs milliers, aucun cabinet ne les saisirait. La pièce
+justificative est le rapport Z, le document papier qui reste au classeur.
+
+**Correspondances principales** — toutes dans `App\Comptabilite\PlanComptable`,
+seul endroit où un numéro de compte est écrit. Ne pas en coder ailleurs.
+
+- Ventes : `7021` produits finis (article **doté d'une fiche technique**, donc
+  fabriqué sur place), `7011` marchandises (revendu en l'état). Une famille peut
+  imposer son compte (`FamilleProduit::$compteVente`, back-office → Familles).
+- Remise : `7019` RRR accordés, **au débit** — un rabais diminue un produit, il ne
+  s'impute pas en charge. TVA collectée : `4431`.
+- Trésorerie : `5711` caisse, `5521`–`5524` monnaie électronique (Wave, Orange,
+  MTN, Moov — compte 55 du SYSCOHADA révisé), `4111` clients pour le crédit.
+- Dépenses : `6021` approvisionnement, `612` transport, `624` entretien, `605`
+  eau/électricité, `6056` petit équipement, `6588` divers, `585` sortie de caisse.
+  L'**avance au personnel va en `4211`** : c'est une créance sur le salarié, pas
+  une charge.
+- Écart de caisse : `6588` si manquant, `7588` si excédent.
+- Pertes : débit `6032`/`6031`/`736` (variation de stocks), crédit `321`/`311`/`361`.
+
+**Équilibre garanti par construction.** `EcritureComptable` refuse une écriture
+déséquilibrée **à la construction**, pas à l'export : mieux vaut échouer là où
+l'erreur est commise que là où elle est constatée (à la réception, chez le
+comptable). Les montants d'une écriture sont pris dans les colonnes de la vente
+(`total_ttc`, `total_tva`, `total_ht`, `remise`), qui font foi ; les lignes ne
+servent qu'à **ventiler** entre comptes de produits. Un taux de TVA modifié sur un
+article après coup peut donc décaler la ventilation, jamais les totaux.
+Les ventes **annulées sont exclues**, comme partout ailleurs.
+
+**Contrôles.** L'écran présente cinq rapprochements entre l'application et les
+écritures (CA TTC, TVA collectée, espèces nettes du rendu, mouvements de caisse,
+écarts de caisse) plus l'équilibre débit/crédit. Ils passent par construction —
+c'est l'intérêt : un contrôle qui casse signale une régression, et le comptable a
+sous les yeux la vérification qu'il aurait faite lui-même.
+
+**Trois formats** (`App\Comptabilite\FormatExport`) :
+
+| Format | Fichier | Usage |
+|---|---|---|
+| Écritures | CSV `;` + BOM UTF-8 | se relit et se corrige dans un tableur |
+| FEC | 18 colonnes tabulées | s'importe dans le logiciel du cabinet |
+| Balance | CSV `;` + BOM UTF-8 | se contrôle d'un coup d'œil, contrôles en pied |
+
+Le BOM n'est pas décoratif : sans lui Excel sous Windows lit le CSV en ANSI et
+massacre les accents. Le FEC n'a **aucun mécanisme d'échappement** — tabulations et
+retours à la ligne sont remplacés par une espace dans les libellés, sinon toutes
+les colonnes suivantes se décalent. Les colonnes non renseignées (lettrage, devise)
+restent **présentes et vides** : les retirer ferait échouer l'import.
+
+`GenerateurEcrituresSyscohada` calcule, `ExportComptable` met en fichier, ni l'un
+ni l'autre ne fait le travail de l'autre. L'écran et les trois formats consomment
+le **même** `JeuEcritures` : les chiffres affichés et les chiffres exportés ne
+peuvent pas diverger.
+
+> **Piège Turbo** : les liens de téléchargement portent `data-turbo="false"`.
+> Turbo intercepte les clics et attend une page HTML ; sans cet attribut le
+> fichier ne se télécharge pas et la navigation échoue en silence.
+
+```bash
+php bin/console app:export-comptable --mois=2026-06 --format=fec -o juin.txt
+php bin/console app:export-comptable --du=2026-06-01 --au=2026-06-30
+php bin/console app:export-comptable --format=balance     # mois en cours, stdout
+```
+
+La commande **échoue (code 1)** si un contrôle n'est pas conforme : un fichier ne
+doit pas partir au cabinet sans que les rapprochements soient justes. Envoi
+automatique le 1er du mois, pour le mois écoulé :
+
+```cron
+0 7 1 * * cd /var/www/zedpos && php bin/console app:export-comptable \
+  --mois=$(date -d 'last month' +\%Y-\%m) --format=fec -o /tmp/zedpos.txt
+```
+
 ### Journal d'audit inaltérable (`/pilotage/audit`)
 
 - **Service unique** `App\Service\AuditLogger` : toute écriture passe par lui. Il
@@ -417,15 +987,22 @@ Planification à 21h30, après la clôture des caisses :
 - **Actions tracées** (`App\Enum\ActionAudit`) : `CONNEXION`, `DECONNEXION`,
   `ECHEC_CONNEXION`, `VENTE_ANNULEE`, `REMISE_ACCORDEE`, `PRIX_MODIFIE`,
   `PERTE_SAISIE`, `INVENTAIRE_VALIDE`, `CAISSE_CLOTUREE`, `ECART_CAISSE`,
-  `UTILISATEUR_CREE`, `UTILISATEUR_ACTIVE`, `UTILISATEUR_DESACTIVE`.
+  `UTILISATEUR_CREE`, `UTILISATEUR_MODIFIE`, `UTILISATEUR_ACTIVE`,
+  `UTILISATEUR_DESACTIVE`.
   Une clôture avec écart produit **deux** entrées (clôture + écart), pour filtrer
   les écarts seuls.
+  `UTILISATEUR_MODIFIE` est **sensible** (surligné) : un rôle changé ou un
+  identifiant réinitialisé redistribue un accès. Le secret lui-même n'y figure
+  **jamais**, pas même haché — seul `secret_remplace: true` l'est. Un journal
+  d'audit se consulte, il ne doit pas devenir un second endroit où traînent des
+  identifiants.
 - **Points d'appel** : `EncaissementService` (annulation, remise > 0),
   `Admin\ArticleController::edit` (uniquement si le prix change réellement),
   `PerteService`, `SessionCaisseService::cloturer`, `CreerUtilisateurCommand`,
+  `CreationUtilisateur` (création et modification),
+  `InventaireService::valider()` (une entrée par ligne corrigée),
   `Admin\DashboardController::basculerUtilisateur`, `AuditConnexionSubscriber`.
-  `AuditLogger::inventaireValide()` est prêt mais **non appelé** : il n'existe pas
-  encore de module d'inventaire dans l'application.
+  `InventaireService::valider()` (un écart par ligne corrigée).
 - **Inaltérabilité** — trois barrières : aucun setter sur `JournalAudit` ; aucune
   route d'écriture (`/pilotage/audit` est **GET seulement**, et il ne doit jamais en
   être ajouté) ; `App\EventListener\JournalAuditImmuableListener` rejette tout
@@ -438,6 +1015,54 @@ Planification à 21h30, après la clôture des caisses :
 - **Activation / désactivation de compte** : `POST /admin/utilisateurs/{id}/basculer`,
   réservée à `ROLE_DIRIGEANTE` (couper un accès n'est pas de la gestion courante) ;
   impossible sur son propre compte.
+
+### Inventaire (`/admin/inventaires`)
+
+**Le seul chemin par lequel un stock se corrige.** Modifier `stockActuel` à la main
+ne créait ni mouvement ni trace d'audit : l'historique divergeait du stock affiché
+sans que rien ne le signale. Le champ a donc **disparu du formulaire de
+modification** d'une matière (`MatierePremiereType`, option `stock_initial`, vrai à
+la création seulement) — absent, donc non soumettable même en forgeant la requête.
+
+Entités `Inventaire` + `LigneInventaire`, service `App\Service\InventaireService`.
+
+- **Ouverture** — la feuille fige l'état théorique de **tout ce qui est suivi en
+  stock** : matières premières *et* articles `suiviStock` (une boisson revendue
+  telle quelle dérive autant qu'un sac de farine). Sont figés aussi le **libellé**,
+  l'**unité** et le **coût unitaire** : une feuille est un document daté, elle doit
+  rester lisible telle qu'imprimée même si l'article est renommé, et l'écart
+  valorisé ne doit pas changer parce que le coût moyen a bougé depuis.
+- **Une seule feuille ouverte à la fois** (`InventaireRepository::enCours()`) : deux
+  figeraient le même théorique et la seconde validation écraserait la première.
+- **Feuille imprimable** `/admin/inventaires/{id}/feuille` : A4, noir et blanc, une
+  case vide par ligne. **Le théorique n'y figure pas** — lire « 42 » avant de
+  compter suffit à en trouver 42. C'est le seul écran du back-office qui cache
+  volontairement une donnée qu'il possède.
+- **Saisie** en unités, convertie en millièmes. Une case **vide** vaut « non
+  comptée », un **zéro** vaut « il n'en reste aucun » : à la validation, les lignes
+  non comptées sont **ignorées**. Une feuille rendue à moitié remplie ne doit pas
+  mettre à zéro ce qu'on n'a pas eu le temps de relever.
+- **Validation** — `Inventaire::valider()` porte les règles indépendantes de
+  l'appelant et lève **avant toute écriture** : rien n'est appliqué si la feuille
+  est refusée. **Commentaire obligatoire dès qu'un écart est constaté**, même règle
+  que la clôture de caisse. Chaque écart produit alors un `MouvementStock`
+  **INVENTAIRE** (quantité signée, `source = inventaire`) et une entrée
+  `INVENTAIRE_VALIDE` au journal d'audit — une par ligne corrigée, parce que le
+  journal se lit pour retrouver ce qui est arrivé à *un* produit.
+- **Immuabilité** : `Inventaire::garantirEnCours()`, appelée par
+  `LigneInventaire::compter()`, `ajouterLigne()`, `valider()` et `abandonner()`.
+  Une feuille validée a produit des écritures de stock ; y revenir les rendrait
+  fausses. Même barrière que `SessionCaisse::garantirOuverte()`, applicative elle
+  aussi (elle ne couvre pas un UPDATE SQL direct).
+
+> **L'écart est appliqué en delta, jamais en écrasant `stockActuel` avec la
+> quantité comptée.** Entre le comptage en réserve et la validation à l'écran, des
+> ventes ont pu déstocker : poser la quantité comptée telle quelle les effacerait.
+> Le comptage constate un écart à un instant donné, c'est cet écart qu'on reporte.
+> `testLesVentesEntreLeComptageEtLaValidationNeSontPasEffacees` fige le cas.
+
+**Abandon** : une feuille non validée se supprime (`orphanRemoval` sur les lignes).
+Aucune écriture de stock n'a eu lieu, il n'y a rien à défaire.
 
 ### Module Pertes et alertes de seuil
 
@@ -475,8 +1100,8 @@ Planification à 21h30, après la clôture des caisses :
 - **Vue HTML 80 mm** imprimable via `window.print()` (CSS `@media print`, `@page size: 80mm`) :
   `GET /caisse/ticket/{uuid}` → `templates/ticket/ticket.html.twig`. En-tête (raison
   sociale, adresse Abengourou, NCC, n° ticket, date/heure, caissier), lignes, total,
-  ventilation TVA, règlement(s), rendu, **pied paramétrable** et **emplacement réservé
-  au futur QR code RNE/DGI**.
+  ventilation TVA, règlement(s), rendu, **pied paramétrable** et **code-barres du
+  numéro de ticket**.
 - Infos boutique **paramétrables via `.env`** (`TICKET_RAISON_SOCIALE`, `TICKET_ADRESSE`,
   `TICKET_NCC`, `TICKET_TELEPHONE`, `TICKET_PIED`) → service `App\Service\ParametresTicket`.
 - `App\Service\TicketBuilder` construit un `TicketData` (indépendant du support) partagé
@@ -486,11 +1111,86 @@ Planification à 21h30, après la clôture des caisses :
 - **Impression automatique** après encaissement via un iframe caché (`?auto=1`), avec
   la case **« Imprimer le ticket »** (décochable) dans l'écran de caisse.
 
+**Code-barres du numéro de ticket.** Le numéro (`Vaammjj-00001`) est imprimé en
+**Code 128, jeu B** : on retrouve une vente en la scannant plutôt qu'en la
+cherchant. `App\Service\CodeBarres128` encode, `App\Service\CodeBarres` porte la
+géométrie obtenue (barres en modules).
+
+- **Jeu B** parce qu'il couvre l'ASCII imprimable, et qu'un numéro mêle lettres,
+  chiffres et tiret. Le jeu C serait deux fois plus compact sur les chiffres au
+  prix d'un changement de jeu en cours de chaîne — invisible sur 80 mm de papier.
+- **Écrit à la main, sans dépendance** : la spécification tient en une table de
+  motifs et une somme de contrôle, et elle ne bouge pas. Une bibliothèque
+  n'aurait servi qu'au rendu HTML — côté thermique, c'est le firmware qui dessine.
+- **Deux chemins, deux techniques, la même chaîne** :
+  - HTML : un **SVG vectoriel** (`_contenu.html.twig`). Pas des `<div>` en pixels —
+    le navigateur les arrondirait au sous-pixel et deux barres voisines finiraient
+    par se toucher. Le noir vient de `fill`, pas d'un fond : une barre SVG est du
+    contenu, elle s'imprime donc sans dépendre du réglage « imprimer les
+    arrière-plans », désactivé par défaut, qui effacerait le code.
+  - ESC/POS : la commande native `GS k 73` avec le préfixe `{B`. On envoie **la
+    chaîne, pas une image** : le firmware trace à la résolution de la tête. Une
+    trame calculée en PHP serait rééchantillonnée et des barres d'un point se
+    confondraient.
+- **Zones de silence de 10 modules** incluses dans le symbole. C'est l'oubli
+  classique : sans elles un lecteur ne trouve pas le départ du code, et rien ne
+  paraît anormal à l'impression.
+- Le numéro est **répété en clair sous le code** : si le lecteur refuse, la
+  caissière le lit et le saisit.
+- Un numéro non encodable (import, format futur) donne un ticket **sans**
+  code-barres plutôt qu'une impression qui échoue — la caisse ne doit pas se
+  bloquer sur un ornement.
+- `CodeBarres128Test` déroule à la main l'encodage de « A » depuis la table
+  normative : un code-barres faux s'imprime proprement et c'est le lecteur, au
+  comptoir, qui refuse — les invariants de forme seuls ne suffisent pas.
+
+> Ce code-barres **ne vaut pas facture normalisée**. Il encode un numéro interne,
+> pas une signature fiscale : l'écart n° 4 (RNE / DGI) reste entier.
+
+> **Il a désormais un consommateur** : la recherche de `/admin/ventes` porte sur
+> `v.numero`. Un lecteur USB se comporte comme un clavier — il saisit le numéro
+> dans la barre de recherche et la vente sort. Le code était scannable mais sans
+> emploi ; il ne l'est plus.
+>
+> `/pilotage/ventes` n'a en revanche **pas** de champ de recherche : la dirigeante
+> y filtre par date, elle n'a pas de ticket en main à scanner.
+
+**Un seul format, deux supports.** Le ticket a **deux sources de vérité uniques**,
+à ne jamais recopier :
+
+| Fichier | Rôle |
+|---|---|
+| `templates/ticket/_contenu.html.twig` | le **balisage** du ticket 80 mm |
+| `templates/ticket/_styles.html.twig` | le **style** du ticket 80 mm |
+
+Tous deux sont inclus par `ticket/ticket.html.twig` (page imprimable) **et** par
+`caisse/index.html.twig` (reçu affiché après encaissement). Ce que la caissière voit
+à l'écran et ce qu'elle tend au client ne peuvent donc pas diverger.
+
+Les règles sont portées par `.ticket`, la racine du fragment : elles s'appliquent
+telles quelles, que le fragment soit seul dans une page ou injecté dans l'écran de
+caisse, sans wrapper ni classe supplémentaire.
+
+> Les deux gabarits ont déjà eu **chacun sa copie** des mêmes règles, et elles
+> avaient divergé : la caisse avait oublié `.ticket` lui-même, le reçu s'étirait
+> donc à la largeur du panneau au lieu des 80 mm du papier.
+> `CaisseTest::testLeRecuEtLeTicketPartagentLeMemeFormat` interdit le retour en
+> arrière — il échoue si les règles sont recopiées au lieu d'être incluses.
+
+**L'habillage « papier » est réservé à l'écran** : la bande de 80 mm dentelée en haut
+et en bas (masque CSS) et son ombre portée (`filter: drop-shadow`, qui suit la
+découpe là où un `box-shadow` ne saurait pas) vivent dans `caisse/index.html.twig`.
+Le fichier partagé, lui, reste strictement noir et blanc — il part sur une
+imprimante thermique. Attention aussi aux **commentaires CSS** de ces gabarits :
+`FuiteDonneesCaisseTest` interdit tout terme de gestion dans une réponse de caisse,
+et le mot « marge » dans un commentaire suffit à faire échouer le test.
+
 ### Démonstration client (`app:demo:reset` + `DEMO.md`)
 
 ```bash
 php bin/console app:demo:reset            # DESTRUCTIF : vide la base et la reconstruit
 php bin/console app:demo:reset --force    # sans confirmation (scripts)
+php bin/console app:demo:reset --garder-utilisateurs   # garnit sans toucher aux comptes
 ```
 
 Prépare l'état de départ d'une démonstration : recharge `AppFixtures` (30 jours
@@ -506,6 +1206,25 @@ Les deux anomalies passent par le **vrai chemin métier** (`EncaissementService`
 notification à la dirigeante, au lieu d'être fabriquées en base. La caisse de Fatou
 Traoré reste **ouverte** avec les ventes de la matinée (journée en cours) ; celle de
 Yao Kouassi est clôturée.
+
+**`--garder-utilisateurs`** épargne la table `utilisateur` (via
+`--purge-exclusions` du bundle de fixtures) : c'est ce qu'il faut pour **garnir une
+base déjà installée** sans perdre les accès créés à l'écran d'installation.
+
+- `AppFixtures::creerUtilisateurs()` détecte alors les comptes en place et les
+  **réutilise**. Sans cela, créer « koffi.nguessan@zedpos.ci » par-dessus un compte
+  réel échouerait sur l'unicité de l'e-mail — et surtout écraserait des accès réels
+  par des comptes de démonstration.
+- L'historique est attribué aux **caissiers existants**. S'il n'y en a aucun (base
+  où seule la dirigeante s'est inscrite), un compte de caisse est créé : trente
+  jours de ventes ont besoin de quelqu'un derrière le comptoir.
+- Les caissiers sont désormais résolus **par rôle** et non par adresse e-mail
+  codée en dur — celle-ci ne valait que sur une base de démonstration fraîche.
+- **Avec un seul caissier, l'écart de caisse n'est pas injecté** : clôturer sa
+  caisse fermerait la journée en cours et effacerait le ticket annulé de l'écran.
+  La commande le dit.
+- Le récapitulatif liste alors les comptes **réels**, sans annoncer de mot de
+  passe : ce sont ceux de l'exploitant, la commande ne les connaît pas.
 
 La commande refuse de tourner en `prod` (sauf `--force`), demande confirmation, et
 élève elle-même `memory_limit` à 1 Go. Les avertissements « Stock négatif » pendant
@@ -523,7 +1242,7 @@ dérive, le test échoue.
 ### Données de démonstration (fixtures)
 
 ```bash
-# Charge 7 familles, 43 articles, 23 matières, 14 fiches, 4 comptes
+# Charge 7 familles, 43 articles, 23 matières, 14 fiches, 5 comptes
 # et ~30 jours de ventes historiques réalistes (pics 5-9h / 18-21h), avec une
 # session de caisse par caissier et par jour : dépenses, clôture Z et écarts
 # justifiés pour les jours passés, sessions ouvertes pour aujourd'hui.
@@ -536,6 +1255,7 @@ Comptes créés (mots de passe de démo, à ne pas utiliser en production) :
 |------|-------------|--------|
 | Dirigeante | `aya.kone@zedpos.ci` | mot de passe `dirigeante123` |
 | Gérant | `koffi.nguessan@zedpos.ci` | mot de passe `gerant123` |
+| Comptable | `cabinet@zedpos.ci` | mot de passe `comptable123` |
 | Caissier | `fatou.traore@zedpos.ci` | code PIN `1234` |
 | Caissier | `yao.kouassi@zedpos.ci` | code PIN `5678` |
 
@@ -564,17 +1284,21 @@ compare l'implémentation à cette description et signale les écarts.
 | Journée clôturée non modifiable | ✅ | `SessionCaisse::garantirOuverte()` |
 | Déstockage automatique par fiche technique | ✅ | `DestockageVenteListener` |
 | Pertes valorisées + synthèse mensuelle | ✅ | `/admin/pertes` |
-| Ticket 80 mm + génération ESC/POS | ⚠️ partiel | voir écart n° 4 |
+| Ticket 80 mm + génération ESC/POS | ⚠️ partiel | voir écart n° 3 |
 | Caisse hors ligne (Service Worker, IndexedDB, file de synchronisation) | ✅ | `public/sw.js`, `assets/offline/` |
-| Espace de pilotage mobile + courbe 30 jours | ✅ | `/pilotage` |
+| Espace de pilotage responsive, ventes par caissière, courbe 30 jours | ✅ | `/pilotage` |
+| Téléchargement des rapports du jour (texte, CSV) | ✅ | `/pilotage/rapport.txt`, `.csv` |
 | Journal d'audit inaltérable + consultation | ✅ | `/pilotage/audit` |
+| Gestion des comptes (création, modification, activation) | ✅ | `/admin/utilisateurs` |
+| Amorçage du premier compte sur base vierge | ✅ | `/installation` |
 | Notification de la dirigeante sur annulation | ✅ | `NotificateurDirigeante` |
 | Rapport quotidien texte (WhatsApp / e-mail) | ✅ | `app:rapport-quotidien` |
 | Jeu de démonstration reproductible | ✅ | `app:demo:reset`, `DEMO.md` |
-| Espace comptable | ❌ | voir écart n° 3 |
-| Inventaire | ❌ | voir écart n° 2 |
+| Exports comptables SYSCOHADA (écritures, FEC, balance) | ✅ | `/comptabilite`, `app:export-comptable` |
+| Espace comptable : journal des ventes détaillé | ⚠️ partiel | voir écart n° 2 |
+| Inventaire (feuille, comptage, validation) | ✅ | `/admin/inventaires` |
 
-Tests : **170 tests PHPUnit** (`php bin/phpunit`) et **9 tests Node**
+Tests : **392 tests PHPUnit** (`php bin/phpunit`) et **37 tests Node**
 (`node --test "tests/js/*.test.js"`).
 
 ### Écarts par rapport au contexte métier — à traiter
@@ -590,45 +1314,46 @@ Classés par importance.
    `Commande` + états, rattachement table/numéro, écran de suivi cuisine, et
    transformation de la commande en `Vente` à l'encaissement.
 
-2. **Aucun module d'inventaire.**
-   La correction d'un stock se fait en modifiant le champ `stockActuel` sur
-   `/admin/stock/{id}/modifier`. Cette écriture **ne crée aucun `MouvementStock` et
-   n'est pas auditée** : l'historique des mouvements diverge alors du stock affiché.
-   `AuditLogger::inventaireValide()` est écrit et testé mais **n'est appelé nulle
-   part**, en attente de ce module. À prévoir : feuille de comptage, validation,
-   mouvement `INVENTAIRE` et trace d'audit.
+2. **Espace comptable réduit aux exports.**
+   `/comptabilite` produit les écritures SYSCOHADA, le FEC et la balance d'une
+   période, avec ses contrôles. Il manque encore la **consultation** : le comptable
+   ne peut pas parcourir les tickets ni le détail d'une vente depuis son espace,
+   alors que `VenteVoter` le lui accorde. À prévoir : journal des ventes détaillé
+   (l'écran `/pilotage/ventes` existant est réservé à la dirigeante) et un état de
+   TVA par taux — la ventilation actuelle se fait par compte de produits, pas par
+   taux d'imposition.
 
-3. **Espace comptable vide.**
-   `/comptabilite` est une page d'atterrissage sans contenu. Les Voters accordent
-   déjà au comptable la lecture des ventes, du CA et des coûts, mais aucun écran ne
-   l'expose. À prévoir : journal des ventes exportable, ventilation TVA, export
-   comptable.
-
-4. **Impression thermique non branchée.**
+3. **Impression thermique non branchée.**
    `ImpressionService` produit bien une commande ESC/POS, exposée en base64 par
    `GET /caisse/ticket/{uuid}/escpos`, mais **aucun pont d'impression local ne la
    consomme** : l'impression réelle passe aujourd'hui par `window.print()` du
    navigateur. À prévoir : agent local ou impression réseau directe.
 
-5. **Facture normalisée (RNE / DGI) non implémentée.**
-   Le ticket réserve un emplacement pour le QR code, sans aucune génération. À
-   cadrer avec les obligations ivoiriennes avant mise en production.
+4. **Facture normalisée (RNE / DGI) non implémentée.**
+   Le ticket porte désormais un code-barres, mais il encode le **numéro interne**
+   de la vente : c'est un outil de recherche, pas une signature fiscale. Il ne
+   satisfait donc en rien l'obligation de facture normalisée, et l'emplacement
+   qui rappelait cet écart sur le papier a disparu avec lui — d'où ce rappel ici.
+   À cadrer avec les obligations ivoiriennes avant mise en production : nature du
+   code (QR signé), données à y porter, et cohabitation avec le code-barres actuel.
 
-6. **Règlement à crédit non géré.**
+5. **Règlement à crédit non géré.**
    `ModeReglement::CREDIT` existe dans l'énumération mais il n'y a ni compte client,
    ni encours, ni relance. Ne pas proposer ce mode en caisse tant que c'est le cas.
 
-7. **Entrées de stock non outillées.**
-   Le CRUD fournisseurs existe, mais il n'y a **ni bon de commande ni réception** :
-   une livraison ne peut être saisie que par modification directe du stock (voir
-   écart n° 2). Le coût moyen pondéré n'est donc jamais recalculé automatiquement.
+6. **Entrées de stock non outillées.**
+   Le CRUD fournisseurs existe, mais il n'y a **ni bon de commande ni réception**.
+   Depuis que `stockActuel` n'est plus modifiable à la main, une livraison ne peut
+   être enregistrée **que par un inventaire** — ce qui est un détournement : on
+   n'a rien compté, on a reçu. Le coût moyen pondéré n'est de toute façon jamais
+   recalculé automatiquement, faute de prix d'achat saisi à la réception.
 
-8. **Tickets « en attente » non durables.**
+7. **Tickets « en attente » non durables.**
    La mise en attente vit uniquement en mémoire du contrôleur Stimulus : un
    rechargement de page les perd. Les ventes encaissées, elles, sont bien en
    IndexedDB. À aligner sur le même stockage.
 
-9. **`Article.suiviStock` non éditable depuis le back-office.**
+8. **`Article.suiviStock` non éditable depuis le back-office.**
    `ArticleType` n'expose ni `suiviStock`, ni `stockActuel`, ni `stockMini` : un
    article revendu tel quel (boisson) ne peut donc être mis sous suivi de stock que
    par les fixtures ou en SQL. Champs à ajouter au formulaire.
@@ -657,4 +1382,5 @@ Classés par importance.
 | `README.md` | Installation, commandes, architecture |
 | `docs/GUIDE-CAISSIER.md` | La caissière — une page, à imprimer |
 | `docs/GUIDE-GERANT.md` | Le gérant — stock, pertes, rapports |
+| `docs/GUIDE-COMPTABLE.md` | Le comptable — exports SYSCOHADA, contrôles, plan de comptes |
 | `DEMO.md` | Démonstration client en 10 minutes |

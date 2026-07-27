@@ -161,16 +161,46 @@ class AuditLogger
         int $stockApres,
         ?string $commentaire = null,
     ): JournalAudit {
-        return $this->enregistrer(
-            ActionAudit::INVENTAIRE_VALIDE,
+        return $this->ecartInventaire(
             'MatierePremiere',
             $matiere->getId(),
+            $matiere->getNom(),
+            $stockAvant,
+            $stockApres,
+            $commentaire,
+        );
+    }
+
+    /**
+     * Écart d'inventaire constaté sur une ligne de feuille de comptage.
+     *
+     * Une entrée **par ligne corrigée**, et non une seule pour la feuille : le
+     * journal se lit pour retrouver ce qui est arrivé à *un* produit, pas pour
+     * savoir qu'un inventaire a eu lieu — cela, la feuille elle-même le dit.
+     *
+     * `$entite` vaut `MatierePremiere` ou `Article` : les deux sont suivis en
+     * stock et les deux dérivent.
+     */
+    public function ecartInventaire(
+        string $entite,
+        ?int $id,
+        string $libelle,
+        int $stockAvant,
+        int $stockApres,
+        ?string $commentaire = null,
+        ?int $inventaireId = null,
+    ): JournalAudit {
+        return $this->enregistrer(
+            ActionAudit::INVENTAIRE_VALIDE,
+            $entite,
+            $id,
             ['stockActuel' => $stockAvant],
             [
                 'stockActuel' => $stockApres,
                 'ecart' => $stockApres - $stockAvant,
-                'matiere' => $matiere->getNom(),
+                'libelle' => $libelle,
                 'commentaire' => $commentaire,
+                'inventaire' => $inventaireId,
             ],
         );
     }
@@ -231,6 +261,31 @@ class AuditLogger
                 'actif' => $cible->isActif(),
             ],
             $auteur,
+        );
+    }
+
+    /**
+     * Modification d'un compte : nom, e-mail, rôle, réinitialisation du secret.
+     *
+     * Le secret lui-même n'est **jamais** journalisé, pas même haché — seul le
+     * fait qu'il ait été remplacé l'est. Un journal d'audit se consulte, il ne
+     * doit pas devenir un second endroit où traînent des identifiants.
+     *
+     * @param array{email: string, nom: string, roles: list<string>} $avant
+     */
+    public function utilisateurModifie(Utilisateur $cible, array $avant, bool $secretRemplace = false): JournalAudit
+    {
+        return $this->enregistrer(
+            ActionAudit::UTILISATEUR_MODIFIE,
+            'Utilisateur',
+            $cible->getId(),
+            $avant,
+            [
+                'email' => $cible->getEmail(),
+                'nom' => $cible->getNom(),
+                'roles' => $cible->getRoles(),
+                'secret_remplace' => $secretRemplace,
+            ],
         );
     }
 

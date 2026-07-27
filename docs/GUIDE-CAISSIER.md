@@ -25,8 +25,30 @@ couleur et les boutons **Dépense · Ticket X · Clôture Z**.
 ```
 
 1. Touchez le produit — **un appui = 1 article** (3 appuis = 3 baguettes).
-2. Touchez le paiement (**Espèces**, Wave, Orange Money…).
-3. Touchez **Encaisser**. Le ticket s'imprime.
+2. Touchez le paiement (**Espèces**, Wave, Orange Money…). Chaque bouton porte la
+   couleur de son réseau — bleu Wave, orange Orange, jaune MTN — et **se remplit de
+   cette couleur** une fois choisi : d'un coup d'œil vous voyez ce qui est retenu.
+3. Touchez le grand bouton vert **Encaisser**. Le ticket s'imprime.
+
+## 2 bis. La monnaie à rendre
+
+Quand vous choisissez **Espèces**, un cadre s'ouvre sous les paiements :
+
+```
+Reçu  [        2 000 ] FCFA
+[ Juste ][ 2 000 ][ 5 000 ][10 000]
+Monnaie à rendre      800 FCFA
+```
+
+- Le client vous tend un billet : **touchez le montant** dans la rangée de boutons,
+  ou tapez-le. La monnaie s'affiche en dessous, en gros.
+- **Le compte est juste ?** Ne touchez à rien — laissez le champ vide et encaissez.
+- **Le chiffre est en rouge (« Manque ») ?** Le client n'a pas donné assez :
+  **Encaisser** ne fonctionne pas tant que le compte n'y est pas.
+- La monnaie est **calculée sur la tablette**, même Internet coupé : elle s'affiche
+  tout de suite, vous n'attendez jamais.
+- Elle est aussi **imprimée sur le ticket**, ligne **Rendu** — le client peut donc
+  vérifier sa monnaie après coup.
 
 **Fast-food** : touchez **Fast-food** en haut. Un panneau s'ouvre pour la quantité
 et les précisions (Sur place, Piment…), puis **Ajouter au ticket**.

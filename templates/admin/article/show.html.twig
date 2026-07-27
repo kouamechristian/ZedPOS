@@ -4,8 +4,8 @@
 {% block page_title %}{{ article.nom }}{% endblock %}
 
 {% block page_actions %}
-    <a href="{{ path('admin_article_index') }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50">Retour</a>
-    <a href="{{ path('admin_article_edit', {id: article.id}) }}" class="rounded-lg bg-slate-800 text-white px-3 py-2 text-sm font-semibold hover:bg-slate-700">Modifier</a>
+    <a href="{{ path('admin_article_index') }}" class="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-medium hover:bg-stone-50">Retour</a>
+    <a href="{{ path('admin_article_edit', {id: article.id}) }}" class="rounded-lg bg-stone-800 text-white px-3 py-2 text-sm font-semibold hover:bg-stone-700">Modifier</a>
     <form method="post" action="{{ path('admin_article_delete', {id: article.id}) }}" data-turbo-confirm="Supprimer définitivement cet article ?">
         <input type="hidden" name="_token" value="{{ csrf_token('supprimer_article_' ~ article.id) }}">
         <button class="rounded-lg border border-red-300 text-red-700 px-3 py-2 text-sm font-medium hover:bg-red-50">Supprimer</button>
@@ -14,22 +14,30 @@
 
 {% block admin_content %}
 <div class="bg-white rounded-xl shadow-sm max-w-4xl">
-    <input type="radio" name="onglet" id="onglet-details" class="peer/details sr-only" checked>
-    <input type="radio" name="onglet" id="onglet-fiche" class="peer/fiche sr-only">
+    {# Les onglets sont en CSS pur (radios masqués + `peer-checked`) : basculer ne
+       coûte donc aucune requête. Le revers est qu'ils n'ont pas d'URL — et sans
+       elle, tout lien venant d'ailleurs retombait sur « Détails », y compris
+       « Voir la fiche » depuis l'écran Production.
 
-    <div class="flex border-b border-slate-200 px-4">
-        <label for="onglet-details" class="cursor-pointer px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 peer-checked/details:border-slate-800 peer-checked/details:text-slate-900">Détails</label>
-        <label for="onglet-fiche" class="cursor-pointer px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-500 peer-checked/fiche:border-slate-800 peer-checked/fiche:text-slate-900">Fiche technique</label>
+       `?onglet=fiche` choisit lequel s'ouvre. C'est ce qui rend la fiche technique
+       atteignable en un clic depuis la liste des articles. #}
+    {% set onglet = app.request.query.get('onglet') %}
+    <input type="radio" name="onglet" id="onglet-details" class="peer/details sr-only" {{ onglet != 'fiche' ? 'checked' }}>
+    <input type="radio" name="onglet" id="onglet-fiche" class="peer/fiche sr-only" {{ onglet == 'fiche' ? 'checked' }}>
+
+    <div class="flex border-b border-stone-200 px-4">
+        <label for="onglet-details" class="cursor-pointer px-4 py-3 text-sm font-medium border-b-2 border-transparent text-stone-500 peer-checked/details:border-stone-800 peer-checked/details:text-stone-900">Détails</label>
+        <label for="onglet-fiche" class="cursor-pointer px-4 py-3 text-sm font-medium border-b-2 border-transparent text-stone-500 peer-checked/fiche:border-stone-800 peer-checked/fiche:text-stone-900">Fiche technique</label>
     </div>
 
     <section class="hidden peer-checked/details:block p-6">
         <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 text-sm">
-            <div><dt class="text-slate-500">Famille</dt><dd class="font-medium">{{ article.familleProduit ? article.familleProduit.nom : '—' }}</dd></div>
-            <div><dt class="text-slate-500">Statut</dt><dd>{{ fmt.badge(article.actif) }}</dd></div>
-            <div><dt class="text-slate-500">Prix de vente TTC</dt><dd class="font-medium">{{ fmt.fcfa(article.prixVenteTtc) }}</dd></div>
-            <div><dt class="text-slate-500">TVA</dt><dd class="font-medium">{{ fmt.pourcent(article.tauxTva) }}</dd></div>
-            <div><dt class="text-slate-500">Unité</dt><dd class="font-medium">{{ article.unite }}</dd></div>
-            <div><dt class="text-slate-500">Position en caisse</dt><dd class="font-medium">{{ article.positionCaisse }}</dd></div>
+            <div><dt class="text-stone-500">Famille</dt><dd class="font-medium">{{ article.familleProduit ? article.familleProduit.nom : '—' }}</dd></div>
+            <div><dt class="text-stone-500">Statut</dt><dd>{{ fmt.badge(article.actif) }}</dd></div>
+            <div><dt class="text-stone-500">Prix de vente TTC</dt><dd class="font-medium">{{ fmt.fcfa(article.prixVenteTtc) }}</dd></div>
+            <div><dt class="text-stone-500">TVA</dt><dd class="font-medium">{{ fmt.pourcent(article.tauxTva) }}</dd></div>
+            <div><dt class="text-stone-500">Unité</dt><dd class="font-medium">{{ article.unite }}</dd></div>
+            <div><dt class="text-stone-500">Position en caisse</dt><dd class="font-medium">{{ article.positionCaisse }}</dd></div>
         </dl>
     </section>
 

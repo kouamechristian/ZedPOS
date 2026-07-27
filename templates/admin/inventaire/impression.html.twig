@@ -1,0 +1,83 @@
+{# Feuille de comptage à emporter dans la réserve.
+
+   **Les quantités théoriques n'y figurent pas.** On ne compte pas honnêtement
+   avec la réponse sous les yeux : lire « 42 » avant de compter suffit à en
+   trouver 42. C'est le seul écran du back-office qui cache volontairement une
+   donnée qu'il possède.
+
+   Noir et blanc, comme le ticket de caisse : cette page sort d'une imprimante. #}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Feuille de comptage n° {{ inventaire.id }}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+            font-size: 12px;
+            color: #000;
+            background: #fff;
+            padding: 12mm;
+        }
+
+        h1 { font-size: 16px; margin-bottom: 2px; }
+        .meta { color: #444; margin-bottom: 10mm; }
+
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border-bottom: 1px solid #999; padding: 6px 4px; text-align: left; }
+        th { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+
+        .droite { text-align: right; }
+        /* Case à remplir au stylo : large, et sur toute la hauteur de la ligne. */
+        .case { width: 34mm; border: 1px solid #000; height: 9mm; }
+        .unite { color: #555; }
+
+        .pied { margin-top: 10mm; color: #444; }
+        .signature { margin-top: 12mm; }
+
+        @page { size: A4 portrait; margin: 0; }
+        @media print {
+            /* Les en-têtes de colonnes se répètent en haut de chaque page : une
+               feuille de 60 lignes en fait deux, et la seconde serait illisible. */
+            thead { display: table-header-group; }
+            tr { break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+    <h1>Feuille de comptage n° {{ inventaire.id }}</h1>
+    <div class="meta">
+        Ouverte le {{ inventaire.createdAt|date('d/m/Y à H:i') }} par {{ inventaire.auteur.nom }}
+        — {{ inventaire.lignes|length }} ligne(s)
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Produit / matière</th>
+                <th>Unité</th>
+                <th class="droite">Quantité comptée</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ligne in inventaire.lignes %}
+                <tr>
+                    <td>{{ ligne.libelle }}</td>
+                    <td class="unite">{{ ligne.unite }}</td>
+                    <td class="droite"><div class="case"></div></td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="pied">
+        Reportez ensuite ces quantités dans ZedPOS, puis validez l'inventaire.
+        Laissez une case <strong>vide</strong> si la ligne n'a pas été comptée :
+        un zéro signifie qu'il n'en reste aucune.
+    </div>
+
+    <div class="signature">Compté par : ______________________ &nbsp;&nbsp; Date : ____ / ____ / ________</div>
+</body>
+</html>

@@ -1,5 +1,6 @@
 {% extends 'pilotage/base.html.twig' %}
 {% import 'admin/_macros.html.twig' as fmt %}
+{% import '_pagination.html.twig' as pagination %}
 
 {% block page_title %}Tickets du {{ jour|date('d/m/Y') }}{% endblock %}
 
@@ -10,30 +11,32 @@
 <form method="get" class="mb-4 flex items-center gap-2">
     <label for="jour" class="sr-only">Journée</label>
     <input type="date" id="jour" name="jour" value="{{ jour|date('Y-m-d') }}"
-           class="flex-1 rounded-xl border border-slate-300 px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-slate-400">
-    <button class="rounded-xl bg-slate-900 text-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-700">Voir</button>
+           class="flex-1 rounded-xl border border-stone-300 px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-stone-400">
+    <button class="rounded-xl bg-stone-900 text-white px-4 py-2.5 text-sm font-semibold hover:bg-stone-700">Voir</button>
 </form>
 
-<div class="mb-3 flex items-baseline justify-between text-sm text-slate-500">
+<div class="mb-3 flex items-baseline justify-between text-sm text-stone-500">
     <span>{{ resultat.total }} ticket{{ resultat.total > 1 ? 's' }}</span>
     <span>Page {{ resultat.page }} / {{ resultat.pages }}</span>
 </div>
 
-{# Liste de cartes plutôt qu'un tableau : lisible sur un écran étroit. #}
-<ul class="space-y-2">
-    {% for vente in resultat.ventes %}
+{# Cartes plutôt qu'un tableau : lisible sur un écran étroit. Elles se rangent en
+   colonnes quand la place le permet, plutôt que de s'étirer sur toute la largeur
+   d'un écran d'ordinateur pour trois informations. #}
+<ul class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+    {% for vente in resultat.items %}
         <li>
             <a href="{{ path('pilotage_vente', {uuid: vente.uuid}) }}" data-turbo-frame="_top"
-               class="block bg-white rounded-2xl shadow-sm p-4 hover:shadow-md transition">
+               class="block h-full bg-white rounded-2xl shadow-sm p-4 hover:shadow-md transition">
                 <div class="flex items-baseline justify-between gap-3">
-                    <span class="font-mono text-xs text-slate-500">{{ vente.numero }}</span>
-                    <span class="text-lg font-black tabular-nums {{ vente.estValidee ? 'text-slate-900' : 'text-slate-400 line-through' }}">
+                    <span class="font-mono text-xs text-stone-500">{{ vente.numero }}</span>
+                    <span class="text-lg font-black tabular-nums {{ vente.estValidee ? 'text-stone-900' : 'text-stone-400 line-through' }}">
                         {{ fmt.fcfa(vente.totalTtc) }}
                     </span>
                 </div>
-                <div class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
+                <div class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-stone-500">
                     <span class="tabular-nums">{{ vente.createdAt|date('H:i') }}</span>
-                    <span class="font-medium text-slate-700">{{ vente.sessionCaisse.utilisateur.nom }}</span>
+                    <span class="font-medium text-stone-700">{{ vente.sessionCaisse.utilisateur.nom }}</span>
                     <span class="inline-flex rounded-full px-2 py-0.5 text-xs {{ vente.mode.value == 'BOULANGERIE' ? 'bg-amber-100 text-amber-800' : 'bg-orange-100 text-orange-800' }}">
                         {{ vente.mode.value == 'BOULANGERIE' ? 'Boulangerie' : 'Fast-food' }}
                     </span>
@@ -49,22 +52,11 @@
             </a>
         </li>
     {% else %}
-        <li class="bg-white rounded-2xl shadow-sm p-8 text-center text-slate-400">Aucun ticket ce jour-là.</li>
+        <li class="bg-white rounded-2xl shadow-sm p-8 text-center text-stone-400">Aucun ticket ce jour-là.</li>
     {% endfor %}
 </ul>
 
-{% if resultat.pages > 1 %}
-    <nav class="mt-5 flex items-center justify-center gap-2 text-sm">
-        {% if resultat.page > 1 %}
-            <a href="{{ path('pilotage_ventes', {jour: jour|date('Y-m-d'), page: resultat.page - 1}) }}"
-               class="rounded-xl border border-slate-300 bg-white px-4 py-2.5 font-medium hover:bg-slate-50">← Précédent</a>
-        {% endif %}
-        {% if resultat.page < resultat.pages %}
-            <a href="{{ path('pilotage_ventes', {jour: jour|date('Y-m-d'), page: resultat.page + 1}) }}"
-               class="rounded-xl border border-slate-300 bg-white px-4 py-2.5 font-medium hover:bg-slate-50">Suivant →</a>
-        {% endif %}
-    </nav>
-{% endif %}
+{{ pagination.barre(resultat, 'pilotage_ventes', {jour: jour|date('Y-m-d')}) }}
 
 </turbo-frame>
 {% endblock %}

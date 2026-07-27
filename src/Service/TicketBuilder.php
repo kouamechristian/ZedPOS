@@ -10,8 +10,10 @@ use App\Entity\Vente;
  */
 class TicketBuilder
 {
-    public function __construct(private readonly ParametresTicket $parametres)
-    {
+    public function __construct(
+        private readonly ParametresTicket $parametres,
+        private readonly CodeBarres128 $codeBarres,
+    ) {
     }
 
     public function construire(Vente $vente): TicketData
@@ -57,13 +59,15 @@ class TicketBuilder
             ];
         }
 
+        $numero = $vente->getNumero();
+
         return new TicketData(
             raisonSociale: $this->parametres->raisonSociale,
             adresse: $this->parametres->adresse,
             ncc: $this->parametres->ncc,
             telephone: $this->parametres->telephone,
             pied: $this->parametres->pied,
-            numero: $vente->getNumero(),
+            numero: $numero,
             dateHeure: $vente->getCreatedAt(),
             caissier: $vente->getSessionCaisse()->getUtilisateur()->getNom(),
             lignes: $lignes,
@@ -74,6 +78,13 @@ class TicketBuilder
             totalTtc: $vente->getTotalTtc(),
             remise: $remise,
             rendu: $vente->getRendu(),
+            rccm: $this->parametres->rccm,
+            email: $this->parametres->email,
+            // Le numéro de ticket suit un gabarit maîtrisé (`Vaammjj-00001`), donc
+            // toujours encodable ; la garde couvre les numéros d'un import ou d'un
+            // futur format, pour lesquels mieux vaut un ticket sans code-barres
+            // qu'une impression qui échoue.
+            codeBarres: $this->codeBarres->supporte($numero) ? $this->codeBarres->encoder($numero) : null,
         );
     }
 }

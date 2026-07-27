@@ -4,7 +4,9 @@ when@dev:
 
     framework:
         profiler:
-            collect_serializer_data: true
+            # ZedPOS n'utilise pas le composant Serializer : cette collecte
+            # n'apportait rien et alourdissait chaque requête.
+            collect_serializer_data: false
 
 when@test:
     framework:

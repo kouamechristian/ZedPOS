@@ -3,9 +3,13 @@
 
 {% block page_title %}Ticket {{ vente.numero }}{% endblock %}
 
+{# Un ticket se lit en colonne, comme le papier : on garde le cadre étroit plutôt
+   que d'étirer une dizaine de lignes sur toute la largeur d'un écran. #}
+{% block pilotage_largeur %}max-w-3xl{% endblock %}
+
 {% block pilotage_content %}
 <a href="{{ path('pilotage_ventes', {jour: vente.createdAt|date('Y-m-d')}) }}"
-   class="inline-block mb-4 text-sm font-medium text-slate-500 hover:text-slate-800">← Tickets du {{ vente.createdAt|date('d/m/Y') }}</a>
+   class="inline-block mb-4 text-sm font-medium text-stone-500 hover:text-stone-800">← Tickets du {{ vente.createdAt|date('d/m/Y') }}</a>
 
 {% if not vente.estValidee %}
     <div class="mb-4 rounded-2xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">
@@ -16,27 +20,27 @@
 
 {# ---- Identité du ticket ---- #}
 <section class="bg-white rounded-2xl shadow-sm p-5 mb-4">
-    <div class="text-3xl font-black tabular-nums text-slate-900">{{ fmt.fcfa(vente.totalTtc) }}</div>
-    <div class="mt-0.5 font-mono text-xs text-slate-400">{{ vente.numero }}</div>
+    <div class="text-3xl font-black tabular-nums text-stone-900">{{ fmt.fcfa(vente.totalTtc) }}</div>
+    <div class="mt-0.5 font-mono text-xs text-stone-400">{{ vente.numero }}</div>
 
-    <dl class="mt-4 pt-4 border-t border-slate-100 space-y-2 text-sm">
+    <dl class="mt-4 pt-4 border-t border-stone-100 space-y-2 text-sm">
         <div class="flex justify-between gap-3">
-            <dt class="text-slate-500">Caissier</dt>
-            <dd class="font-semibold text-slate-800">{{ vente.sessionCaisse.utilisateur.nom }}</dd>
+            <dt class="text-stone-500">Caissier</dt>
+            <dd class="font-semibold text-stone-800">{{ vente.sessionCaisse.utilisateur.nom }}</dd>
         </div>
         <div class="flex justify-between gap-3">
-            <dt class="text-slate-500">Date et heure</dt>
+            <dt class="text-stone-500">Date et heure</dt>
             <dd class="font-medium tabular-nums">{{ vente.createdAt|date('d/m/Y à H:i:s') }}</dd>
         </div>
         <div class="flex justify-between gap-3">
-            <dt class="text-slate-500">Mode de vente</dt>
+            <dt class="text-stone-500">Mode de vente</dt>
             <dd class="font-medium">{{ vente.mode.value == 'BOULANGERIE' ? 'Boulangerie' : 'Fast-food' }}</dd>
         </div>
         <div class="flex justify-between gap-3">
-            <dt class="text-slate-500">Session de caisse</dt>
+            <dt class="text-stone-500">Session de caisse</dt>
             <dd class="font-medium">
                 n° {{ vente.sessionCaisse.id }}
-                <span class="text-slate-400">({{ vente.sessionCaisse.estOuverte ? 'ouverte' : 'clôturée' }})</span>
+                <span class="text-stone-400">({{ vente.sessionCaisse.estOuverte ? 'ouverte' : 'clôturée' }})</span>
             </dd>
         </div>
     </dl>
@@ -44,52 +48,52 @@
 
 {# ---- Lignes ---- #}
 <section class="bg-white rounded-2xl shadow-sm p-5 mb-4">
-    <h2 class="font-semibold text-slate-800 mb-3">Articles</h2>
-    <ul class="divide-y divide-slate-100">
+    <h2 class="font-semibold text-stone-800 mb-3">Articles</h2>
+    <ul class="divide-y divide-stone-100">
         {% for ligne in ticket.lignes %}
             <li class="flex items-start gap-3 py-2.5">
-                <span class="shrink-0 text-sm font-bold tabular-nums text-slate-400">{{ fmt.unites(ligne.quantiteMillimes) }}×</span>
+                <span class="shrink-0 text-sm font-bold tabular-nums text-stone-400">{{ fmt.unites(ligne.quantiteMillimes) }}×</span>
                 <div class="flex-1 min-w-0">
-                    <div class="font-medium text-slate-800">{{ ligne.nom }}</div>
+                    <div class="font-medium text-stone-800">{{ ligne.nom }}</div>
                     {% if ligne.commentaire %}
-                        <div class="text-xs italic text-slate-500">{{ ligne.commentaire }}</div>
+                        <div class="text-xs italic text-stone-500">{{ ligne.commentaire }}</div>
                     {% endif %}
-                    <div class="text-xs text-slate-400">{{ fmt.fcfa(ligne.prixUnitaire) }} l'unité</div>
+                    <div class="text-xs text-stone-400">{{ fmt.fcfa(ligne.prixUnitaire) }} l'unité</div>
                 </div>
-                <span class="shrink-0 font-semibold tabular-nums text-slate-900">{{ fmt.fcfa(ligne.montant) }}</span>
+                <span class="shrink-0 font-semibold tabular-nums text-stone-900">{{ fmt.fcfa(ligne.montant) }}</span>
             </li>
         {% endfor %}
     </ul>
 
-    <dl class="mt-4 pt-4 border-t border-slate-200 space-y-2 text-sm">
+    <dl class="mt-4 pt-4 border-t border-stone-200 space-y-2 text-sm">
         {% if vente.remise > 0 %}
             <div class="flex justify-between gap-3 text-amber-700">
                 <dt>Remise{% if vente.motifRemise %} <span class="text-xs">({{ vente.motifRemise }})</span>{% endif %}</dt>
                 <dd class="font-semibold tabular-nums">− {{ fmt.fcfa(vente.remise) }}</dd>
             </div>
         {% endif %}
-        <div class="flex justify-between gap-3"><dt class="text-slate-500">Total HT</dt><dd class="tabular-nums">{{ fmt.fcfa(vente.totalHt) }}</dd></div>
-        <div class="flex justify-between gap-3"><dt class="text-slate-500">TVA</dt><dd class="tabular-nums">{{ fmt.fcfa(vente.totalTva) }}</dd></div>
+        <div class="flex justify-between gap-3"><dt class="text-stone-500">Total HT</dt><dd class="tabular-nums">{{ fmt.fcfa(vente.totalHt) }}</dd></div>
+        <div class="flex justify-between gap-3"><dt class="text-stone-500">TVA</dt><dd class="tabular-nums">{{ fmt.fcfa(vente.totalTva) }}</dd></div>
         <div class="flex justify-between gap-3 text-base font-bold"><dt>Total TTC</dt><dd class="tabular-nums">{{ fmt.fcfa(vente.totalTtc) }}</dd></div>
     </dl>
 </section>
 
 {# ---- Règlements ---- #}
 <section class="bg-white rounded-2xl shadow-sm p-5 mb-4">
-    <h2 class="font-semibold text-slate-800 mb-3">Règlement</h2>
+    <h2 class="font-semibold text-stone-800 mb-3">Règlement</h2>
     <ul class="space-y-2 text-sm">
         {% for reglement in vente.reglements %}
             <li class="flex justify-between gap-3">
-                <span class="text-slate-600">
+                <span class="text-stone-600">
                     {{ reglement.mode.libelle }}
-                    {% if reglement.reference %}<span class="text-xs text-slate-400">({{ reglement.reference }})</span>{% endif %}
+                    {% if reglement.reference %}<span class="text-xs text-stone-400">({{ reglement.reference }})</span>{% endif %}
                 </span>
                 <span class="font-semibold tabular-nums">{{ fmt.fcfa(reglement.montant) }}</span>
             </li>
         {% endfor %}
         {% if vente.rendu > 0 %}
-            <li class="flex justify-between gap-3 pt-2 border-t border-slate-100">
-                <span class="font-medium text-slate-700">Rendu</span>
+            <li class="flex justify-between gap-3 pt-2 border-t border-stone-100">
+                <span class="font-medium text-stone-700">Rendu</span>
                 <span class="font-bold tabular-nums">{{ fmt.fcfa(vente.rendu) }}</span>
             </li>
         {% endif %}
@@ -97,7 +101,7 @@
 </section>
 
 <a href="{{ path('app_caisse_ticket', {uuid: vente.uuid}) }}" target="_blank"
-   class="block rounded-2xl border border-slate-300 bg-white text-center font-semibold py-3.5 hover:bg-slate-50">
+   class="block rounded-2xl border border-stone-300 bg-white text-center font-semibold py-3.5 hover:bg-stone-50">
     Voir le ticket imprimable
 </a>
 {% endblock %}

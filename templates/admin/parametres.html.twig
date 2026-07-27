@@ -1,0 +1,39 @@
+{% extends 'admin/base.html.twig' %}
+{% form_theme form 'admin/_form_theme.html.twig' %}
+
+{% block page_title %}Paramètres de l'établissement{% endblock %}
+
+{% block admin_content %}
+<div class="max-w-2xl">
+    <p class="mb-5 text-sm text-stone-500">
+        Ces informations sont imprimées en tête et en pied de <strong>chaque ticket de
+        caisse</strong> et de chaque rapport de clôture. Vérifiez-les avant la mise en
+        service.
+    </p>
+
+    {{ form_start(form) }}
+
+    {# Les groupes viennent du catalogue CleParametre : rien n'est codé en dur ici. #}
+    {% for titre, champs in groupes %}
+        <section class="mb-5 bg-white rounded-xl shadow-sm p-6">
+            <h2 class="titre text-lg font-bold text-stone-900 mb-4">{{ titre }}</h2>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-5">
+                {% for champ in champs %}
+                    <div class="{{ attribute(form, champ).vars.attr.rows is defined ? 'sm:col-span-2' : '' }}">
+                        {{ form_row(attribute(form, champ)) }}
+                    </div>
+                {% endfor %}
+            </div>
+        </section>
+    {% endfor %}
+
+    <div class="flex items-center gap-3">
+        <button class="rounded-lg bg-stone-800 text-white px-5 py-2.5 text-sm font-semibold hover:bg-stone-700">
+            Enregistrer
+        </button>
+        <span class="text-xs text-stone-400">Les tickets déjà imprimés ne changent pas.</span>
+    </div>
+
+    {{ form_end(form) }}
+</div>
+{% endblock %}

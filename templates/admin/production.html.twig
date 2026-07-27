@@ -1,12 +1,16 @@
 {% extends 'admin/base.html.twig' %}
 {% import 'admin/_macros.html.twig' as fmt %}
+{% import '_pagination.html.twig' as pagination %}
+{% import 'admin/_recherche.html.twig' as recherche %}
 
 {% block page_title %}Production — Fiches techniques{% endblock %}
 
 {% block admin_content %}
+
+{{ recherche.barre('admin_production', 'Produit ou matière') }}
 <div class="bg-white rounded-xl shadow-sm overflow-hidden">
     <table class="w-full text-sm">
-        <thead class="text-left text-slate-500 bg-slate-50">
+        <thead class="text-left text-stone-500 bg-stone-50">
             <tr>
                 <th class="px-5 py-3 font-medium">Article fabriqué</th>
                 <th class="px-5 py-3 font-medium text-right">Composants</th>
@@ -18,20 +22,34 @@
         </thead>
         <tbody>
             {% for fiche in fiches %}
-                <tr class="border-t border-slate-100 hover:bg-slate-50">
-                    <td class="px-5 py-3 font-medium text-slate-800">{{ fiche.article.nom }}</td>
-                    <td class="px-5 py-3 text-right text-slate-600">{{ fiche.composants }}</td>
+                <tr class="border-t border-stone-100 hover:bg-stone-50">
+                    <td class="px-5 py-3 font-medium text-stone-800">{{ fiche.article.nom }}</td>
+                    <td class="px-5 py-3 text-right text-stone-600">{{ fiche.composants }}</td>
                     <td class="px-5 py-3 text-right">{{ fmt.fcfa(fiche.cout_matieres) }}</td>
                     <td class="px-5 py-3 text-right">{{ fmt.fcfa(fiche.article.prixVenteTtc) }}</td>
                     <td class="px-5 py-3 text-right font-semibold {{ fiche.marge >= 0 ? 'text-green-700' : 'text-red-600' }}">{{ fmt.fcfa(fiche.marge) }}</td>
                     <td class="px-5 py-3 text-right">
-                        <a href="{{ path('admin_article_show', {id: fiche.article.id}) }}" class="text-xs font-medium text-slate-600 hover:text-slate-900 hover:underline">Voir la fiche</a>
+                        <a href="{{ path('admin_article_show', {id: fiche.article.id, onglet: 'fiche'}) }}"
+                           class="rounded-md border border-stone-300 px-2.5 py-1 text-xs font-medium hover:bg-stone-100">Modifier la fiche</a>
                     </td>
                 </tr>
             {% else %}
-                <tr><td colspan="6" class="px-5 py-6 text-center text-slate-400">Aucune fiche technique. Créez-en depuis un article.</td></tr>
+                {# Cet écran ne fait que consulter : une fiche naît en ajoutant sa
+                   première matière à un article, il n'y a pas de « nouvelle fiche »
+                   à créer ici. Le dire sans donner le chemin laissait chercher. #}
+                <tr>
+                    <td colspan="6" class="px-5 py-8 text-center text-stone-400">
+                        Aucune fiche technique.<br>
+                        <span class="text-stone-500">
+                            Une fiche se compose depuis un article :
+                            <a href="{{ path('admin_article_index') }}" class="font-medium text-stone-700 underline hover:text-stone-900">ouvrez la liste des articles</a>,
+                            puis « Fiche technique » sur la ligne du produit.
+                        </span>
+                    </td>
+                </tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
+{{ pagination.barre(page, 'admin_production') }}
 {% endblock %}
