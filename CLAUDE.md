@@ -487,6 +487,74 @@ les noms sont condensés) et interdit la mise en cache de `sw.js`.
   Ces informations sont **strictement réservées à `ROLE_GERANT`** (jamais un caissier) :
   page sous `access_control ^/admin` + garde `is_granted('ROLE_GERANT')` dans le template.
 
+### Import du catalogue (`/admin/articles/importer`)
+
+Bouton **« Importer »** sur `/admin/articles`. Un CSV à deux colonnes — **nom, prix
+de vente en FCFA** — pour garnir un catalogue au démarrage ou ajouter une gamme
+entière. Service `App\Service\ImportArticles`, compte rendu
+`RapportImportArticles`.
+
+**Deux invariants, et ils commandent tout le reste.**
+
+- **L'import ne contourne pas la règle du prix.** Le prix n'est repris que si
+  l'auteur détient `ARTICLE_MODIFIER_PRIX` (dirigeante). Sinon les articles naissent
+  **à 0 FCFA et inactifs**, exactement comme un article créé sans prix dans le
+  formulaire à l'unité. Sans cette symétrie, l'import serait la porte de service :
+  il suffirait de déposer un fichier pour fixer des prix qu'on n'a pas le droit de
+  saisir à l'écran. Le gérant en est **averti avant de déposer son fichier** — le
+  découvrir après coup, soixante articles créés à zéro, serait une mauvaise surprise.
+- **L'import n'écrase jamais rien.** Un nom déjà au catalogue est *ignoré*, pas mis
+  à jour : réécrire les prix en place serait l'autre façon de contourner la règle, et
+  un fichier mal daté changerait des prix que personne n'a voulu toucher. Les
+  doublons sont comparés **sans égard à la casse ni aux espaces**, et les articles
+  **inactifs comptent** — un article importé puis désactivé ne doit pas revenir en
+  double au fichier suivant.
+
+**Ce qui sort réellement d'un tableur** est pris en charge, parce que chacun de ces
+détails coûte sinon un import à refaire :
+
+| Cas | Traitement |
+|---|---|
+| Séparateur `;`, tabulation ou `,` | déduit du contenu, pas demandé à l'exploitant |
+| BOM UTF-8 (Excel Windows) | retiré — sinon le premier nom porte trois octets invisibles et ne sera **plus jamais** reconnu comme un doublon |
+| Fichier en Windows-1252 | converti (`ArticleController::enUtf8()`) — sinon « Pâté » arrive en « PÃ¢tÃ© », à retaper à la main |
+| `1 500`, `1.500`, `1,500`, `1500 FCFA` | 1 500 FCFA — **trois** chiffres après le séparateur sont des milliers |
+| `1500,00` | 1 500 FCFA (décimale nulle tolérée) |
+| `1500,50` | **refusé** : le franc CFA ne circule pas en centimes, et arrondir en silence est interdit ici |
+| Prix **absent** | omission → article sans prix, donc inactif, et signalé |
+| Prix **illisible** | erreur → ligne rejetée avec sa raison |
+| Ligne d'en-têtes | reconnue et sautée en silence |
+
+- **Le compte rendu est ligne par ligne** : numéro, contenu brut, raison. Sur
+  soixante lignes tapées dans un tableur il y en a toujours une fautive, et un
+  « 59 articles créés » laisse chercher laquelle.
+- **Le compte rendu voyage par la session**, jusqu'à une redirection 303. Turbo
+  Drive n'affiche pas le corps d'une soumission qui répond 200 : rendu directement,
+  le compte rendu ne s'afficherait **jamais** — l'écran resterait figé sur le
+  formulaire alors que les articles auraient bel et bien été créés. Il est **retiré à
+  la lecture** : un rafraîchissement ne doit pas le réafficher, on croirait avoir
+  rejoué l'import.
+- **Une seule écriture en base, à la fin.** Un fichier à moitié importé serait le
+  pire des états : personne ne saurait où reprendre.
+- Plafond `ImportArticles::MAX_LIGNES` (500). Au-delà, ce n'est pas un catalogue
+  qu'on importe, c'est un fichier qui n'est pas celui qu'on croit.
+- Les articles naissent en **« pièce »**, sans famille ni TVA — à compléter sur la
+  fiche. Un modèle CSV est téléchargeable (`/admin/articles/importer/modele`, BOM
+  compris, lien `data-turbo="false"`).
+
+> **Piège corrigé, à ne pas réintroduire.** La ligne d'en-têtes était d'abord
+> reconnue au seul fait que « la deuxième colonne n'est pas un prix ». Sur
+> `Baguette;gratuit` suivi de lignes correctes, la baguette passait donc pour un
+> en-tête et **disparaissait sans un mot** : article absent du catalogue, compte
+> rendu muet, rien pour le remarquer. La reconnaissance exige désormais **aussi** un
+> libellé connu en première colonne (`LIBELLES_EN_TETE`). Le prix de ce choix est
+> qu'un en-tête exotique ressort en ligne rejetée — visible et corrigible, alors
+> qu'une ligne avalée ne l'est pas.
+> `testUnePremiereLigneAuPrixFautifEstRejeteeEtNonAvalee` fige le cas.
+
+`ImportArticlesTest` couvre les deux invariants, les formats de prix, les
+séparateurs, l'encodage, les garde-fous et l'écran.
+
 ### Pagination — un seul mécanisme pour tout le projet
 
 **Toute liste non bornée est paginée.** `App\Repository\Pagination` porte le
@@ -606,6 +674,14 @@ déplacer le stockage ne doit pas obliger à réécrire la table. Le chemin publ
 compose dans `App\Service\ImageArticle::chemin()`, exposé aux gabarits par la
 fonction Twig `image_article()`.
 
+> Le traitement lui-même (GD, réduction, nom tiré au sort, suppression) vit dans
+> `App\Service\StockageImages`, dont `ImageArticle` et `LogoBoutique` héritent.
+> Chaque usage ne dit que trois choses : **où** les fichiers vivent, sous **quelle
+> URL** ils sont servis, à quelle **taille** ils sont ramenés. Extrait plutôt que
+> recopié : chacune de ces lignes porte une précaution (transparence préservée,
+> ancien fichier effacé après le nouveau), et c'est l'oubli d'une de ces
+> précautions dans une seconde copie qui ne se verrait pas à l'œil.
+
 - **Stockage** : `public/uploads/articles/`, servi en statique par le serveur web
   — la grille de caisse charge une image par touche, il n'y a pas de raison
   d'amorcer le noyau pour chacune. Répertoire **gitignoré** : c'est du contenu
@@ -636,6 +712,98 @@ fonction Twig `image_article()`.
 Le catalogue `/caisse/catalogue.json` expose la clé `image` (chemin public ou
 `null`) — `FuiteDonneesCaisseTest` fige la liste blanche, l'y ajouter était donc
 une décision, pas un effet de bord.
+
+### Paramètres de l'établissement (`/admin/parametres`)
+
+Raison sociale, enseigne, logo, adresse, mentions légales, pied de ticket. Réservé
+à `ROLE_GERANT`. Ces informations sortent sur **chaque ticket** et **chaque
+rapport Z** : c'est le seul écran dont une erreur s'imprime des milliers de fois.
+
+**Stockage en clé/valeur** : entité `Parametre` (`cle`, `valeur`, `modifieA`), et
+le catalogue de référence dans l'énumération `App\Enum\CleParametre` — clé
+persistée, libellé, aide de saisie, valeur par défaut, groupe. **Ajouter un
+paramètre = ajouter un cas à l'énumération**, sans migration ni retouche du
+formulaire (`ParametresBoutiqueType` boucle sur `cases()`) ni du gabarit (les
+sections viennent de `groupe()`).
+
+- Une clé absente **retombe sur la valeur par défaut** : l'application imprime un
+  ticket dès la première installation, avant toute saisie. `ParametresBoutique`
+  avale même l'absence de la table (migration non jouée) — un ticket ne doit pas
+  échouer pour un paramètre.
+- Les valeurs sont **mémorisées pour la durée de la requête** : un ticket en lit
+  une dizaine, il serait absurde de faire dix requêtes SQL.
+- `ParametresBoutique::pourTicket()` est déclaré comme **fabrique** de
+  `ParametresTicket` dans `services.yaml`. Les consommateurs (`TicketBuilder`,
+  `ImpressionService`, `RapportQuotidienTexte`) injectent ce type sans rien savoir
+  du stockage — ces informations venaient de `.env` auparavant, et rien chez eux
+  n'a bougé.
+- `enregistrer()` **n'écrit que les clés présentes** dans la soumission : un
+  formulaire qui n'expose pas une clé ne l'effacera donc pas.
+
+**Le logo** (`CleParametre::LOGO`) est le seul paramètre qui ne se tape pas au
+clavier. Sa valeur persistée est un **nom de fichier**, comme `Article::$image` —
+service `App\Service\LogoBoutique`, répertoire `public/uploads/boutique/`,
+grand côté ramené à **600 px**.
+
+- **600 et non 400** (la borne des touches produits) : le logo s'imprime sur toute
+  la largeur du papier thermique, soit ~576 points à 203 dpi sur 80 mm. Plus petit,
+  il ressortirait crénelé sur le seul support où il n'y a pas de seconde chance —
+  le papier est déjà sorti.
+- **Répertoire distinct de celui des articles** : ce n'est pas une photo de touche,
+  et le mélanger aux quarante images du catalogue rendrait une sauvegarde ou un
+  nettoyage impossibles à trier. Il reste sous `/uploads/`, donc mis en cache
+  « cache d'abord » par le Service Worker : le reçu garde son logo hors ligne.
+- `CleParametre::estFichier()` **écarte la clé de la boucle** qui engendre les
+  champs texte, remplacée par un couple non mappé « téléverser / retirer »
+  (`logo_fichier`, `logo_retirer`) — même schéma que la photo d'article. Un champ
+  texte sur cette clé laisserait taper n'importe quel nom, et le ticket
+  désignerait un fichier absent du disque.
+- La case **« Retirer le logo » ne s'affiche que s'il y en a un**, et le gabarit
+  marque alors le champ `setRendered` : sans cela `form_end` la ferait réapparaître
+  seule en bas de page, avec le reste du formulaire non affiché.
+- **Le disque ne garde pas d'orphelin** : `definirLogo()` efface l'ancien fichier,
+  mais **après** l'écriture de la nouvelle valeur — un échec laisse le ticket avec
+  le logo qu'il avait plutôt qu'avec un nom pointant dans le vide.
+- **Un fichier disparu retire l'image** (`onerror="this.remove()"`) : le nom de la
+  boutique figure en clair juste en dessous, et une icône de lien cassé en tête de
+  ticket ne rend service à personne. Même parti pris que les touches produits.
+- **Rien sur la sortie ESC/POS**, qui n'envoie que du texte : imprimer un logo
+  demanderait une trame raster (`GS v 0`), à traiter avec l'écart n° 3.
+- En **test**, le service pointe vers `%kernel.cache_dir%/logo-boutique`.
+
+**L'identité s'affiche partout, et n'est écrite nulle part.** Le back-office et le
+pilotage portaient `ZedPOS` en dur dans leurs gabarits — le nom du **logiciel**, là
+où l'exploitant attend celui de sa **boutique**. Les deux lisent maintenant la même
+table que le ticket, par deux fonctions Twig (`App\Twig\BoutiqueExtension`) :
+
+| Fonction | Rend |
+|---|---|
+| `nom_boutique()` | l'enseigne, à défaut la raison sociale (`ParametresBoutique::nom()`) |
+| `logo_boutique()` | le chemin public du logo, ou `null` |
+
+- **Sans argument** ni l'une ni l'autre : il n'y a qu'un établissement, et le
+  gabarit n'a pas à savoir d'où vient la valeur. Renommer l'enseigne dans
+  `/admin/parametres` renomme tous les écrans, onglets du navigateur compris.
+- **L'enseigne prime sur la raison sociale**, même règle qu'en tête de ticket et
+  portée par le seul `ParametresBoutique::nom()` : « ETS KOUAME SARL » est ce qu'on
+  écrit au fisc, pas ce qu'on lit sur la devanture, et les deux ne doivent pas se
+  contredire d'un écran à l'autre.
+- **À défaut de logo, la pastille « Z »** subsiste dans les deux en-têtes : c'est
+  l'état de toute installation neuve, et un en-tête ne doit pas s'ouvrir sur un trou.
+- Le nom **passe à la ligne** dans la barre latérale du back-office (240 px de
+  large) mais est **tronqué** dans l'en-tête du pilotage : celui-ci est collant et
+  partage sa ligne avec « Quitter » sur un téléphone, où deux lignes repousseraient
+  les onglets et voleraient de la hauteur aux chiffres à chaque défilement.
+- Le fond du logo est **blanc** dans les deux en-têtes (barre brune, dégradé
+  sombre) : un logo à fond transparent y disparaîtrait.
+- La caisse, la connexion et l'installation gardent `ZedPOS` : ce sont des écrans
+  du logiciel, pas de la vitrine — et la caisse doit s'afficher hors ligne, sans
+  dépendre d'une lecture en base.
+
+`ParametresBoutiqueTest` couvre le stockage et la reprise sur le ticket ;
+`LogoBoutiqueTest` fige le téléversement, la réduction, le refus d'un fichier qui
+n'est pas une image (422), la propreté du disque, l'arrivée sur le papier et
+l'absence de nom codé en dur dans les deux espaces de gestion.
 
 ### Interface de caisse tactile (`/caisse`)
 
@@ -1098,12 +1266,14 @@ Aucune écriture de stock n'a eu lieu, il n'y a rien à défaire.
 ### Ticket de caisse et impression
 
 - **Vue HTML 80 mm** imprimable via `window.print()` (CSS `@media print`, `@page size: 80mm`) :
-  `GET /caisse/ticket/{uuid}` → `templates/ticket/ticket.html.twig`. En-tête (raison
-  sociale, adresse Abengourou, NCC, n° ticket, date/heure, caissier), lignes, total,
-  ventilation TVA, règlement(s), rendu, **pied paramétrable** et **code-barres du
-  numéro de ticket**.
-- Infos boutique **paramétrables via `.env`** (`TICKET_RAISON_SOCIALE`, `TICKET_ADRESSE`,
-  `TICKET_NCC`, `TICKET_TELEPHONE`, `TICKET_PIED`) → service `App\Service\ParametresTicket`.
+  `GET /caisse/ticket/{uuid}` → `templates/ticket/ticket.html.twig`. En-tête (**logo**,
+  raison sociale, adresse Abengourou, NCC, n° ticket, date/heure, caissier), lignes,
+  total, ventilation TVA, règlement(s), rendu, **pied paramétrable** et **code-barres
+  du numéro de ticket**.
+- Infos boutique saisies dans le **back-office** (`/admin/parametres`, table
+  `parametre`) → service `App\Service\ParametresTicket`, dont
+  `ParametresBoutique::pourTicket()` est la fabrique. Elles étaient auparavant dans
+  `.env` (`TICKET_*`) : ces variables n'existent plus, ne pas les réintroduire.
 - `App\Service\TicketBuilder` construit un `TicketData` (indépendant du support) partagé
   par la vue HTML et l'ESC/POS ; `App\Service\ImpressionService` prépare la commande
   **ESC/POS** (texte ASCII + coupe papier + ouverture tiroir), exposée en base64 par
@@ -1263,7 +1433,7 @@ Comptes créés (mots de passe de démo, à ne pas utiliser en production) :
 
 ## État du projet
 
-Dernière mise à jour : 25 juillet 2026.
+Dernière mise à jour : 30 juillet 2026.
 
 Il n'existe pas de document de cahier des charges dans le dépôt. La référence est
 la section **« Contexte métier »** en tête de ce fichier ; l'inventaire ci-dessous
@@ -1297,8 +1467,10 @@ compare l'implémentation à cette description et signale les écarts.
 | Exports comptables SYSCOHADA (écritures, FEC, balance) | ✅ | `/comptabilite`, `app:export-comptable` |
 | Espace comptable : journal des ventes détaillé | ⚠️ partiel | voir écart n° 2 |
 | Inventaire (feuille, comptage, validation) | ✅ | `/admin/inventaires` |
+| Paramètres de l'établissement, logo compris | ✅ | `/admin/parametres` |
+| Import du catalogue en masse (nom, prix) | ✅ | `/admin/articles/importer` |
 
-Tests : **392 tests PHPUnit** (`php bin/phpunit`) et **37 tests Node**
+Tests : **469 tests PHPUnit** (`php bin/phpunit`) et **37 tests Node**
 (`node --test "tests/js/*.test.js"`).
 
 ### Écarts par rapport au contexte métier — à traiter
@@ -1328,6 +1500,9 @@ Classés par importance.
    `GET /caisse/ticket/{uuid}/escpos`, mais **aucun pont d'impression local ne la
    consomme** : l'impression réelle passe aujourd'hui par `window.print()` du
    navigateur. À prévoir : agent local ou impression réseau directe.
+   Corollaire : le **logo ne sort pas en ESC/POS**, qui n'envoie que du texte. Il
+   faudrait une trame raster (`GS v 0`) — à traiter avec le pont d'impression, pas
+   avant, puisque rien ne consomme encore cette sortie.
 
 4. **Facture normalisée (RNE / DGI) non implémentée.**
    Le ticket porte désormais un code-barres, mais il encode le **numéro interne**

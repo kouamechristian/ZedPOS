@@ -7,6 +7,7 @@ use App\Entity\FicheTechnique;
 use App\Entity\LigneFicheTechnique;
 use App\Controller\Trait\ReponseFormulaire;
 use App\Form\ArticleType;
+use App\Form\ImportArticlesType;
 use App\Form\LigneFicheTechniqueType;
 use App\Repository\ArticleRepository;
 use App\Repository\FamilleProduitRepository;
@@ -14,11 +15,14 @@ use App\Security\Permission;
 use App\Service\AuditLogger;
 use App\Service\CalculateurCoutMatiere;
 use App\Service\ImageArticle;
+use App\Service\ImportArticles;
+use App\Service\RapportImportArticles;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bridge\Doctrine\Attribute\MapEntity;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\Form\FormError;
 use Symfony\Component\Form\FormInterface;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
@@ -29,6 +33,9 @@ use Symfony\Component\Security\Http\Attribute\IsGranted;
 class ArticleController extends AbstractController
 {
     use ReponseFormulaire;
+
+    /** Clé de session portant le compte rendu d'import jusqu'à son affichage. */
+    private const SESSION_RAPPORT_IMPORT = 'admin.import_articles.rapport';
 
     public function __construct(private readonly ImageArticle $images)
     {
@@ -108,6 +115,88 @@ class ArticleController extends AbstractController
         }
 
         return $this->rendreFormulaire('admin/article/form.html.twig', $form, ['titre' => 'Nouvel article']);
+    }
+
+    /**
+     * Import du catalogue en masse : un nom, un prix de vente, une ligne par article.
+     *
+     * Déclaré **avant** `/{id}` : celle-ci exige un identifiant numérique
+     * (`requirements`), `/importer` ne peut donc pas y être confondu, mais l'ordre
+     * garde la lecture des routes évidente.
+     *
+     * Le compte rendu voyage par la **session** jusqu'à une redirection, et non dans
+     * la réponse du POST : Turbo Drive n'affiche pas le corps d'une soumission qui
+     * répond 200, il attend une redirection ou un statut d'erreur. Rendu directement,
+     * le compte rendu ne s'afficherait donc jamais — l'écran resterait figé sur le
+     * formulaire alors que les articles auraient bel et bien été créés.
+     */
+    #[Route('/importer', name: 'admin_article_import', methods: ['GET', 'POST'])]
+    public function import(Request $request, ImportArticles $import): Response
+    {
+        // Même règle qu'à la création à l'unité : sans l'habilitation, les prix du
+        // fichier sont écartés et les articles naissent inactifs. L'import ne doit
+        // pas être la porte de service du prix de vente.
+        $avecPrix = $this->isGranted(Permission::ARTICLE_MODIFIER_PRIX);
+
+        $form = $this->createForm(ImportArticlesType::class);
+        $form->handleRequest($request);
+
+        if ($form->isSubmitted() && $form->isValid()) {
+            /** @var UploadedFile $fichier */
+            $fichier = $form->get('fichier')->getData();
+            $contenu = (string) file_get_contents($fichier->getPathname());
+
+            $rapport = $import->importer($this->enUtf8($contenu), $avecPrix);
+
+            if ($rapport->estVide()) {
+                $form->get('fichier')->addError(new FormError(
+                    'Ce fichier ne contient aucune ligne exploitable. Attendu : un nom d\'article et un prix par ligne.'
+                ));
+
+                return $this->rendreFormulaire('admin/article/import.html.twig', $form, [
+                    'avec_prix' => $avecPrix,
+                    'rapport' => null,
+                ]);
+            }
+
+            $request->getSession()->set(self::SESSION_RAPPORT_IMPORT, $rapport->enTableau());
+
+            return $this->redirectToRoute('admin_article_import', [], Response::HTTP_SEE_OTHER);
+        }
+
+        // Relevé **et retiré** : un rafraîchissement de la page ne doit pas
+        // réafficher le compte rendu d'un import déjà fait, on croirait l'avoir
+        // rejoué.
+        $precedent = $request->getSession()->remove(self::SESSION_RAPPORT_IMPORT);
+
+        return $this->rendreFormulaire('admin/article/import.html.twig', $form, [
+            'avec_prix' => $avecPrix,
+            'rapport' => \is_array($precedent) ? RapportImportArticles::depuisTableau($precedent) : null,
+        ]);
+    }
+
+    /**
+     * Modèle de fichier à remplir.
+     *
+     * Le format ne se devine pas, et un fichier mal formé revient en autant de
+     * lignes rejetées : mieux vaut partir du bon squelette. **BOM UTF-8** en tête,
+     * sans quoi Excel sous Windows lit le fichier en ANSI et massacre les accents —
+     * même raison que pour les exports comptables.
+     */
+    #[Route('/importer/modele', name: 'admin_article_import_modele', methods: ['GET'])]
+    public function importModele(): Response
+    {
+        $lignes = [
+            'Nom;Prix de vente (FCFA)',
+            'Baguette;150',
+            'Pain au chocolat;300',
+            'Sandwich poulet;1500',
+        ];
+
+        return new Response("\u{FEFF}".implode("\r\n", $lignes)."\r\n", Response::HTTP_OK, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="modele-articles.csv"',
+        ]);
     }
 
     #[Route('/{id}', name: 'admin_article_show', requirements: ['id' => '\d+'], methods: ['GET'])]
@@ -215,6 +304,24 @@ class ArticleController extends AbstractController
         }
 
         return $this->rendreFiche($request, $article, $this->creerFicheForm($article));
+    }
+
+    /**
+     * Ramène le contenu téléversé en UTF-8.
+     *
+     * Excel sous Windows francophone enregistre ses CSV en **Windows-1252**, pas en
+     * UTF-8 : sans conversion, « Pâté en croûte » arrive en base en « PÃ¢tÃ© ». Le
+     * nom serait à retaper article par article, et le fichier d'origine paraîtrait
+     * pourtant correct à qui l'ouvre dans son tableur.
+     *
+     * L'ordre du test compte : tout fichier UTF-8 valide est laissé tel quel, la
+     * conversion ne s'applique qu'à ce qui ne peut pas en être.
+     */
+    private function enUtf8(string $contenu): string
+    {
+        return mb_check_encoding($contenu, 'UTF-8')
+            ? $contenu
+            : (string) mb_convert_encoding($contenu, 'UTF-8', 'Windows-1252');
     }
 
     /**

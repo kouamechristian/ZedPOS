@@ -6,6 +6,10 @@
 
 {% block page_actions %}
     <a href="{{ path('admin_famille_index') }}" class="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-medium hover:bg-stone-50">Familles</a>
+    {# Import en masse : garnir un catalogue au démarrage, ou ajouter une gamme
+       entière. Bordure et non aplat — c'est l'action rare, « + Nouvel article »
+       reste le geste courant et garde donc le bouton plein. #}
+    <a href="{{ path('admin_article_import') }}" class="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-medium hover:bg-stone-50">Importer</a>
     <a href="{{ path('admin_article_new') }}" class="rounded-lg bg-stone-800 text-white px-3 py-2 text-sm font-semibold hover:bg-stone-700">+ Nouvel article</a>
 {% endblock %}
 

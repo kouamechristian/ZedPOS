@@ -33,6 +33,27 @@ class ArticleRepository extends ServiceEntityRepository
     }
 
     /**
+     * Tous les noms du catalogue, actifs ou non.
+     *
+     * Sert à l'import en masse ({@see \App\Service\ImportArticles}) pour écarter
+     * les doublons : **un seul aller en base**, là où interroger nom par nom ferait
+     * une requête par ligne du fichier. Les noms seuls, pas les entités — un
+     * catalogue entier hydraté pour n'en lire qu'une colonne serait un contresens.
+     *
+     * Les articles **inactifs comptent aussi** : un article importé deux fois, puis
+     * désactivé, ne doit pas revenir en double au prochain fichier.
+     *
+     * @return list<string>
+     */
+    public function tousLesNoms(): array
+    {
+        return array_column(
+            $this->createQueryBuilder('a')->select('a.nom')->getQuery()->getScalarResult(),
+            'nom',
+        );
+    }
+
+    /**
      * Recherche filtrée des articles (famille, texte, statut d'activation).
      *
      * @return Pagination<Article>

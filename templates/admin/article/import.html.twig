@@ -1,0 +1,173 @@
+{% extends 'admin/base.html.twig' %}
+{% form_theme form 'admin/_form_theme.html.twig' %}
+{% import 'admin/_macros.html.twig' as fmt %}
+
+{% block page_title %}Importer des articles{% endblock %}
+
+{% block page_actions %}
+    <a href="{{ path('admin_article_index') }}" class="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-medium hover:bg-stone-50">Retour au catalogue</a>
+{% endblock %}
+
+{% block admin_content %}
+<div class="max-w-3xl">
+
+    {# Le compte rendu d'abord : après un import, c'est la seule chose qu'on vient
+       lire. Le formulaire reste en dessous, pour repasser un fichier corrigé. #}
+    {% if rapport %}
+        <section class="mb-6 bg-white rounded-xl shadow-sm overflow-hidden">
+            <div class="px-6 py-4 border-b border-stone-100">
+                <h2 class="titre text-lg font-bold text-stone-900">Résultat de l'import</h2>
+            </div>
+
+            <div class="grid grid-cols-3 divide-x divide-stone-100 border-b border-stone-100 text-center">
+                <div class="px-4 py-4">
+                    <div class="titre text-2xl font-bold text-green-700">{{ rapport.nombreCreees }}</div>
+                    <div class="text-xs text-stone-500 mt-0.5">créé{{ rapport.nombreCreees > 1 ? 's' }}</div>
+                </div>
+                <div class="px-4 py-4">
+                    <div class="titre text-2xl font-bold text-stone-500">{{ rapport.doublons|length }}</div>
+                    <div class="text-xs text-stone-500 mt-0.5">déjà au catalogue</div>
+                </div>
+                <div class="px-4 py-4">
+                    <div class="titre text-2xl font-bold {{ rapport.rejets is empty ? 'text-stone-300' : 'text-red-600' }}">{{ rapport.rejets|length }}</div>
+                    <div class="text-xs text-stone-500 mt-0.5">ligne{{ rapport.rejets|length > 1 ? 's' }} refusée{{ rapport.rejets|length > 1 ? 's' }}</div>
+                </div>
+            </div>
+
+            {# Les prix écartés faute d'habilitation : à dire en premier et sans
+               détour, sinon le gérant croit à un fichier incomplet et le refait. #}
+            {% if rapport.prixIgnores %}
+                <div class="px-6 py-4 border-b border-stone-100 bg-amber-50 text-sm text-amber-900">
+                    <span class="font-semibold">Les prix du fichier n'ont pas été repris.</span>
+                    Seule la dirigeante peut fixer un prix de vente. Les articles ont été créés
+                    à 0 FCFA et <strong>restent inactifs</strong> — ils n'apparaîtront en caisse
+                    qu'une fois leur prix fixé.
+                </div>
+            {% endif %}
+
+            {% set sansPrix = rapport.sansPrix %}
+            {% if sansPrix is not empty and not rapport.prixIgnores %}
+                <div class="px-6 py-4 border-b border-stone-100 bg-amber-50 text-sm text-amber-900">
+                    <span class="font-semibold">{{ sansPrix|length }} article(s) sans prix</span>, donc inactifs :
+                    {{ sansPrix|slice(0, 8)|join(', ') }}{% if sansPrix|length > 8 %}…{% endif %}
+                </div>
+            {% endif %}
+
+            {% if rapport.rejets is not empty %}
+                <div class="px-6 py-4 border-b border-stone-100">
+                    <h3 class="font-semibold text-stone-800 mb-2 text-sm">Lignes refusées</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="text-left text-stone-500">
+                                <tr>
+                                    <th class="py-1.5 pr-4 font-medium">Ligne</th>
+                                    <th class="py-1.5 pr-4 font-medium">Contenu</th>
+                                    <th class="py-1.5 font-medium">Raison</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for rejet in rapport.rejets %}
+                                    <tr class="border-t border-stone-100">
+                                        <td class="py-1.5 pr-4 text-stone-500">{{ rejet.ligne }}</td>
+                                        <td class="py-1.5 pr-4 font-mono text-xs text-stone-700">{{ rejet.contenu }}</td>
+                                        <td class="py-1.5 text-red-700">{{ rejet.raison }}</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <p class="mt-3 text-xs text-stone-500">
+                        Corrigez ces lignes et repassez le fichier : les articles déjà créés
+                        seront reconnus et ignorés, rien ne sera créé en double.
+                    </p>
+                </div>
+            {% endif %}
+
+            {% if rapport.doublons is not empty %}
+                <div class="px-6 py-4 border-b border-stone-100 text-sm text-stone-600">
+                    <span class="font-semibold text-stone-800">Déjà au catalogue, laissés intacts :</span>
+                    {{ rapport.doublons|slice(0, 10)|join(', ') }}{% if rapport.doublons|length > 10 %} et {{ rapport.doublons|length - 10 }} autre(s){% endif %}.
+                    <span class="text-stone-500">Leur prix n'a pas été touché.</span>
+                </div>
+            {% endif %}
+
+            {% if rapport.creees is not empty %}
+                <div class="px-6 py-4">
+                    <h3 class="font-semibold text-stone-800 mb-2 text-sm">Articles créés</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <tbody>
+                                {% for ligne in rapport.creees %}
+                                    <tr class="border-t border-stone-100 first:border-0">
+                                        <td class="py-1.5 pr-4 text-stone-800">{{ ligne.nom }}</td>
+                                        <td class="py-1.5 text-right font-medium {{ ligne.prix == 0 ? 'text-stone-400' : '' }}">
+                                            {{ ligne.prix > 0 ? fmt.fcfa(ligne.prix) : '— sans prix' }}
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <a href="{{ path('admin_article_index', {statut: 'inactifs'}) }}"
+                       class="mt-3 inline-block text-sm text-stone-600 underline hover:text-stone-900">
+                        Voir les articles inactifs du catalogue
+                    </a>
+                </div>
+            {% endif %}
+        </section>
+    {% endif %}
+
+    <section class="bg-white rounded-xl shadow-sm p-6">
+        <h2 class="titre text-lg font-bold text-stone-900 mb-1">Le fichier attendu</h2>
+        <p class="text-sm text-stone-500 mb-4">
+            Un article par ligne : <strong>son nom</strong>, puis <strong>son prix de vente en
+            FCFA</strong>. Une ligne d'en-têtes est reconnue et ignorée.
+        </p>
+
+        <pre class="mb-4 rounded-lg bg-stone-50 border border-stone-200 px-4 py-3 text-xs text-stone-700 overflow-x-auto">Nom;Prix de vente (FCFA)
+Baguette;150
+Pain au chocolat;300
+Sandwich poulet;1500</pre>
+
+        <ul class="mb-5 space-y-1.5 text-sm text-stone-600 list-disc pl-5">
+            <li>Séparateur <strong>point-virgule, tabulation ou virgule</strong> — reconnu tout seul.</li>
+            <li>Prix en <strong>FCFA entiers</strong>. « 1 500 », « 1.500 » et « 1500 » sont acceptés ;
+                un montant à centimes (« 1500,50 ») est refusé.</li>
+            <li>Un article <strong>déjà au catalogue est ignoré</strong>, jamais mis à jour : un import
+                ne doit pas changer un prix en place.</li>
+            <li>Unité fixée à <strong>« pièce »</strong>, sans famille ni TVA : à compléter ensuite sur
+                la fiche de l'article.</li>
+            <li>{{ constant('App\\Service\\ImportArticles::MAX_LIGNES') }} lignes au maximum par fichier.</li>
+        </ul>
+
+        {# data-turbo="false" : Turbo intercepte les clics et attend du HTML — sans
+           cet attribut le fichier ne descend pas et la navigation échoue en silence. #}
+        <a href="{{ path('admin_article_import_modele') }}" data-turbo="false"
+           class="mb-5 inline-block text-sm text-stone-600 underline hover:text-stone-900">
+            Télécharger un modèle à remplir
+        </a>
+
+        {% if not avec_prix %}
+            {# Dit **avant** le dépôt, pas après : découvrir la règle une fois les
+               soixante articles créés à 0 FCFA serait une mauvaise surprise. #}
+            <div class="mb-5 rounded-lg bg-amber-50 border border-amber-300 px-4 py-3 text-sm text-amber-900">
+                <span class="font-semibold">Les prix ne seront pas repris.</span>
+                Fixer un prix de vente est réservé à la dirigeante : les articles seront créés
+                <strong>inactifs, à 0 FCFA</strong>, et n'apparaîtront pas en caisse tant que leur
+                prix n'aura pas été fixé. Vous pouvez tout de même laisser la colonne des prix
+                dans le fichier — elle sera simplement ignorée.
+            </div>
+        {% endif %}
+
+        {{ form_start(form) }}
+            {{ form_row(form.fichier) }}
+            <div class="mt-4 flex items-center gap-3">
+                <button class="rounded-lg bg-stone-800 text-white px-5 py-2.5 text-sm font-semibold hover:bg-stone-700">
+                    Importer
+                </button>
+                <span class="text-xs text-stone-400">Aucun article existant ne sera modifié.</span>
+            </div>
+        {{ form_end(form) }}
+    </section>
+</div>
+{% endblock %}

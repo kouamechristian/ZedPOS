@@ -7,7 +7,8 @@ sur le **tableau de bord**.
 Le menu de gauche est votre point de départ :
 
 ```
-ZedPOS  Back-office
+[logo]  VOTRE ENSEIGNE
+        Back-office
 ┌────────────────────┐
 │ ▸ Tableau de bord  │   CA du jour, ventes, alertes
 │ ▸ Ventes           │   tickets, recherche par numéro
@@ -19,8 +20,13 @@ ZedPOS  Back-office
 │ ▸ Clôtures         │   rapports Z et écarts de caisse
 │ ▸ Comptabilité     │   écritures SYSCOHADA, exports
 │ ▸ Utilisateurs     │   comptes
+│ ▸ Paramètres       │   nom, logo, adresse, pied de ticket
 └────────────────────┘
 ```
+
+En haut du menu, **le nom et le logo de votre établissement** — pas ceux du
+logiciel. Ils viennent de **Paramètres** (voir § 7 bis) et se retrouvent à l'identique
+sur les tickets et sur l'écran de la dirigeante.
 
 Un bandeau ambre apparaît en haut dès qu'une matière passe sous son seuil.
 
@@ -133,6 +139,46 @@ lu son libellé.
 - Pour revenir à une touche de couleur : cochez **Retirer la photo**.
 - Les photos fonctionnent **hors ligne** : elles sont mises en réserve sur la
   tablette avec le reste de la caisse.
+
+---
+
+## 2 ter. Importer des articles en masse
+
+**Articles** → bouton **Importer**. Pour garnir un catalogue au démarrage ou ajouter
+une gamme entière : soixante articles saisis un par un prennent une matinée, et ils
+sont déjà dans votre tableur.
+
+**Le fichier** : une ligne par article, deux colonnes — le **nom**, puis le **prix
+de vente en FCFA**. Depuis Excel : *Enregistrer sous* → **CSV**. Le bouton
+**Télécharger un modèle à remplir** vous donne le bon squelette.
+
+```
+Nom;Prix de vente (FCFA)
+Baguette;150
+Pain au chocolat;300
+Sandwich poulet;1500
+```
+
+**Ce qu'il faut savoir avant de cliquer :**
+
+- **Un article déjà au catalogue est ignoré**, jamais modifié. Vous pouvez repasser
+  le même fichier corrigé sans rien créer en double, et sans toucher aux prix en place.
+- **Les prix ne sont repris que si c'est la dirigeante qui importe.** Fixer un prix
+  de vente lui est réservé, ici comme dans le formulaire. Si vous importez, les
+  articles sont créés **inactifs à 0 FCFA** : ils n'apparaissent pas en caisse
+  jusqu'à ce qu'elle fixe leur prix. L'écran vous le rappelle avant le dépôt.
+- **Le prix s'écrit en FCFA entiers.** « 1500 », « 1 500 » et « 1.500 » passent ;
+  un montant à centimes (« 1500,50 ») est refusé — le franc CFA ne circule pas en
+  centimes, et le logiciel n'arrondit jamais un montant à votre place.
+- Les articles arrivent en **« pièce »**, sans famille ni TVA. Complétez-les ensuite
+  sur leur fiche, ou laissez-les inactifs le temps de le faire.
+
+**Après l'import**, un compte rendu vous donne le nombre d'articles créés, ceux qui
+existaient déjà, et **chaque ligne refusée avec sa raison et son numéro**. Corrigez
+ces lignes dans votre fichier et repassez-le : rien ne sera créé en double.
+
+> Un accent qui ressort en « Ã© » ? Cela n'arrive plus : les fichiers Excel
+> francophones sont convertis automatiquement.
 
 ---
 
@@ -268,6 +314,36 @@ Bouton **Modifier** sur la ligne. Vous corrigez le nom, l'e-mail, le rôle.
 
 Créations, modifications et désactivations sont **tracées au journal d'audit**, à
 votre nom. Les mots de passe et codes PIN, eux, n'y figurent jamais.
+
+---
+
+## 7 bis. Les informations de votre établissement
+
+**Paramètres** dans le menu. C'est le seul écran dont une erreur s'imprime des
+milliers de fois : ce que vous tapez ici sort en tête et en pied de **chaque
+ticket** et de **chaque rapport de clôture**. Vérifiez-le avant la mise en service.
+
+| Champ | Où il sort |
+|---|---|
+| **Raison sociale** | nom légal, obligatoire — il figure sur chaque ticket |
+| **Enseigne** | le nom de la devanture, s'il diffère du nom légal. **Renseigné, c'est lui qui s'affiche partout** |
+| **Logo** | en tête de ticket, dans ce menu et sur l'écran de la dirigeante |
+| Adresse, ville, téléphone, e-mail | en-tête du ticket |
+| NCC, RCCM | mentions légales, imprimées si renseignées |
+| Pied de ticket | la phrase de fin (remerciement, horaires…) |
+
+**Le logo.** *Parcourir*, choisissez une image, *Enregistrer*. JPEG, PNG ou WebP,
+5 Mo au plus — **inutile de la redimensionner**, elle est réduite toute seule. Un
+logo sur fond transparent (PNG) donne le meilleur résultat sur le papier.
+Pour revenir en arrière, cochez **Retirer le logo** ; la case n'apparaît que
+lorsqu'il y en a un à retirer.
+
+Les tickets **déjà imprimés ne changent pas** : seuls les suivants reprennent vos
+modifications.
+
+> Le logo ne sort pas encore sur une imprimante thermique branchée en direct — il
+> s'imprime quand le ticket passe par la fenêtre d'impression du navigateur, ce qui
+> est le cas aujourd'hui.
 
 ---
 
