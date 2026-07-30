@@ -26,6 +26,19 @@
         line-height: 1.35;
     }
 
+    /* Logo de l'établissement. Hauteur bornée en millimètres, largeur libre : une
+       image carrée et une image très allongée doivent toutes deux tenir sans
+       repousser le reste du ticket vers le bas du papier.
+
+       `object-fit: contain` et non `cover` : un logo recadré n'est plus un logo. */
+    .ticket .logo {
+        display: block;
+        max-width: 60mm;
+        max-height: 20mm;
+        margin: 0 auto 3px;
+        object-fit: contain;
+    }
+
     .ticket .center { text-align: center; }
     .ticket .bold   { font-weight: bold; }
     .ticket .big    { font-size: 16px; }

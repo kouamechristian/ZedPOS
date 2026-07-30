@@ -140,14 +140,16 @@ pouvoir sortir sur Internet. À défaut, compiler en local et téléverser
 php bin/console cache:clear --env=prod
 php bin/console cache:warmup --env=prod
 
-mkdir -p public/uploads/articles var/log var/cache
+mkdir -p public/uploads/articles public/uploads/boutique var/log var/cache
 chown -R www-data:www-data var public/uploads
 chmod -R 775 var public/uploads
 ```
 
-`public/uploads/` est **gitignoré** : il contient les photos des touches produits,
-donc du contenu d'exploitation. Il n'existe pas après un `git clone` — il faut le
-créer, et le sauvegarder avec la base, pas avec le code.
+`public/uploads/` est **gitignoré** : il contient les photos des touches produits
+(`articles/`) et le logo de l'établissement (`boutique/`), donc du contenu
+d'exploitation. Il n'existe pas après un `git clone` — il faut le créer, et le
+sauvegarder avec la base, pas avec le code. La base ne garde que des **noms de
+fichier** : sauvegarder l'une sans l'autre donne des images manquantes.
 
 ## 8. Serveur web
 
@@ -309,3 +311,4 @@ Deux choses à sauvegarder, et le code n'en fait pas partie (il est sur GitHub) 
 | Caisse inutilisable hors ligne | HTTPS absent : le Service Worker ne s'enregistre pas |
 | « Permission denied » sur `var/` | `chown -R www-data:www-data var` |
 | Une photo téléversée ne s'affiche pas | `public/uploads/articles` inexistant ou non inscriptible |
+| Le logo ne sort pas sur le ticket | `public/uploads/boutique` inexistant ou non inscriptible |

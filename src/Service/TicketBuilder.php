@@ -80,6 +80,7 @@ class TicketBuilder
             rendu: $vente->getRendu(),
             rccm: $this->parametres->rccm,
             email: $this->parametres->email,
+            logo: $this->parametres->logo,
             // Le numéro de ticket suit un gabarit maîtrisé (`Vaammjj-00001`), donc
             // toujours encodable ; la garde couvre les numéros d'un import ou d'un
             // futur format, pour lesquels mieux vaut un ticket sans code-barres

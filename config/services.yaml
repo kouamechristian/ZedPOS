@@ -42,6 +42,13 @@ services:
         arguments:
             $repertoire: '%kernel.project_dir%/public/uploads/articles'
 
+    # Logo de l'établissement. Répertoire distinct de celui des articles : ce n'est
+    # pas une photo de touche, et le mélanger aux images du catalogue rendrait une
+    # sauvegarde ou un nettoyage impossibles à trier.
+    App\Service\LogoBoutique:
+        arguments:
+            $repertoire: '%kernel.project_dir%/public/uploads/boutique'
+
 when@test:
     services:
         _defaults:
@@ -54,6 +61,10 @@ when@test:
         App\Service\ImageArticle:
             arguments:
                 $repertoire: '%kernel.cache_dir%/images-articles'
+
+        App\Service\LogoBoutique:
+            arguments:
+                $repertoire: '%kernel.cache_dir%/logo-boutique'
 
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones

@@ -23,6 +23,12 @@ final readonly class ParametresTicket
         public string $pied,
         public string $rccm = '',
         public string $email = '',
+        /**
+         * Chemin public du logo (`/uploads/boutique/…`), vide s'il n'y en a pas.
+         * Un chemin déjà composé, et non un nom de fichier : les consommateurs
+         * l'écrivent dans un `src` sans rien savoir du stockage.
+         */
+        public string $logo = '',
     ) {
     }
 }

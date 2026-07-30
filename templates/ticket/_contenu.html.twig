@@ -8,6 +8,17 @@
 {% import 'admin/_macros.html.twig' as fmt %}
 
 <div class="ticket">
+    {# Logo de l'établissement, s'il en a un (/admin/parametres). En tête et centré,
+       au-dessus de la raison sociale.
+
+       Un fichier disparu **retire l'image** plutôt que de laisser l'icône de lien
+       cassé du navigateur en haut du ticket : le nom en clair juste en dessous
+       suffit à identifier la boutique, et un ticket doit sortir dans tous les cas.
+
+       Il n'apparaît pas sur la sortie ESC/POS, qui n'envoie que du texte. #}
+    {% if ticket.logo %}
+        <img class="logo" src="{{ ticket.logo }}" alt="{{ ticket.raisonSociale }}" onerror="this.remove()">
+    {% endif %}
     <div class="center bold big">{{ ticket.raisonSociale }}</div>
     <div class="center">{{ ticket.adresse }}</div>
     {% if ticket.telephone %}<div class="center">Tél : {{ ticket.telephone }}</div>{% endif %}

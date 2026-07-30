@@ -1,6 +1,8 @@
 {% extends 'base.html.twig' %}
 
-{% block title %}{% block page_title %}Administration{% endblock %} — ZedPOS{% endblock %}
+{# Le nom vient de /admin/parametres, jamais du gabarit : l'onglet du navigateur
+   porte le nom de l'établissement, pas celui du logiciel. #}
+{% block title %}{% block page_title %}Administration{% endblock %} — {{ nom_boutique() }}{% endblock %}
 
 {% set nav = [
     { label: 'Tableau de bord', route: 'admin_dashboard',    match: 'admin_dashboard',    icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
@@ -23,9 +25,26 @@
     <aside class="w-60 shrink-0 bg-stone-900 text-stone-300 flex flex-col">
         <div class="px-5 py-5 border-b border-stone-800/80">
             <div class="flex items-center gap-2.5">
-                <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-amber-500 text-stone-900 text-sm font-black">Z</span>
-                <div class="leading-tight">
-                    <div class="titre text-lg font-bold text-white">ZedPOS</div>
+                {# Le logo saisi dans /admin/parametres s'il existe, sinon la
+                   pastille « Z » : un back-office sans logo ne doit pas s'ouvrir
+                   sur un trou dans sa barre latérale.
+
+                   Variable nommée `logo_entete` et non `logo` : `admin/parametres`
+                   reçoit de son contrôleur un `logo` à lui, et il est rendu à
+                   l'intérieur de ce bloc — les deux valeurs se valent aujourd'hui,
+                   les confondre serait un piège pour demain. #}
+                {% set logo_entete = logo_boutique() %}
+                {% if logo_entete %}
+                    <img src="{{ logo_entete }}" alt="" class="h-9 w-9 shrink-0 rounded-lg bg-white object-contain" onerror="this.remove()">
+                {% else %}
+                    <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-amber-500 text-stone-900 text-sm font-black">Z</span>
+                {% endif %}
+                {# Le nom peut faire deux mots longs (« DELICES DU CAMPUS ») dans une
+                   barre de 240 px : il passe donc à la ligne au lieu d'être coupé.
+                   Tronquer le nom de la boutique dans son propre back-office serait
+                   le seul texte de l'écran qu'on ne pourrait pas lire en entier. #}
+                <div class="min-w-0 leading-tight">
+                    <div class="titre text-base font-bold text-white break-words">{{ nom_boutique() }}</div>
                     <div class="text-[11px] uppercase tracking-widest text-amber-500/80">Back-office</div>
                 </div>
             </div>

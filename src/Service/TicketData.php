@@ -34,6 +34,11 @@ final readonly class TicketData
         public string $rccm = '',
         public string $email = '',
         /**
+         * Chemin public du logo, vide s'il n'y en a pas. Sans effet sur la sortie
+         * ESC/POS, qui n'envoie que du texte : voir {@see ImpressionService}.
+         */
+        public string $logo = '',
+        /**
          * Code-barres du numéro de ticket. Null si le numéro n'est pas encodable :
          * un ticket sans code-barres reste un ticket valable, alors qu'un ticket
          * qui refuse de s'imprimer bloque la caisse.

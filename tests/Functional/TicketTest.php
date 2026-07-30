@@ -68,7 +68,9 @@ class TicketTest extends WebTestCase
         $this->client->request('GET', '/caisse/ticket/'.$this->uuid);
 
         $this->assertResponseIsSuccessful();
-        $this->assertSelectorTextContains('body', 'ZedPOS');            // raison sociale (.env)
+        // Raison sociale : la table `parametre` est vide ici, on lit donc la valeur
+        // par défaut du catalogue (CleParametre) — pas une variable d'environnement.
+        $this->assertSelectorTextContains('body', 'ZedPOS');
         $this->assertSelectorTextContains('body', 'Abengourou');        // adresse
         $this->assertSelectorTextContains('body', 'V260725-00001');     // numéro
         $this->assertSelectorTextContains('body', 'TVA 18');            // ventilation

@@ -26,6 +26,7 @@ class ParametresBoutique
     public function __construct(
         private readonly EntityManagerInterface $em,
         private readonly ParametreRepository $parametres,
+        private readonly LogoBoutique $logos,
     ) {
     }
 
@@ -90,24 +91,73 @@ class ParametresBoutique
     }
 
     /**
+     * Nom de l'établissement tel qu'il s'affiche partout : **l'enseigne prime, à
+     * défaut la raison sociale**.
+     *
+     * Une seule règle, un seul endroit. Elle vaut pour la tête de ticket comme pour
+     * les en-têtes du back-office et du pilotage : « ETS KOUAME SARL » est ce qu'on
+     * écrit au fisc, pas ce qu'on lit sur la devanture, et les deux ne doivent pas
+     * se contredire d'un écran à l'autre.
+     *
+     * Jamais vide : la raison sociale est obligatoire à la saisie et retombe sinon
+     * sur la valeur par défaut du catalogue. Un en-tête sans nom n'existe donc pas.
+     */
+    public function nom(): string
+    {
+        $enseigne = $this->valeur(CleParametre::ENSEIGNE);
+
+        return '' !== $enseigne ? $enseigne : $this->valeur(CleParametre::RAISON_SOCIALE);
+    }
+
+    /**
+     * Chemin public du logo, ou `null` s'il n'y en a pas.
+     *
+     * La base ne garde qu'un nom de fichier ; l'URL se compose dans
+     * {@see LogoBoutique}, seul endroit à savoir où les fichiers vivent.
+     */
+    public function cheminLogo(): ?string
+    {
+        return $this->logos->chemin($this->valeur(CleParametre::LOGO));
+    }
+
+    /**
+     * Remplace le logo par le fichier déjà déposé, ou le retire si `null`.
+     *
+     * Le fichier précédent n'est effacé qu'**après** l'écriture du nouveau nom :
+     * si l'enregistrement échoue, le ticket garde le logo qu'il avait plutôt que
+     * de pointer vers un fichier disparu.
+     */
+    public function definirLogo(?string $nomFichier): void
+    {
+        $ancien = $this->valeur(CleParametre::LOGO);
+
+        $this->enregistrer([CleParametre::LOGO->value => $nomFichier ?? '']);
+
+        if ($ancien !== ($nomFichier ?? '')) {
+            $this->logos->supprimer($ancien);
+        }
+    }
+
+    /**
      * Vue « ticket » des paramètres. Sert de fabrique au service
      * {@see ParametresTicket}, ce qui laisse inchangés tous ses consommateurs.
      */
     public function pourTicket(): ParametresTicket
     {
-        $enseigne = $this->valeur(CleParametre::ENSEIGNE);
         $ville = $this->valeur(CleParametre::VILLE);
         $adresse = $this->valeur(CleParametre::ADRESSE);
 
         return new ParametresTicket(
-            // L'enseigne prime en tête de ticket ; à défaut, la raison sociale.
-            raisonSociale: '' !== $enseigne ? $enseigne : $this->valeur(CleParametre::RAISON_SOCIALE),
+            raisonSociale: $this->nom(),
             adresse: trim($adresse.('' !== $ville ? ', '.$ville : ''), ', '),
             ncc: $this->valeur(CleParametre::NCC),
             telephone: $this->valeur(CleParametre::TELEPHONE),
             pied: $this->valeur(CleParametre::PIED_TICKET),
             rccm: $this->valeur(CleParametre::RCCM),
             email: $this->valeur(CleParametre::EMAIL),
+            // Le chemin public, et non le nom de fichier : le ticket l'écrit dans
+            // un `src`, il n'a pas à savoir où les images sont rangées.
+            logo: $this->cheminLogo() ?? '',
         );
     }
 }

@@ -11,7 +11,8 @@
    liste, une fiche) peut la redéfinir sans toucher au cadre. #}
 {% extends 'base.html.twig' %}
 
-{% block title %}{% block page_title %}Pilotage{% endblock %} — ZedPOS{% endblock %}
+{# Le nom vient de /admin/parametres, jamais du gabarit. #}
+{% block title %}{% block page_title %}Pilotage{% endblock %} — {{ nom_boutique() }}{% endblock %}
 
 {% block pilotage_largeur %}max-w-3xl lg:max-w-7xl{% endblock %}
 
@@ -22,9 +23,24 @@
     <header class="sticky top-0 z-20 bg-gradient-to-br from-stone-900 via-stone-900 to-amber-950 text-white shadow-lg shadow-amber-900/10">
         <div class="{{ block('pilotage_largeur') }} mx-auto px-4 py-3 flex items-center justify-between gap-3">
             <div class="flex items-center gap-2.5 min-w-0">
-                <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-amber-500 text-stone-900 text-sm font-black">Z</span>
+                {# Logo saisi dans /admin/parametres, sinon la pastille « Z ». Fond
+                   blanc : le logo est posé sur un dégradé sombre, et une image à
+                   fond transparent y disparaîtrait.
+
+                   Nommée `logo_entete` pour la même raison que dans le back-office :
+                   la variable vit dans le bloc qui rend les pages filles. #}
+                {% set logo_entete = logo_boutique() %}
+                {% if logo_entete %}
+                    <img src="{{ logo_entete }}" alt="" class="h-9 w-9 shrink-0 rounded-lg bg-white object-contain" onerror="this.remove()">
+                {% else %}
+                    <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-amber-500 text-stone-900 text-sm font-black">Z</span>
+                {% endif %}
+                {# Tronqué et non passé à la ligne, contrairement au back-office :
+                   l'en-tête est collant et partagé avec le bouton « Quitter » sur un
+                   téléphone — un nom qui s'étale sur deux lignes repousserait les
+                   onglets et volerait de la hauteur aux chiffres à chaque défilement. #}
                 <div class="min-w-0 leading-tight">
-                    <div class="titre font-bold">ZedPOS</div>
+                    <div class="titre font-bold truncate">{{ nom_boutique() }}</div>
                     <div class="text-xs text-amber-200/80 truncate">{{ block('page_title') }}</div>
                 </div>
             </div>

@@ -11,7 +11,38 @@
         service.
     </p>
 
+    {# `form_start` pose de lui-même enctype="multipart/form-data" : le formulaire
+       porte un champ fichier depuis le logo. #}
     {{ form_start(form) }}
+
+    {# Le logo a sa propre section : sa valeur persistée est un nom de fichier, pas
+       une saisie — il lui faut un aperçu et une case de retrait, là où les autres
+       paramètres se contentent d'un champ engendré depuis le catalogue. #}
+    <section class="mb-5 bg-white rounded-xl shadow-sm p-6">
+        <h2 class="titre text-lg font-bold text-stone-900 mb-4">Logo</h2>
+        <div class="flex flex-col sm:flex-row sm:items-start gap-5">
+            {# Damier discret : un logo à fond transparent doit se voir tel qu'il
+               sortira sur le papier, pas fondu dans le blanc de la carte. #}
+            <div class="grid h-24 w-24 shrink-0 place-items-center rounded-lg border border-stone-200 bg-stone-50 overflow-hidden">
+                {% if logo %}
+                    <img src="{{ logo }}" alt="Logo de l'établissement" class="max-h-24 max-w-full object-contain">
+                {% else %}
+                    <span class="text-[11px] text-stone-400 text-center px-2">Aucun logo</span>
+                {% endif %}
+            </div>
+            <div class="flex-1 min-w-0">
+                {{ form_row(attribute(form, 'logo_fichier')) }}
+                {% if logo %}
+                    {{ form_row(attribute(form, 'logo_retirer')) }}
+                {% else %}
+                    {# Rien à retirer : la case n'a pas de sens ici. Marquée rendue,
+                       sinon `form_end` la ferait réapparaître seule en bas de page
+                       avec le reste du formulaire non affiché. #}
+                    {% do attribute(form, 'logo_retirer').setRendered %}
+                {% endif %}
+            </div>
+        </div>
+    </section>
 
     {# Les groupes viennent du catalogue CleParametre : rien n'est codé en dur ici. #}
     {% for titre, champs in groupes %}
