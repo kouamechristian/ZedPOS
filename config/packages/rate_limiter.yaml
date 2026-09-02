@@ -1,0 +1,33 @@
+framework:
+    rate_limiter:
+        # Tentatives de connexion à la caisse, par adresse IP.
+        #
+        # Le pavé numérique n'a pas d'identifiant : on saisit quatre chiffres, et
+        # le serveur cherche à qui ils appartiennent. Il n'y a donc rien d'autre
+        # que l'IP sur quoi compter — c'est pourquoi cette limite est portée ici
+        # et non par le `login_throttling` du pare-feu, qui compte par identifiant
+        # saisi (voir la note dans security.yaml et CaisseAuthenticator).
+        #
+        # 10 échecs par 5 minutes. Le calcul métier est le suivant :
+        #
+        #   - une caissière se trompe une ou deux fois, jamais dix : seuls les
+        #     échecs consomment un jeton, une connexion réussie n'en coûte aucun ;
+        #   - toute la boutique sort souvent par une seule IP publique. Un blocage
+        #     immobilise donc le comptoir : il devait rester court, d'où 5 minutes
+        #     et non le quart d'heure habituel — on ne suspend pas la file du
+        #     matin parce que quelqu'un a oublié son code ;
+        #   - un code PIN à 4 chiffres, ce sont 10 000 combinaisons. À 120 essais
+        #     par heure, il en faut plus de 80 heures pour les épuiser, là où
+        #     quelques minutes suffisaient sans limite — et le journal d'audit a
+        #     tout le temps de s'en apercevoir.
+        #
+        # `sliding_window` plutôt que `fixed_window` : une fenêtre fixe se vide
+        # d'un coup à heure ronde, et laisse passer deux pleines rafales à cheval
+        # sur la bascule.
+        #
+        # Sans symfony/lock, deux requêtes simultanées peuvent consommer le même
+        # jeton. C'est sans portée ici : on compte des dizaines d'essais, pas un.
+        connexion_caisse:
+            policy: 'sliding_window'
+            limit: 10
+            interval: '5 minutes'

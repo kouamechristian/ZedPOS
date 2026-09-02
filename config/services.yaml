@@ -66,5 +66,13 @@ when@test:
             arguments:
                 $repertoire: '%kernel.cache_dir%/logo-boutique'
 
+        # Les compteurs de tentatives de connexion vivent dans un cache sur
+        # disque, qui survit d'un test à l'autre : un test qui échoue à se
+        # connecter laisserait sinon sa dette au suivant, et l'ordre d'exécution
+        # déciderait du résultat. L'alias rend le pool accessible pour le vider.
+        test.cache.rate_limiter:
+            alias: cache.rate_limiter
+            public: true
+
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones

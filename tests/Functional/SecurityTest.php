@@ -27,6 +27,23 @@ class SecurityTest extends WebTestCase
             $connection->executeStatement('DELETE FROM '.$table);
         }
         $connection->executeStatement('SET FOREIGN_KEY_CHECKS = 1');
+
+        // Les compteurs de tentatives ne sont pas en base : ils vivent dans un
+        // cache sur disque, qui survit au vidage des tables. Sans ce nettoyage,
+        // un test qui échoue à se connecter lègue sa dette au suivant et c'est
+        // l'ordre d'exécution qui décide du résultat.
+        static::getContainer()->get('test.cache.rate_limiter')->clear();
+    }
+
+    /** Soumet un code PIN sur le pavé numérique, jeton CSRF compris. */
+    private function saisirPin(string $pin): void
+    {
+        $crawler = $this->client->request('GET', '/caisse/login');
+
+        $this->client->request('POST', '/caisse/login', [
+            'code_pin' => $pin,
+            '_csrf_token' => $crawler->filter('input[name="_csrf_token"]')->attr('value'),
+        ]);
     }
 
     private function creerUtilisateur(string $email, string $role, ?string $motDePasse = null, ?string $codePin = null): void
@@ -109,6 +126,76 @@ class SecurityTest extends WebTestCase
 
         $audit = static::getContainer()->get(JournalAuditRepository::class)->findOneBy(['action' => 'ECHEC_CONNEXION']);
         $this->assertNotNull($audit, 'Un échec de connexion doit être journalisé.');
+    }
+
+    /**
+     * Un code PIN, ce sont 10 000 combinaisons : sans limite, on les épuise en
+     * quelques minutes. Et comme la caisse cherche à quel caissier appartient le
+     * code saisi, une seule série d'essais ouvre n'importe quel compte de caisse
+     * — il n'est pas même nécessaire d'en viser un.
+     *
+     * Le onzième essai est donc refusé **même s'il est juste** : c'est ce qui
+     * prouve que le barrage précède la vérification, et non l'inverse.
+     */
+    public function testLeCodePinNeSeBalayePasCombinaisonParCombinaison(): void
+    {
+        $this->creerUtilisateur('caisse@zedpos.ci', 'ROLE_CAISSIER', codePin: '4321');
+
+        for ($essai = 0; $essai < 10; ++$essai) {
+            $this->saisirPin('0000');
+            $this->assertResponseRedirects('/caisse/login', message: "L'essai $essai devait échouer.");
+        }
+
+        $this->saisirPin('4321');
+        $this->assertResponseRedirects(
+            '/caisse/login',
+            message: 'Passé le quota, le bon code lui-même doit être écarté sans être vérifié.',
+        );
+    }
+
+    /**
+     * Le comptoir passe avant le pare-feu : une caissière qui tape juste ne doit
+     * jamais être arrêtée, même après une matinée de connexions. Seuls les échecs
+     * consomment un essai — sinon la file du matin s'arrêterait d'elle-même.
+     */
+    public function testUneConnexionReussieNeConsommeAucunEssai(): void
+    {
+        $this->creerUtilisateur('caisse@zedpos.ci', 'ROLE_CAISSIER', codePin: '4321');
+
+        // Bien au-delà du quota de dix : aucune de ces connexions ne le grignote.
+        for ($essai = 0; $essai < 15; ++$essai) {
+            $this->saisirPin('4321');
+            $this->assertResponseRedirects('/caisse', message: "La connexion $essai devait aboutir.");
+        }
+    }
+
+    /**
+     * Même barrage sur la connexion classique, celui-là porté par le
+     * `login_throttling` du pare-feu — le compte de la dirigeante ouvre le
+     * pilotage, l'audit et les prix de vente.
+     */
+    public function testLeMotDePasseNeSeDevinePasNonPlus(): void
+    {
+        $this->creerUtilisateur('dirigeante@zedpos.ci', 'ROLE_DIRIGEANTE', motDePasse: 'secret123');
+
+        for ($essai = 0; $essai < 5; ++$essai) {
+            $crawler = $this->client->request('GET', '/login');
+            $this->client->submit($crawler->selectButton('Se connecter')->form([
+                '_username' => 'dirigeante@zedpos.ci',
+                '_password' => 'faux'.$essai,
+            ]));
+        }
+
+        $crawler = $this->client->request('GET', '/login');
+        $this->client->submit($crawler->selectButton('Se connecter')->form([
+            '_username' => 'dirigeante@zedpos.ci',
+            '_password' => 'secret123',
+        ]));
+
+        $this->assertResponseRedirects(
+            '/login',
+            message: 'Passé le quota, le bon mot de passe ne doit plus ouvrir la session.',
+        );
     }
 
     public function testAccesRefuseSansRole(): void

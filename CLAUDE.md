@@ -127,6 +127,45 @@ base est vide, et plus rien n'y mène ensuite.
 - Chaque connexion / déconnexion / échec est tracé dans `JournalAudit` via
   `App\Service\AuditLogger` (`App\EventSubscriber\AuditConnexionSubscriber`) —
   voir « Journal d'audit inaltérable » plus bas.
+- **Nombre d'essais limité — deux mécanismes, parce qu'un seul ne couvrait pas
+  les deux portes.** Tracer un échec ne l'empêche pas : le journal d'audit disait
+  ce qui s'était passé, rien ne l'arrêtait.
+
+  | Porte | Mécanisme | Quota | Compté par |
+  |---|---|---|---|
+  | `/login` | `login_throttling` du pare-feu | 5 / 15 min | identifiant + IP |
+  | `/caisse/login` | limiteur `connexion_caisse` dans `CaisseAuthenticator` | 10 échecs / 5 min | IP |
+
+  Le pavé numérique **échappe au `login_throttling`**, et pas qu'à moitié :
+
+  - le contrôle de Symfony s'accroche à `CheckPassportEvent`, or sur un PIN
+    inconnu `CaisseAuthenticator::authenticate()` lève **avant** de construire le
+    passeport. L'événement ne part jamais : **pas un seul échec ne serait compté**
+    sur la porte la plus exposée de l'application ;
+  - il compte par identifiant saisi, et un PIN n'en porte aucun — quatre chiffres,
+    et rien d'autre. Il ne reste que l'IP.
+
+  D'où un limiteur explicite, et trois partis pris :
+
+  - **seuls les échecs consomment un jeton**, et le quota est consulté *avant* de
+    comparer quoi que ce soit. Une caissière qui tape juste n'est jamais gênée, et
+    un attaquant est écarté sans que le serveur ait haché son essai contre chaque
+    caissier — sinon la limite elle-même ouvrait une voie d'épuisement du
+    processeur, une tentative coûtant autant de vérifications qu'il y a de comptes.
+  - **5 minutes et non un quart d'heure** : toute la boutique sort souvent par une
+    seule IP publique, un blocage immobilise donc le comptoir. On ne suspend pas la
+    file du matin parce que quelqu'un a oublié son code. Le calcul reste dissuasif :
+    10 000 combinaisons à 120 essais/heure, ce sont plus de 80 heures.
+  - **lire `getRemainingTokens()`, jamais `isAccepted()` sur un `consume(0)`** :
+    consommer zéro jeton est toujours accepté, par construction. S'y fier laissait
+    passer toutes les tentatives — la limite était en place et ne servait à rien.
+    `SecurityTest::testLeCodePinNeSeBalayePasCombinaisonParCombinaison` l'a
+    attrapé, en exigeant que le bon code lui-même soit écarté passé le quota.
+
+  > En test, les compteurs vivent dans un cache sur disque qui **survit au vidage
+  > des tables** : `SecurityTest::setUp()` purge `test.cache.rate_limiter`, sans
+  > quoi un test qui échoue à se connecter lègue sa dette au suivant et l'ordre
+  > d'exécution décide du résultat.
 - **Créer un compte** — deux chemins, un seul service :
   - back-office `/admin/utilisateurs/nouveau` (bouton « + Nouvel utilisateur »),
     ouvert au **gérant et à la dirigeante** (`Permission::UTILISATEUR_GERER`,
@@ -1566,6 +1605,7 @@ compare l'implémentation à cette description et signale les écarts.
 | Module | État | Points d'entrée |
 |---|---|---|
 | Authentification 2 voies (mot de passe / PIN) + redirection par rôle | ✅ | `/login`, `/caisse/login` |
+| Limitation des tentatives de connexion (mot de passe et PIN) | ✅ | `login_throttling`, limiteur `connexion_caisse` |
 | Habilitations fines par Voters | ✅ | `App\Security\Permission` |
 | Back-office : familles, articles, matières, fournisseurs, fiches techniques | ✅ | `/admin` |
 | Coût de revient, marge, seuil d'alerte | ✅ | `/admin/articles`, `/admin/production` |
@@ -1593,7 +1633,7 @@ compare l'implémentation à cette description et signale les écarts.
 | Paramètres de l'établissement, logo compris | ✅ | `/admin/parametres` |
 | Import du catalogue en masse (nom, prix) | ✅ | `/admin/articles/importer` |
 
-Tests : **474 tests PHPUnit** (`php bin/phpunit`) et **37 tests Node**
+Tests : **477 tests PHPUnit** (`php bin/phpunit`) et **37 tests Node**
 (`node --test "tests/js/*.test.js"`).
 
 ### Écarts par rapport au contexte métier — à traiter
