@@ -5,10 +5,16 @@
 {% block body %}
 <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-amber-50 via-amber-100 to-orange-100 px-4">
     <div class="w-full max-w-sm bg-white rounded-2xl shadow-xl shadow-amber-900/10 ring-1 ring-amber-200/60 p-8">
+        {# Logo de l'établissement, à la place de la pastille « Z » qui n'était qu'un
+           marque-place. Il porte déjà l'enseigne et les métiers : le sous-titre
+           « Boulangerie & fast-food » ferait doublon, et le contredirait.
+           `alt` non vide : le nom de la boutique n'existe qu'en image ici, un alt
+           décoratif le ferait disparaître pour un lecteur d'écran. #}
         <div class="text-center mb-7">
-            <span class="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-amber-500 text-stone-900 text-xl font-black shadow-inner">Z</span>
-            <h1 class="titre text-3xl font-bold text-stone-900">ZedPOS</h1>
-            <p class="text-sm text-stone-500">Boulangerie &amp; fast-food</p>
+            <img src="{{ asset('image/logo.jpeg') }}" alt="Délices du Campus" width="112" height="112"
+                 class="mx-auto mb-4 h-28 w-28 rounded-2xl object-cover shadow-sm ring-1 ring-amber-200">
+            <h1 class="titre text-3xl font-bold text-stone-900">LES DELICES DU CAMPUS</h1>
+            <p class="text-sm text-stone-500">Connexion</p>
         </div>
 
         {% if erreur %}
