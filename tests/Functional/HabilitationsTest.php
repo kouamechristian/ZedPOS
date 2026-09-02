@@ -147,21 +147,48 @@ class HabilitationsTest extends WebTestCase
         $this->assertResponseStatusCodeSame(403);
     }
 
-    public function testCaissierNePeutPasAnnulerUneVente(): void
+    /**
+     * L'exception accordée au caissier s'arrête à sa propre caisse : connaître
+     * l'uuid du ticket d'un collègue ne suffit pas, sinon un caissier pourrait
+     * effacer les ventes d'un autre et lui laisser l'écart au Z.
+     */
+    public function testCaissierNAnnulePasLeTicketDunAutreCaissier(): void
+    {
+        $this->client->loginUser($this->caissier);
+        $this->client->request(
+            'POST',
+            '/api/vente/'.$this->venteDeLAutreCaissier->getUuid().'/annuler',
+            [], [], ['CONTENT_TYPE' => 'application/json'],
+            json_encode(['motif' => 'Erreur']),
+        );
+
+        $this->assertResponseStatusCodeSame(403);
+
+        $this->em->clear();
+        $vente = $this->em->getRepository(Vente::class)->find($this->venteDeLAutreCaissier->getId());
+        $this->assertSame(StatutVente::VALIDEE, $vente->getStatut());
+    }
+
+    /**
+     * En revanche il annule le ticket qu'il vient d'encaisser : c'est le seul
+     * geste d'écriture que la matrice lui accorde, et il est notifié.
+     */
+    public function testCaissierAnnuleLeTicketQuIlVientDEncaisser(): void
     {
         $this->client->loginUser($this->caissier);
         $this->client->request(
             'POST',
             '/api/vente/'.$this->venteDuCaissier->getUuid().'/annuler',
             [], [], ['CONTENT_TYPE' => 'application/json'],
-            json_encode(['motif' => 'Erreur']),
+            json_encode(['motif' => 'Erreur de saisie']),
         );
 
-        $this->assertResponseStatusCodeSame(403, 'Même sur sa propre vente.');
+        $this->assertResponseIsSuccessful();
 
         $this->em->clear();
         $vente = $this->em->getRepository(Vente::class)->find($this->venteDuCaissier->getId());
-        $this->assertSame(StatutVente::VALIDEE, $vente->getStatut());
+        $this->assertSame(StatutVente::ANNULEE, $vente->getStatut(), 'Annulée, jamais supprimée.');
+        $this->assertSame('Erreur de saisie', $vente->getMotifAnnulation());
     }
 
     // --------------------------------------------------- Prix de vente
@@ -349,11 +376,14 @@ class HabilitationsTest extends WebTestCase
         $this->assertFalse($checker->isGranted(Permission::VOIR_CA_GLOBAL), 'Ni CA global…');
         $this->assertFalse($checker->isGranted(Permission::VOIR_TOUTES_VENTES), '…ni ventes des collègues.');
         $this->assertFalse($checker->isGranted(Permission::ARTICLE_MODIFIER_PRIX, $this->article));
-        $this->assertFalse($checker->isGranted(Permission::VENTE_ANNULER, $this->venteDuCaissier));
 
         // Seule exception : ses propres ventes.
         $this->assertTrue($checker->isGranted(Permission::VENTE_VOIR, $this->venteDuCaissier));
         $this->assertFalse($checker->isGranted(Permission::VENTE_VOIR, $this->venteDeLAutreCaissier));
+
+        // Et son dernier ticket, qu'il peut annuler — mais jamais celui d'un autre.
+        $this->assertTrue($checker->isGranted(Permission::VENTE_ANNULER, $this->venteDuCaissier));
+        $this->assertFalse($checker->isGranted(Permission::VENTE_ANNULER, $this->venteDeLAutreCaissier));
     }
 
     public function testGerantVoitLesCoutsMaisPasLesPrix(): void

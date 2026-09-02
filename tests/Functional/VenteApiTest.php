@@ -251,9 +251,11 @@ class VenteApiTest extends WebTestCase
         $this->assertSame('Erreur de saisie', $vente->getMotifAnnulation());
     }
 
-    public function testAnnulationRefuseePourUnCaissier(): void
+    /**
+     * @return array<string, mixed> La vente créée, telle que renvoyée par l'API
+     */
+    private function encaisser(): array
     {
-        $this->client->loginUser($this->caissier);
         [, $data] = $this->poster('/api/vente', [
             'uuid' => (string) Uuid::v4(),
             'mode' => 'BOULANGERIE',
@@ -261,7 +263,65 @@ class VenteApiTest extends WebTestCase
             'reglements' => [['mode' => 'ESPECES', 'montant' => 100000]],
         ]);
 
-        [$code] = $this->poster('/api/vente/'.$data['uuid'].'/annuler', ['motif' => 'Test']);
+        return $data;
+    }
+
+    /**
+     * L'exception accordée au caissier : le ticket qu'il vient d'encaisser.
+     * L'erreur de saisie se constate dans la seconde, faire venir le gérant pour
+     * deux baguettes de trop immobiliserait la file.
+     */
+    public function testLeCaissierAnnuleLeTicketQuIlVientDEncaisser(): void
+    {
+        $this->client->loginUser($this->caissier);
+        $data = $this->encaisser();
+
+        [$code, $annulation] = $this->poster('/api/vente/'.$data['uuid'].'/annuler', ['motif' => 'Erreur de saisie']);
+
+        $this->assertSame(200, $code);
+        $this->assertSame('ANNULEE', $annulation['statut']);
+
+        $this->em->clear();
+        $vente = $this->ventes()->findOneBy(['uuid' => Uuid::fromString($data['uuid'])]);
+        $this->assertSame(StatutVente::ANNULEE, $vente->getStatut());
+        $this->assertSame('Erreur de saisie', $vente->getMotifAnnulation());
+    }
+
+    /**
+     * Et elle s'arrête là : dès qu'une vente suivante est encaissée, la précédente
+     * redevient l'affaire du gérant. Sans cette borne, un caissier pourrait
+     * remonter sa journée et effacer ses écarts au fil de l'eau — le Z ne
+     * signalerait plus rien.
+     */
+    public function testLeCaissierNAnnulePlusUnTicketQuUneAutreVenteADepasse(): void
+    {
+        $this->client->loginUser($this->caissier);
+        $premier = $this->encaisser();
+        $second = $this->encaisser();
+
+        [$code] = $this->poster('/api/vente/'.$premier['uuid'].'/annuler', ['motif' => 'Erreur de saisie']);
+        $this->assertSame(403, $code, 'Le ticket a été dépassé par un autre.');
+
+        // Le dernier, lui, reste annulable.
+        [$code] = $this->poster('/api/vente/'.$second['uuid'].'/annuler', ['motif' => 'Erreur de saisie']);
+        $this->assertSame(200, $code);
+    }
+
+    /**
+     * Après le Z, la journée est arrêtée : l'exception tombe avec elle. Le refus
+     * vient de l'habilitation (403), pas de l'exception métier levée plus loin —
+     * une porte fermée vaut mieux qu'une porte qui casse au passage.
+     */
+    public function testLeCaissierNAnnulePlusRienUneFoisSaCaisseCloturee(): void
+    {
+        $this->client->loginUser($this->caissier);
+        $data = $this->encaisser();
+
+        $sessions = static::getContainer()->get(SessionCaisseService::class);
+        $session = $sessions->exigerSessionOuverte($this->caissier);
+        $sessions->cloturer($session, 3100000);
+
+        [$code] = $this->poster('/api/vente/'.$data['uuid'].'/annuler', ['motif' => 'Erreur de saisie']);
         $this->assertSame(403, $code);
     }
 

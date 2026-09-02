@@ -99,7 +99,9 @@ class EncaissementService
     }
 
     /**
-     * Annule une vente (jamais de suppression). Réservée au gérant (contrôlé au contrôleur).
+     * Annule une vente (jamais de suppression). Qui a le droit d'annuler quoi est
+     * tranché par `VenteVoter`, au contrôleur : gérant sans restriction, caissier
+     * sur le seul ticket qu'il vient d'encaisser.
      */
     public function annuler(Uuid $uuid, string $motif, ?Utilisateur $auteur = null): Vente
     {
@@ -124,7 +126,8 @@ class EncaissementService
 
         $motif = trim($motif);
         $this->audit->venteAnnulee($vente, $motif);
-        // Une annulation ne reste jamais entre le gérant et la caisse.
+        // Une annulation ne reste jamais dans la caisse où elle a eu lieu — c'est
+        // ce qui permet d'en ouvrir une part au caissier sans la rendre invisible.
         $this->notificateur->venteAnnulee($vente, $motif, $auteur);
 
         return $vente;

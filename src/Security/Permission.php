@@ -46,7 +46,12 @@ final class Permission
     /** Consulter le détail d'une vente (ticket, lignes, caissier). */
     public const VENTE_VOIR = 'VENTE_VOIR';
 
-    /** Annuler une vente déjà encaissée. Notifie la dirigeante. */
+    /**
+     * Annuler une vente déjà encaissée. Notifie la dirigeante.
+     *
+     * Gérant et dirigeante sans restriction ; le caissier uniquement sur le
+     * dernier ticket de sa session ouverte — celui qu'il vient d'encaisser.
+     */
     public const VENTE_ANNULER = 'VENTE_ANNULER';
 
     // --- Données agrégées ---------------------------------------------------

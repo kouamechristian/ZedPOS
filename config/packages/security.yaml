@@ -49,8 +49,9 @@ security:
         # referme (404) dès qu'un compte existe, sans quoi n'importe qui
         # s'ouvrirait un accès dirigeante à tout moment.
         - { path: ^/installation$, roles: PUBLIC_ACCESS }
-        # L'API d'encaissement exige au minimum un caissier ; l'annulation exige
-        # ROLE_GERANT (contrôlé au niveau du contrôleur).
+        # L'API d'encaissement exige au minimum un caissier. L'annulation est
+        # arbitrée plus finement par VenteVoter, au niveau du contrôleur : gérant
+        # sans restriction, caissier sur le seul ticket qu'il vient d'encaisser.
         - { path: ^/api, roles: ROLE_CAISSIER }
         - { path: ^/caisse, roles: ROLE_CAISSIER }
         - { path: ^/admin, roles: ROLE_GERANT }

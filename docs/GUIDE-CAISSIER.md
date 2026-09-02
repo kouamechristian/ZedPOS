@@ -53,13 +53,40 @@ Monnaie à rendre      800 FCFA
 **Fast-food** : touchez **Fast-food** en haut. Un panneau s'ouvre pour la quantité
 et les précisions (Sur place, Piment…), puis **Ajouter au ticket**.
 
-## 3. Corriger, et faire annuler
+## 3. Corriger, et annuler
 
 **Avant d'encaisser**, tout se corrige : **−** enlève un article, **✕** enlève la
 ligne, **Vider** efface le ticket, **Mise en attente** met le client de côté.
 
-**Après avoir encaissé, vous ne pouvez plus rien changer.** Erreur ou client qui se
-ravise : **appelez le gérant**, lui seul peut annuler, et il doit écrire pourquoi.
+**Juste après avoir encaissé**, le reçu reste affiché à l'écran. Vous vous êtes
+trompée, le client se ravise ? Touchez **Annuler ce ticket**, en bas du reçu :
+
+```
+┌─────────────────────────────┐
+│ [ Imprimer ][Nouveau ticket]│
+│ [    Annuler ce ticket     ]│
+└─────────────────────────────┘
+      ↓
+│ Pourquoi annuler ce ticket ?│
+│ [Erreur de saisie][Client…] │
+│ [Article indispo.][Erreur…] │
+│ [ Autre motif…            ] │
+│ [ Revenir ][Annuler le tic.]│
+```
+
+1. Touchez le **motif** qui correspond (ou tapez-le dans « Autre motif »).
+2. Touchez **Annuler le ticket**.
+
+Trois choses à savoir :
+
+- **Ce n'est que le tout dernier ticket.** Dès que vous avez encaissé le client
+  suivant, c'est fini : **appelez le gérant**, lui seul peut encore annuler.
+- **Il faut le réseau.** Internet coupé, l'annulation est refusée — appelez le
+  gérant.
+- **La direction est prévenue** de chaque annulation, avec le motif que vous avez
+  choisi. Ce n'est pas un reproche : c'est ce qui permet que vous puissiez le
+  faire vous-même sans appeler personne.
+
 Ne refaites jamais une vente pour « corriger » : cela compterait deux fois.
 
 ## 4. Quand Internet est coupé

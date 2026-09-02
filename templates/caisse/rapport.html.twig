@@ -7,28 +7,43 @@
     {% import 'admin/_macros.html.twig' as fmt %}
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Courier New', ui-monospace, monospace; font-size: 12px; color: #000; background: #e5e7eb; }
-        .barre { max-width: 80mm; margin: 10px auto 0; display: flex; gap: 8px; }
+        /* Tahoma et non Courier New : sur une tête thermique, les traits d'un
+           pixel de Courier sont lissés en gris, et une tête ne sait pas faire de
+           gris — le texte ressort pâle et haché. Même pile que le ticket de
+           vente (ticket/_styles.html.twig), qui porte le raisonnement complet. */
+        body { font-family: Tahoma, Verdana, 'DejaVu Sans', Arial, sans-serif; font-size: 11px; color: #000; background: #e5e7eb; font-variant-numeric: tabular-nums; }
+        .barre { max-width: 58mm; margin: 10px auto 0; display: flex; gap: 8px; }
         .barre button, .barre a { flex: 1; padding: 8px; font: inherit; text-align: center; text-decoration: none; cursor: pointer; border: 1px solid #334155; background: #0f172a; color: #fff; border-radius: 6px; }
         .barre .secondaire { background: #fff; color: #0f172a; }
-        .ticket { width: 80mm; background: #fff; margin: 10px auto; padding: 4mm; }
+        /* Même papier que le ticket de vente : 58 mm, dont 48 seulement sont
+           imprimables (384 points à 203 dpi). Les 5 mm de retrait de chaque côté
+           tiennent le texte hors de la bande que la tête ne couvre pas. */
+        .ticket { width: 58mm; background: #fff; margin: 10px auto; padding: 3mm 5mm; }
         .center { text-align: center; }
         .bold { font-weight: bold; }
-        .big { font-size: 16px; }
-        .muted { color: #333; }
-        .row { display: flex; justify-content: space-between; gap: 8px; }
+        .big { font-size: 14px; }
+        .muted { color: #333; }  /* remis en noir à l'impression, voir @media print */
+        .row { display: flex; justify-content: space-between; gap: 6px; }
         .row .g { flex: 1; overflow: hidden; }
         .row .d { white-space: nowrap; text-align: right; }
-        .sep { border-top: 1px dashed #000; margin: 5px 0; }
+        /* Trait plein : un pointillé d'un point sur deux sort gris et irrégulier. */
+        .sep { border-top: 1px solid #000; margin: 5px 0; }
         .titre-bloc { font-weight: bold; text-decoration: underline; margin-top: 4px; }
-        .total .d, .total .g { font-size: 16px; font-weight: bold; }
+        .total .d, .total .g { font-size: 14px; font-weight: bold; }
         .ecart { border: 2px solid #000; padding: 3px; margin-top: 4px; }
         .provisoire { text-align: center; font-weight: bold; letter-spacing: 1px; }
         @media print {
             body { background: #fff; }
             .barre { display: none; }
-            .ticket { width: auto; margin: 0; padding: 0; }
-            @page { size: 80mm auto; margin: 0; }
+            /* Le retrait du ticket est conservé : c'est lui qui tient le texte
+               hors des bords non imprimables. Hauteur `auto` et non les 3276 mm
+               du pilote, qui dérouleraient trois mètres de papier par rapport. */
+            .ticket { width: auto; margin: 0; }
+            /* Ni gris ni lissage sur du papier thermique : la tête chauffe un
+               point ou ne le chauffe pas, une demi-teinte n'y est qu'un semis
+               de points plus sale que du noir franc. */
+            .ticket, .muted { color: #000; -webkit-font-smoothing: none; text-rendering: geometricPrecision; }
+            @page { size: 58mm auto; margin: 0; }
         }
     </style>
 </head>

@@ -76,7 +76,7 @@ class CaisseTest extends WebTestCase
      *
      * Les deux gabarits ont déjà eu chacun leur copie des mêmes règles, et elles
      * avaient divergé : la caisse avait oublié `.ticket` lui-même, si bien que le
-     * reçu s'étirait à la largeur du panneau au lieu des 80 mm du papier. La
+     * reçu s'étirait à la largeur du panneau au lieu de celle du papier. La
      * caissière comparait alors un reçu à l'écran qui ne ressemblait pas au ticket
      * qu'elle tendait au client.
      */
@@ -87,7 +87,7 @@ class CaisseTest extends WebTestCase
 
         // La largeur du papier doit être imposée sur l'écran de caisse aussi.
         $this->assertStringContainsString(
-            'width: 80mm',
+            'width: 58mm',
             $ecranCaisse,
             'L\'écran de caisse doit inclure ticket/_styles.html.twig.',
         );
@@ -100,9 +100,45 @@ class CaisseTest extends WebTestCase
 
         // Aucune redéfinition locale : c'est ce qui avait provoqué la divergence.
         $this->assertStringNotContainsString(
-            '.recu-80mm',
+            '.recu-58mm',
             $ecranCaisse,
             'Les règles du ticket ne doivent pas être recopiées dans l\'écran de caisse.',
+        );
+    }
+
+    /**
+     * Le ticket sort sur une tête thermique, qui chauffe un point ou ne le chauffe
+     * pas : elle ne connaît pas le gris.
+     *
+     * Courier New, qui avait l'air d'un ticket de caisse, en sortait pâle et haché
+     * — ses traits font un pixel, le navigateur les lisse en gris, et chaque pixel
+     * gris tombe au hasard d'un côté ou de l'autre. Le retour en arrière serait
+     * invisible à l'écran, où Courier s'affiche parfaitement : il ne se verrait
+     * qu'au comptoir, sur le papier déjà sorti.
+     */
+    public function testLeTicketEstDansUnePoliceQuiSortSurUneTeteThermique(): void
+    {
+        $this->client->request('GET', '/caisse');
+        $ecranCaisse = (string) $this->client->getResponse()->getContent();
+
+        $this->assertStringContainsString(
+            'font-family: Tahoma, Verdana',
+            $ecranCaisse,
+            'Le ticket doit être dans une police sans empattement à traits épais.',
+        );
+
+        $this->assertStringNotContainsString(
+            "font-family: 'Courier New'",
+            $ecranCaisse,
+            'Courier New sort pâle et haché sur une imprimante thermique.',
+        );
+
+        // Les demi-teintes sont un semis de points sur du papier thermique : plus
+        // sale que du noir franc, et pas plus discret.
+        $this->assertStringContainsString(
+            '-webkit-font-smoothing: none',
+            $ecranCaisse,
+            "Le lissage doit être coupé à l'impression.",
         );
     }
 
@@ -235,6 +271,33 @@ class CaisseTest extends WebTestCase
         $champ = $this->client->getCrawler()->filter('[data-ticket-target="montantRecu"]');
         $this->assertSame('numeric', $champ->attr('inputmode'));
         $this->assertSame('Compte juste', $champ->attr('placeholder'), 'Le champ vide vaut compte juste.');
+    }
+
+    /**
+     * L'annulation du ticket qui vient d'être encaissé se fait depuis le reçu, et
+     * jamais d'un seul appui : elle est irréversible, tracée et notifiée à la
+     * dirigeante. Le motif est obligatoire côté serveur — le bouton de
+     * confirmation naît donc désactivé, c'est le choix du motif qui le libère.
+     */
+    public function testLeRecuOffreLAnnulationDuTicketDerriereUnMotif(): void
+    {
+        $this->client->request('GET', '/caisse');
+
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorExists('[data-action="ticket#ouvrirAnnulation"]');
+        $this->assertSelectorExists('[data-ticket-target="annulation"].hidden', "Le choix du motif reste replié tant qu'on ne l'ouvre pas.");
+
+        // Motifs proposés d'un appui : au comptoir, taper coûte plus cher que le
+        // geste qu'on corrige. Le champ libre reste, pour tout le reste.
+        $this->assertGreaterThanOrEqual(
+            3,
+            $this->client->getCrawler()->filter('[data-ticket-target="motif"]')->count(),
+            'Les motifs courants sont proposés sans passer par le clavier.',
+        );
+        $this->assertSelectorExists('[data-ticket-target="motifLibre"]');
+
+        $confirmer = $this->client->getCrawler()->filter('[data-ticket-target="confirmerAnnulation"]');
+        $this->assertNotNull($confirmer->attr('disabled'), 'Aucun motif retenu : rien ne part.');
     }
 
     /**

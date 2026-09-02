@@ -9,8 +9,8 @@
     {{ include('ticket/_styles.html.twig') }}
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Courier New', ui-monospace, monospace; font-size: 12px; color: #000; background: #e5e7eb; }
-        .barre { max-width: 80mm; margin: 10px auto 0; display: flex; gap: 8px; }
+        body { font-family: Tahoma, Verdana, 'DejaVu Sans', Arial, sans-serif; font-size: 11px; color: #000; background: #e5e7eb; }
+        .barre { max-width: 58mm; margin: 10px auto 0; display: flex; gap: 8px; }
         .barre button { flex: 1; padding: 8px; font: inherit; cursor: pointer; border: 1px solid #334155; background: #0f172a; color: #fff; border-radius: 6px; }
         .barre button.secondaire { background: #fff; color: #0f172a; }
         .ticket { margin: 10px auto; }
@@ -24,9 +24,18 @@
         @media print {
             body { background: #fff; }
             .barre { display: none; }
-            /* La page EST le ticket : ni largeur imposée, ni blanc autour. */
-            .ticket { width: auto; margin: 0; padding: 0; box-shadow: none; }
-            @page { size: 80mm auto; margin: 0; }
+            /* La page EST le ticket : elle en prend la largeur, et le ticket
+               garde son retrait de bord — c'est lui qui tient le contenu en
+               dehors des 5 mm que la tête n'imprime pas de chaque côté. Le
+               remettre à zéro ici, comme on le faisait, poussait le texte dans
+               cette bande morte. */
+            .ticket { width: auto; margin: 0; box-shadow: none; }
+
+            /* `auto` en hauteur, et non les 3276 mm annoncés par le pilote :
+               c'est la longueur maximale d'un rouleau continu, pas celle d'un
+               ticket. Fixée, elle ferait dérouler trois mètres de papier par
+               vente. La largeur, elle, doit correspondre au papier. */
+            @page { size: 58mm auto; margin: 0; }
         }
     </style>
 </head>

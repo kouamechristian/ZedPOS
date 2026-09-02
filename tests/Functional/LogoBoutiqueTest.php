@@ -170,9 +170,10 @@ class LogoBoutiqueTest extends WebTestCase
     }
 
     /**
-     * Le logo s'imprime sur toute la largeur du papier thermique (~576 points à
-     * 203 dpi sur 80 mm) : 400 px, la borne des touches produits, le rendrait
-     * crénelé sur le seul support où il n'y a pas de seconde chance.
+     * Le logo s'imprime sur toute la largeur utile du papier thermique (384 points
+     * à 203 dpi sur 58 mm) et s'affiche par ailleurs à l'écran : 400 px, la borne
+     * des touches produits, le rendrait crénelé sur le seul support où il n'y a
+     * pas de seconde chance.
      */
     public function testUnGrandLogoEstReduitA600Px(): void
     {

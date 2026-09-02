@@ -19,7 +19,7 @@ use Symfony\Component\Uid\Uuid;
 class TicketController extends AbstractController
 {
     /**
-     * Ticket au format 80 mm, imprimable via window.print() (?auto=1 pour l'impression
+     * Ticket au format 58 mm, imprimable via window.print() (?auto=1 pour l'impression
      * automatique dans un iframe après encaissement).
      */
     #[Route('/{uuid}', name: 'app_caisse_ticket', methods: ['GET'])]
@@ -32,7 +32,7 @@ class TicketController extends AbstractController
     }
 
     /**
-     * Aperçu du ticket sans page hôte : le fragment 80 mm seul, injecté dans
+     * Aperçu du ticket sans page hôte : le fragment 58 mm seul, injecté dans
      * l'écran de caisse juste après l'encaissement. Même gabarit que le ticket
      * imprimé, donc aucun risque d'écart entre ce que voit la caissière et ce
      * qui sort de l'imprimante.

@@ -2,6 +2,7 @@
 
 namespace App\Repository;
 
+use App\Entity\SessionCaisse;
 use App\Entity\Vente;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
@@ -94,5 +95,25 @@ class VenteRepository extends ServiceEntityRepository
             ->addOrderBy('v.id', 'DESC');
 
         return Pagination::depuis($qb, $page, self::PAR_PAGE);
+    }
+
+    /**
+     * Dernière vente enregistrée dans une session, annulée ou non.
+     *
+     * Sert à borner l'annulation ouverte au caissier : il n'annule que le ticket
+     * qu'il vient d'encaisser (voir {@see \App\Security\Voter\VenteVoter}).
+     *
+     * Le tri se fait sur l'**identifiant**, pas sur `createdAt` : en boulangerie
+     * rapide deux ventes tombent couramment dans la même seconde, et « la
+     * dernière » ne doit pas dépendre de laquelle l'horodatage a départagée.
+     */
+    public function derniereDe(SessionCaisse $session): ?Vente
+    {
+        return $this->createQueryBuilder('v')
+            ->andWhere('v.sessionCaisse = :session')->setParameter('session', $session)
+            ->orderBy('v.id', 'DESC')
+            ->setMaxResults(1)
+            ->getQuery()
+            ->getOneOrNullResult();
     }
 }

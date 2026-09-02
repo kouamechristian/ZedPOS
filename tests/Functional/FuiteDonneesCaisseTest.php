@@ -166,7 +166,7 @@ class FuiteDonneesCaisseTest extends WebTestCase
             'reglements' => [['mode' => 'ESPECES', 'montant' => 15000]],
         ]));
 
-        // Vue HTML 80 mm.
+        // Vue HTML 58 mm.
         $this->client->request('GET', '/caisse/ticket/'.$uuid);
         $this->assertResponseIsSuccessful();
         $this->assertAucunTermeSensible($this->client->getResponse()->getContent(), 'le ticket de caisse');

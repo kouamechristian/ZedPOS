@@ -7,13 +7,21 @@ namespace App\Service;
  * partir d'un {@see TicketData}, destinée à un futur pont d'impression thermique local.
  *
  * Le texte est translittéré en ASCII (les imprimantes thermiques gèrent mal l'UTF-8)
- * et mis en page sur une largeur de 48 colonnes (papier 80 mm, police A).
+ * et mis en page sur une largeur de 32 colonnes (papier 58 mm, police A).
  */
 class ImpressionService
 {
     private const ESC = "\x1B";
     private const GS = "\x1D";
-    private const LARGEUR = 48;
+    /**
+     * Colonnes disponibles en police A sur un papier de 58 mm : la tête imprime
+     * 384 points à 203 dpi, et un caractère de la police A en occupe 12.
+     *
+     * Cette valeur suit le papier, pas le goût : une ligne mise en page sur une
+     * largeur plus grande que la tête est repliée par l'imprimante au caractère
+     * près, et le montant aligné à droite se retrouve seul sur la ligne suivante.
+     */
+    private const LARGEUR = 32;
 
     public function commandeEscPos(TicketData $ticket): string
     {
@@ -52,7 +60,9 @@ class ImpressionService
             $sortie .= $this->deuxColonnes('Remise', '-'.$this->fcfa($ticket->remise));
         }
         $sortie .= $this->gras(true).$this->grand(true);
-        $sortie .= $this->deuxColonnes('TOTAL', $this->fcfa($ticket->totalTtc), 24);
+        // Moitié de la largeur : le total est en double largeur, chaque caractère
+        // y occupe deux colonnes.
+        $sortie .= $this->deuxColonnes('TOTAL', $this->fcfa($ticket->totalTtc), intdiv(self::LARGEUR, 2));
         $sortie .= $this->grand(false).$this->gras(false);
 
         // Ventilation de TVA.
@@ -112,6 +122,16 @@ class ImpressionService
 
         $donnees = '{B'.$valeur;
 
+        // Deux points par module, sur les 384 que compte la tête en 58 mm. Un
+        // numéro de ticket (13 caractères) donne un symbole de 178 modules, soit
+        // 356 points : il tient, mais de justesse — le blanc qui reste de part et
+        // d'autre, prolongé par les 5 mm de papier que la tête ne couvre pas,
+        // fait office de zone de silence. Un numéro plus long déborderait, et
+        // l'imprimante tronquerait le code sans rien signaler.
+        //
+        // Descendre à un point par module rendrait de la place mais beaucoup de
+        // firmwares refusent cette valeur, et 0,125 mm de module passe sous ce
+        // qu'un lecteur du commerce sait relire.
         return self::GS.'h'.\chr(60)                                   // hauteur, en points
             .self::GS.'w'.\chr(2)                                      // largeur d'un module
             .self::GS.'H'.\chr(2)                                      // numéro en clair, sous le code

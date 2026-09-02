@@ -1,4 +1,4 @@
-{# Format visuel du ticket 80 mm — source de vérité unique, pendant de _contenu.html.twig.
+{# Format visuel du ticket 58 mm — source de vérité unique, pendant de _contenu.html.twig.
 
    Inclus par :
      - ticket/ticket.html.twig    (page autonome, impression thermique) ;
@@ -11,19 +11,70 @@
 
    Ce fichier a été extrait parce que les deux copies avaient déjà divergé : la
    caisse avait oublié `.ticket` lui-même, et le reçu s'étirait donc à la largeur
-   du panneau au lieu des 80 mm du papier.
+   du panneau au lieu de celle du papier.
 
    Aucune couleur ici : le ticket sort sur une imprimante thermique. L'habillage
    « papier » (ombre, bords dentelés) est réservé à l'écran, côté caisse. #}
 <style>
+    /* Papier de 58 mm — la taille déclarée par l'imprimante du comptoir
+       (58 × 3276 mm, la longueur étant celle d'un rouleau continu).
+
+       Le retrait latéral de 5 mm n'enlève rien au ticket : une tête 58 mm
+       n'imprime que 384 points à 203 dpi, soit 48 mm, centrés sur le papier.
+       Ces 5 mm de chaque côté sont précisément ce que la tête ne couvre pas —
+       les y placer garantit que rien d'utile ne tombe dans le vide, là où le
+       texte serait rogné sans qu'aucun avertissement ne le signale.
+
+       3 mm en haut et en bas : un blanc de tête, et de quoi ne pas couper le
+       pied de ticket au ras des derniers caractères.
+
+       48 mm de largeur utile en Tahoma 11 px, c'est une trentaine de colonnes —
+       autant que les 32 colonnes de la police A en ESC/POS. L'écran et le papier
+       replient donc les lignes au même endroit.
+
+       POLICE — le choix est dicté par la tête thermique, pas par le goût.
+
+       Le ticket était en Courier New, qui a l'air d'un ticket de caisse mais sort
+       mal : ses traits font un pixel de large, et le navigateur les lisse en gris.
+       Or une tête thermique est **binaire** — elle chauffe un point ou ne le
+       chauffe pas. Chaque pixel gris tombe donc au hasard d'un côté ou de
+       l'autre, et le texte ressort pâle, haché, par endroits illisible. Ses
+       empattements, larges d'un point, disparaissent purement et simplement.
+
+       Tahoma est l'inverse : sans empattement, traits épais, dessinée pour les
+       petites tailles à basse résolution. Verdana (plus large) et DejaVu Sans
+       (les postes non Windows) prennent le relais, Arial en dernier secours.
+       Aucune police distante ici non plus : le ticket doit sortir hors ligne.
+
+       Le monospace ne manque pas : les montants sont alignés par flexbox, pas
+       par des espaces de remplissage — c'est l'ESC/POS qui compte des colonnes,
+       pas cette feuille. `tabular-nums` suffit à ce que les chiffres restent en
+       colonne d'une ligne à l'autre. */
     .ticket {
-        width: 80mm;
-        padding: 4mm;
+        width: 58mm;
+        padding: 3mm 5mm;
         background: #fff;
         color: #000;
-        font-family: 'Courier New', ui-monospace, monospace;
-        font-size: 12px;
+        font-family: Tahoma, Verdana, 'DejaVu Sans', Arial, sans-serif;
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
         line-height: 1.35;
+    }
+
+    /* Rien en demi-teinte sur du papier thermique : la tête ne sait pas faire de
+       gris, elle le simule en semant des points. Un texte en #333 en ressort plus
+       pâle et plus sale qu'un texte noir, pas plus discret. Le lissage est coupé
+       pour la même raison — mieux vaut un bord franc qu'un bord tramé.
+
+       À l'écran, en revanche, le gris et le lissage font leur travail : ces
+       règles ne valent qu'à l'impression. */
+    @media print {
+        .ticket,
+        .ticket .muted {
+            color: #000;
+            -webkit-font-smoothing: none;
+            text-rendering: geometricPrecision;
+        }
     }
 
     /* Logo de l'établissement. Hauteur bornée en millimètres, largeur libre : une
@@ -33,39 +84,48 @@
        `object-fit: contain` et non `cover` : un logo recadré n'est plus un logo. */
     .ticket .logo {
         display: block;
-        max-width: 60mm;
-        max-height: 20mm;
+        max-width: 44mm;
+        max-height: 16mm;
         margin: 0 auto 3px;
         object-fit: contain;
     }
 
     .ticket .center { text-align: center; }
     .ticket .bold   { font-weight: bold; }
-    .ticket .big    { font-size: 16px; }
+    .ticket .big    { font-size: 14px; }
     .ticket .muted  { color: #333; }
 
     /* Libellé à gauche, montant à droite : l'alignement des montants est ce qui
        rend un ticket lisible d'un coup d'œil. */
-    .ticket .row      { display: flex; justify-content: space-between; gap: 8px; }
+    .ticket .row      { display: flex; justify-content: space-between; gap: 6px; }
     .ticket .row .g   { flex: 1; overflow: hidden; }
     .ticket .row .d   { white-space: nowrap; text-align: right; }
 
-    .ticket .sep         { border-top: 1px dashed #000; margin: 5px 0; }
-    .ticket .commentaire { font-size: 10px; padding-left: 10px; font-style: italic; }
+    /* Trait plein et non pointillé : un tiret de un point sur deux, à 203 dpi,
+       sort comme une ligne grise irrégulière — voire pas du tout selon l'endroit
+       où l'arrondi tombe. Une ligne pleine d'un pixel fait 1,7 point de tête et
+       sort net à tous les coups. */
+    .ticket .sep         { border-top: 1px solid #000; margin: 5px 0; }
+    .ticket .commentaire { font-size: 10px; padding-left: 8px; font-style: italic; }
     .ticket .total .g,
-    .ticket .total .d    { font-size: 16px; font-weight: bold; }
+    .ticket .total .d    { font-size: 14px; font-weight: bold; }
 
     /* Le rendu de monnaie est le second chiffre que le client vérifie, après le
        total — un peu en dessous de lui, nettement au-dessus du reste. */
     .ticket .rendu .g,
-    .ticket .rendu .d    { font-size: 14px; font-weight: bold; }
+    .ticket .rendu .d    { font-size: 13px; font-weight: bold; }
 
     /* Code-barres du numéro de ticket. La largeur est fixée en millimètres et le
        SVG est étiré dessus (preserveAspectRatio="none") : les proportions entre
        barres, elles, viennent du viewBox et restent donc exactes.
 
-       68 mm dans 80 mm de papier : les zones de silence sont déjà comptées dans
-       le viewBox, ce qui reste de part et d'autre est du confort de lecture.
+       46 mm sur les 48 mm imprimables, soit presque tout : sur ce papier-là il
+       n'y a plus de confort de lecture à sacrifier. Un numéro de ticket pèse
+       environ 200 modules, zones de silence comprises (elles sont déjà dans le
+       viewBox) : il reste 0,23 mm par module, soit un peu moins de deux points
+       de tête à 203 dpi. C'est étroit mais lisible ; descendre en dessous, en
+       rétrécissant le code ou en allongeant le numéro, fait basculer le symbole
+       dans ce qu'un lecteur refuse — sans que l'impression paraisse anormale.
 
        `fill` plutôt qu'un fond : une barre SVG est du contenu, pas une couleur
        d'arrière-plan — elle s'imprime donc sans dépendre du réglage
@@ -73,15 +133,15 @@
        et effacerait purement et simplement le code. */
     .ticket .code-barres {
         display: block;
-        width: 68mm;
-        height: 13mm;
+        width: 46mm;
+        height: 12mm;
         margin: 8px auto 2px;
         fill: #000;
     }
 
     .ticket .code-barres-valeur {
         text-align: center;
-        font-size: 11px;
+        font-size: 10px;
         letter-spacing: 1px;
         margin-bottom: 6px;
     }

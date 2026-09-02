@@ -32,14 +32,17 @@ export default class extends Controller {
         'reglement', 'encaisser', 'message', 'imprimer', 'impression',
         'especes', 'montantRecu', 'suggestions', 'renduLigne', 'renduLibelle', 'renduMontant',
         'recu', 'recuContenu', 'recuNumero', 'recuRendu', 'recuRenduMontant',
+        'actionsRecu', 'annulation', 'motif', 'motifLibre', 'confirmerAnnulation',
     ];
-    static values = { ticketBase: String, apercuBase: String };
+    static values = { ticketBase: String, apercuBase: String, annulerBase: String };
 
     connect() {
         this.lignes = [];
         this.reglement = null;
         /** Ce que le client a tendu, en centimes. `null` = non saisi, donc compte juste. */
         this.recu = null;
+        /** Motif d'annulation en cours de choix. `null` = rien de retenu. */
+        this.motif = null;
         this.rendre();
         this.actualiserCatalogue();
     }
@@ -282,14 +285,14 @@ export default class extends Controller {
     }
 
     /**
-     * Charge le fragment 80 mm de la vente et l'affiche. C'est le seul appel
+     * Charge le fragment 58 mm de la vente et l'affiche. C'est le seul appel
      * réseau *après* l'encaissement ; la vente est déjà enregistrée, un échec
      * d'affichage ne remet donc rien en cause.
      */
     async afficherRecu(uuid, rendu = 0) {
         // La monnaie est répétée en grand au-dessus du fragment : c'est le geste
         // qui suit, la caissière ne doit pas avoir à la relire en corps 9 sur les
-        // 80 mm du reçu.
+        // 58 mm du reçu.
         this.recuRenduTarget.classList.toggle('hidden', rendu <= 0);
         this.recuRenduMontantTarget.textContent = this.fcfa(rendu);
 
@@ -327,9 +330,100 @@ export default class extends Controller {
     }
 
     fermerRecu() {
+        // Le panneau se rouvrira sur la vente suivante : il doit repartir de ses
+        // deux boutons, jamais du choix de motif laissé en plan.
+        this.fermerAnnulation();
         this.recuTarget.classList.add('hidden');
         this.recuContenuTarget.innerHTML = '';
         this.uuidRecu = null;
+    }
+
+    // ------------------------------------------- Annulation du dernier ticket
+
+    /**
+     * Le caissier n'annule que le ticket qu'il vient d'encaisser — le serveur le
+     * vérifie (`VenteVoter`), l'écran ne fait que l'offrir là où c'est utile.
+     *
+     * Jamais en un seul appui : la vente n'est pas supprimée mais son statut ne se
+     * reprend pas, et l'annulation part au journal d'audit **et** en notification
+     * à la dirigeante. Choisir un motif tient lieu de confirmation.
+     */
+    ouvrirAnnulation() {
+        this.motif = null;
+        this.motifTargets.forEach((m) => this.marquer(m, false));
+        this.motifLibreTarget.value = '';
+        this.actionsRecuTarget.classList.add('hidden');
+        this.annulationTarget.classList.remove('hidden');
+        this.majConfirmerAnnulation();
+    }
+
+    fermerAnnulation() {
+        this.annulationTarget.classList.add('hidden');
+        this.actionsRecuTarget.classList.remove('hidden');
+    }
+
+    choisirMotif(event) {
+        this.motif = event.currentTarget.dataset.motif;
+        this.motifTargets.forEach((m) => this.marquer(m, m === event.currentTarget));
+        // Les deux saisies diraient deux motifs différents : la dernière l'emporte.
+        this.motifLibreTarget.value = '';
+        this.majConfirmerAnnulation();
+    }
+
+    saisirMotif(event) {
+        this.motif = event.currentTarget.value.trim() || null;
+        this.motifTargets.forEach((m) => this.marquer(m, false));
+        this.majConfirmerAnnulation();
+    }
+
+    majConfirmerAnnulation() {
+        this.confirmerAnnulationTarget.disabled = null === this.motif;
+    }
+
+    async confirmerAnnulation() {
+        if (!this.uuidRecu || null === this.motif) {
+            return;
+        }
+
+        this.confirmerAnnulationTarget.disabled = true;
+
+        let reponse;
+        try {
+            reponse = await fetch(this.annulerBaseValue.replace('__UUID__', this.uuidRecu), {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ motif: this.motif }),
+            });
+        } catch {
+            // Une annulation ne part **pas** dans la file de synchronisation.
+            // Rejouée au retour du réseau, elle porterait sur un ticket que
+            // d'autres ventes auront entre-temps dépassé : le serveur la
+            // refuserait, et la caissière croirait son ticket annulé depuis une
+            // heure. Mieux vaut le dire au moment où elle appuie.
+            this.confirmerAnnulationTarget.disabled = false;
+            this.notifier('Annulation impossible hors ligne — appelez le gérant', true);
+
+            return;
+        }
+
+        if (!reponse.ok) {
+            // Refus du serveur : ticket dépassé par un autre, caisse clôturée,
+            // vente déjà annulée. Son message est plus précis que le nôtre.
+            const erreur = await reponse.json().catch(() => ({}));
+
+            this.confirmerAnnulationTarget.disabled = false;
+            this.notifier(erreur.erreur ?? 'Annulation refusée — appelez le gérant', true);
+
+            return;
+        }
+
+        // Le stock déstocké à la vente est remonté par le serveur (mouvements
+        // inverses) : il n'y a rien à rejouer ici, l'écran se contente de repartir
+        // sur un ticket vierge.
+        const numero = this.recuNumeroTarget.textContent.trim();
+        this.fermerRecu();
+        this.notifier(numero ? `Ticket ${numero} annulé` : 'Ticket annulé', false);
     }
 
     async venteTransmise(uuid) {

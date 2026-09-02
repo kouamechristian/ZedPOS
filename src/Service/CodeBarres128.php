@@ -14,7 +14,7 @@ namespace App\Service;
  * **Jeu B** parce qu'il couvre l'ASCII imprimable : un numéro comme
  * `V260725-00001` mêle lettres, chiffres et tiret. Le jeu C serait deux fois plus
  * compact sur les chiffres, mais imposerait de basculer de jeu en cours de
- * chaîne pour un gain qui ne se voit pas sur 80 mm de papier.
+ * chaîne pour un gain qui ne se voit pas sur 58 mm de papier.
  */
 class CodeBarres128
 {

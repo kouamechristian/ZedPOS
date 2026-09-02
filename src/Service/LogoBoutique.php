@@ -21,9 +21,11 @@ class LogoBoutique extends StockageImages
      * Côté maximal, en pixels.
      *
      * Plus généreux que pour une touche produit (400 px) : le logo s'imprime sur
-     * toute la largeur du papier thermique, soit ~576 points à 203 dpi sur 80 mm.
-     * En dessous, il ressortirait crénelé sur le ticket — le seul support où il
-     * n'y a pas de seconde chance, le papier étant déjà sorti.
+     * toute la largeur utile du papier thermique, soit 384 points à 203 dpi sur
+     * 58 mm. La borne reste à 600 px, au-dessus du strict nécessaire : le logo
+     * est aussi affiché à l'écran, et une réduction ne se rattrape pas — le
+     * fichier d'origine n'est pas conservé. Trop petit, il ressortirait crénelé
+     * sur le seul support sans seconde chance, le papier étant déjà sorti.
      */
     private const COTE_MAX = 600;
 

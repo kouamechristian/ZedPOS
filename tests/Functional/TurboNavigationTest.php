@@ -323,9 +323,11 @@ class TurboNavigationTest extends WebTestCase
         // Rien de ce qui se passe **pendant la prise de commande** n'est
         // asynchrone : ajouter un article, +/−, retirer une ligne, vider le
         // ticket, saisir le montant reçu ou lire la monnaie à rendre restent en
-        // mémoire. Les quatre méthodes ci-dessous sortent sur le réseau, et
-        // toutes après coup : le catalogue au chargement, l'encaissement, sa
-        // confirmation, et l'affichage du reçu une fois la vente acquise.
+        // mémoire. Les cinq méthodes ci-dessous sortent sur le réseau, et toutes
+        // après coup : le catalogue au chargement, l'encaissement, sa
+        // confirmation, l'affichage du reçu une fois la vente acquise, et
+        // l'annulation de ce reçu — qui, elle, exige le réseau et le dit
+        // franchement plutôt que de partir dans la file de synchronisation.
         preg_match_all('/^    (?:async )?(\w+)\(/m', $source, $correspondances);
         $asynchrones = [];
         foreach ($correspondances[0] as $index => $signature) {
@@ -336,7 +338,7 @@ class TurboNavigationTest extends WebTestCase
 
         sort($asynchrones);
         $this->assertSame(
-            ['actualiserCatalogue', 'afficherRecu', 'encaisser', 'venteTransmise'],
+            ['actualiserCatalogue', 'afficherRecu', 'confirmerAnnulation', 'encaisser', 'venteTransmise'],
             $asynchrones,
             'Aucune autre méthode du contrôleur de ticket ne doit faire d\'aller-retour serveur.',
         );

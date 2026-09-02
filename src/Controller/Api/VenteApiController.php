@@ -45,8 +45,10 @@ class VenteApiController extends AbstractController
     }
 
     /**
-     * Annulation d'une vente encaissée : réservée au gérant (et à la dirigeante
-     * par hiérarchie), et notifiée à la dirigeante. Jamais de suppression.
+     * Annulation d'une vente encaissée : gérant et dirigeante sans restriction, et
+     * le caissier sur le seul ticket qu'il vient d'encaisser
+     * ({@see \App\Security\Voter\VenteVoter}).
+     * Toujours notifiée à la dirigeante, jamais de suppression.
      */
     #[Route('/vente/{uuid}/annuler', name: 'api_vente_annuler', methods: ['POST'])]
     public function annuler(string $uuid, Request $request, VenteRepository $ventes): JsonResponse

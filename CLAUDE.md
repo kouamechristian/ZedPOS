@@ -184,7 +184,7 @@ contrôleurs et gabarits testent une **permission**, jamais un rôle.
 | Voir **ses** ventes          | oui      | oui    | oui        | oui (L)   |
 | Modifier un prix de vente    | non      | **non**| **oui**    | non       |
 | Modifier un article          | non      | oui    | oui        | non       |
-| Annuler une vente encaissée  | non      | **oui**| oui        | non       |
+| Annuler une vente encaissée  | son dernier ticket | **oui** | oui | non   |
 | Exporter la comptabilité     | non      | oui    | oui        | oui (L)   |
 | Gérer les comptes            | non      | oui    | oui        | non       |
 | Agir sur un compte dirigeante| non      | **non**| oui        | non       |
@@ -197,7 +197,8 @@ contrôleurs et gabarits testent une **permission**, jamais un rôle.
   être `null` pour la question générale (masquer une colonne entière).
 - **`VenteVoter`** — `VENTE_VOIR` : un caissier n'accède qu'aux ventes de **ses**
   sessions de caisse, y compris via `/caisse/ticket/{uuid}` et sa sortie ESC/POS.
-  `VENTE_ANNULER` : gérant et au-dessus.
+  `VENTE_ANNULER` : gérant et au-dessus sans restriction ; **le caissier sur le
+  seul ticket qu'il vient d'encaisser** — voir « Annulation du dernier ticket ».
 - **`UtilisateurVoter`** — `UTILISATEUR_GERER`. Sujet `null` : « puis-je gérer des
   comptes ? » (l'écran, le bouton de création). Sujet `Utilisateur` : « puis-je
   agir sur **ce** compte ? » — un gérant ne bascule pas une dirigeante, il
@@ -224,6 +225,61 @@ notifie la dirigeante (`NotificateurDirigeante` → entité `Notification`, rele
 sur `/pilotage` avec un bouton « J'ai vu »). Notification en base plutôt que par
 e-mail : la dirigeante consulte le pilotage depuis son téléphone, c'est le canal
 qu'elle regarde réellement.
+
+**Annulation du dernier ticket — la seule écriture accordée au caissier.**
+Le caissier annule le ticket qu'il vient d'encaisser, depuis le panneau « Reçu »
+de `/caisse`. L'erreur de saisie se constate au comptoir dans les secondes qui
+suivent, et faire venir le gérant pour deux baguettes de trop immobilise la file
+du matin — c'est-à-dire exactement ce que cette caisse existe pour éviter.
+
+Ce n'est pas une brèche dans la matrice, c'est une exception **bornée par trois
+conditions cumulatives**, toutes dans `VenteVoter::peutAnnuler()` :
+
+- **sa propre session** — connaître l'uuid du ticket d'un collègue ne suffit pas,
+  sinon un caissier effacerait les ventes d'un autre et lui laisserait l'écart ;
+- **session encore ouverte** — après le Z la journée est arrêtée. Le refus vient
+  de l'habilitation (403), pas de l'exception métier levée plus loin par
+  `SessionCaisse::garantirOuverte()` : une porte fermée vaut mieux qu'une porte
+  qui casse au passage ;
+- **le dernier ticket, et lui seul** (`VenteRepository::derniereDe()`) — dès
+  qu'une vente suivante est encaissée, l'annulation redevient l'affaire du
+  gérant. Sans cette borne, un caissier pourrait remonter sa journée et effacer
+  ses écarts au fil de l'eau, et le Z ne signalerait plus rien.
+
+> `derniereDe()` trie sur l'**identifiant**, pas sur `createdAt` : en boulangerie
+> rapide deux ventes tombent couramment dans la même seconde, et « la dernière »
+> ne doit pas dépendre de laquelle l'horodatage a départagée.
+
+Rien n'est allégé pour autant : c'est le même `EncaissementService::annuler()`,
+donc le même journal d'audit, la même notification à la dirigeante et les mêmes
+mouvements de stock inverses. L'exception est **ouverte, pas silencieuse** — c'est
+ce qui permet de l'accorder.
+
+**Côté écran** (`caisse/index.html.twig`, `ticket_controller.js`) :
+
+- Le bouton « Annuler ce ticket » est **sur sa propre ligne, sous** « Imprimer »
+  et « Nouveau ticket ». Ces deux-là gardent leur place au pixel près : c'est là
+  que le pouce va sans regarder, vingt fois par heure — une action irréversible
+  ne doit pas se trouver sous un doigt qui enchaîne.
+- **Jamais un seul appui.** Le motif est obligatoire côté serveur, il l'est donc
+  aussi à l'écran : le bouton de confirmation naît désactivé, et choisir un motif
+  tient lieu de confirmation. Quatre motifs proposés d'un appui plus un champ
+  libre — au comptoir, taper au clavier tactile coûte plus cher que le geste
+  qu'on est en train de corriger, et des motifs normalisés se relisent au
+  pilotage là où un champ libre donne autant de formulations que de caissières.
+- **L'annulation ne passe pas par la file de synchronisation.** Hors ligne elle
+  est refusée franchement. Mise en file, elle serait rejouée au retour du réseau
+  sur un ticket que d'autres ventes auront dépassé : le serveur la refuserait et
+  la caissière croirait son ticket annulé depuis une heure. C'est la seule sortie
+  réseau de l'écran qui exige le réseau — `TurboNavigationTest` fige la liste des
+  méthodes asynchrones du contrôleur, l'y ajouter était une décision.
+- Le motif retenu prend un **aplat rouge** (`red-700`, blanc à 6,4:1) et non
+  ambre : l'ambre marque les états courants de l'écran (famille, mode), ce geste
+  n'en est pas un. Comme pour les règlements, la bordure change de couleur mais
+  **jamais d'épaisseur**.
+
+Couverture : `VenteApiTest` (les trois bornes), `HabilitationsTest` (le ticket
+d'un collègue reste refusé), `CaisseTest::testLeRecuOffreLAnnulationDuTicketDerriereUnMotif`.
 
 **Étanchéité des réponses de caisse** : un caissier a légitimement accès à
 `/caisse/catalogue.json`, `/api/vente` et `/caisse/ticket/{uuid}` — leur sûreté
@@ -386,7 +442,7 @@ interdit maintenant ce retour en arrière.
 
 **Exception : les tickets imprimés.** `templates/ticket/ticket.html.twig` et
 `templates/caisse/rapport.html.twig` restent en noir et blanc neutre — ils sortent
-sur une imprimante thermique 80 mm, la couleur n'y a aucun sens.
+sur une imprimante thermique 58 mm, la couleur n'y a aucun sens.
 
 ### Navigation Turbo (pas de rechargement de page)
 
@@ -746,7 +802,7 @@ service `App\Service\LogoBoutique`, répertoire `public/uploads/boutique/`,
 grand côté ramené à **600 px**.
 
 - **600 et non 400** (la borne des touches produits) : le logo s'imprime sur toute
-  la largeur du papier thermique, soit ~576 points à 203 dpi sur 80 mm. Plus petit,
+  la largeur du papier thermique — 384 points à 203 dpi sur 58 mm. Plus petit,
   il ressortirait crénelé sur le seul support où il n'y a pas de seconde chance —
   le papier est déjà sorti.
 - **Répertoire distinct de celui des articles** : ce n'est pas une photo de touche,
@@ -836,7 +892,7 @@ l'absence de nom codé en dur dans les deux espaces de gestion.
     en déduit le rendu (excédent, espèces seulement — un paiement électronique ne
     peut pas dépasser le total), et le Z retranche ce rendu pour retrouver les
     espèces réellement en tiroir. L'écran ne fait donc foi pour personne.
-  - Restitution : ligne **Rendu** sur le ticket 80 mm et en ESC/POS (mise en avant
+  - Restitution : ligne **Rendu** sur le ticket 58 mm et en ESC/POS (mise en avant
     comme le total, `.ticket .rendu`), plus un rappel en grand au-dessus du reçu
     affiché après encaissement.
 - « Mise en attente » : tickets mémorisés côté client, repris en un appui.
@@ -912,8 +968,9 @@ contre la vraie API — 60 requêtes pour 20 ventes, sans doublon.
     total, le total réglé doit le couvrir. **Rendu de monnaie** = excédent (espèces).
   - **Remise** en `POURCENTAGE` ou `VALEUR`, plafonnée par rôle (**caissier 0 %,
     gérant 10 %**) ; **motif obligatoire au-delà de 500 FCFA**.
-- `POST /api/vente/{uuid}/annuler` (**ROLE_GERANT**) : motif obligatoire, **jamais de
-  suppression** (statut → `ANNULEE`, motif conservé).
+- `POST /api/vente/{uuid}/annuler` : motif obligatoire, **jamais de suppression**
+  (statut → `ANNULEE`, motif conservé). Gérant et au-dessus sans restriction ; le
+  **caissier sur le seul dernier ticket de sa session ouverte** (`VenteVoter`).
 - Montants toujours en centimes ; erreurs métier via `EncaissementException` (code HTTP).
 - La `Vente` accepte désormais un UUID client au constructeur et porte `remise`,
   `motifRemise`, `rendu`, `motifAnnulation`.
@@ -932,7 +989,7 @@ Service central : `App\Service\SessionCaisseService` ; agrégation des chiffres 
   (`TypeMouvementCaisse` = `DEPENSE` | `SORTIE`, `CategorieDepense`, montant,
   commentaire). Une **dépense exige une catégorie** ; une **sortie** est un simple
   prélèvement (coffre, banque). Les deux diminuent le fond théorique.
-- **Ticket X** `/caisse/session/x` : synthèse **intermédiaire** imprimable 80 mm.
+- **Ticket X** `/caisse/session/x` : synthèse **intermédiaire** imprimable 58 mm.
   **Ne clôture rien et n'écrit rien** — la session reste `OUVERTE`.
 - **Clôture Z** `/caisse/session/cloture` : le caissier saisit **uniquement le montant
   physiquement compté**. Le serveur calcule le
@@ -940,7 +997,7 @@ Service central : `App\Service\SessionCaisseService` ; agrégation des chiffres 
   l'**écart = compté − théorique**. **Commentaire obligatoire si l'écart ≠ 0**
   (règle portée par `SessionCaisse::cloturer()`, non contournable par le formulaire).
   Les espèces encaissées sont **nettes du rendu de monnaie**.
-- **Rapport Z** `/caisse/session/z/{id}` (80 mm) et `/admin/clotures/{id}` (gérant) :
+- **Rapport Z** `/caisse/session/z/{id}` (58 mm) et `/admin/clotures/{id}` (gérant) :
   CA total, HT/TVA, nombre de tickets, panier moyen, ventilation **par mode de
   règlement** (somme = CA) et **par famille**, remises accordées, annulations,
   dépenses/sorties détaillées, fond théorique, compté et écart.
@@ -1265,7 +1322,72 @@ Aucune écriture de stock n'a eu lieu, il n'y a rien à défaire.
 
 ### Ticket de caisse et impression
 
-- **Vue HTML 80 mm** imprimable via `window.print()` (CSS `@media print`, `@page size: 80mm`) :
+**Le papier fait 58 mm, la tête n'en imprime que 48.** L'imprimante du comptoir
+déclare un format de 58 × 3276 mm — la seconde valeur étant la longueur maximale
+d'un rouleau continu, pas celle d'un ticket. Trois conséquences, toutes portées
+par `templates/ticket/_styles.html.twig` :
+
+- **`width: 58mm` et `padding: 3mm 5mm`.** Une tête 58 mm trace 384 points à
+  203 dpi, soit 48 mm, centrés sur le papier : les 5 mm de chaque côté sont
+  exactement ce qu'elle ne couvre pas. Le retrait ne coûte donc aucune largeur
+  utile, il empêche seulement le texte de tomber dans une bande où il serait
+  rogné — sans avertissement, et sans que le ticket paraisse anormal tant qu'on
+  ne compare pas avec le total.
+- **Le retrait survit à `@media print`.** La règle d'impression remettait
+  `padding: 0` (« la page EST le ticket ») : sur ce papier, cela poussait le
+  texte dans la bande morte. Elle ne remet plus que la largeur et le fond.
+- **`@page { size: 58mm auto }`, jamais `58mm 3276mm`.** Une hauteur fixe ferait
+  dérouler trois mètres de papier à chaque vente. Seule la largeur doit
+  correspondre au réglage du pilote.
+
+Le corps est en **Tahoma 11 px**, soit une trentaine de colonnes sur 48 mm —
+autant que les **32 colonnes** de la police A côté ESC/POS (`ImpressionService::LARGEUR`).
+Les deux supports replient donc les lignes au même endroit, et un libellé qui
+tient à l'écran tient sur le papier. Le rapport X / Z (`caisse/rapport.html.twig`)
+sort de la même imprimante et suit les mêmes valeurs.
+
+**La police est imposée par la tête thermique, pas par le goût.** Elle chauffe un
+point ou ne le chauffe pas : elle ne connaît pas le gris. Le ticket était en
+**Courier New** — l'allure d'un ticket de caisse, et une sortie pâle et hachée :
+ses traits font un pixel de large, le navigateur les lisse en gris, et chaque
+pixel gris tombe au hasard en noir ou en blanc. Ses empattements, larges d'un
+point, disparaissaient purement et simplement.
+
+- **`Tahoma, Verdana, 'DejaVu Sans', Arial, sans-serif`** : sans empattement,
+  traits épais, dessinée pour les petites tailles à basse résolution. DejaVu Sans
+  couvre les postes non Windows. Polices système uniquement, comme partout
+  ailleurs — un ticket doit sortir hors ligne.
+- **Le monospace ne manque pas** : les montants sont alignés par flexbox, pas par
+  des espaces de remplissage. C'est l'ESC/POS qui compte des colonnes, pas la
+  feuille de style. `font-variant-numeric: tabular-nums` garde les chiffres en
+  colonne d'une ligne à l'autre.
+- **Ni gris ni lissage à l'impression** : `.muted` repasse en `#000` et
+  `-webkit-font-smoothing: none` coupe l'antialiasing sous `@media print`. Une
+  demi-teinte n'est qu'un semis de points — plus sale que du noir franc, et pas
+  plus discrète. À l'écran, les deux gardent leur rôle.
+- **Séparateurs en trait plein**, plus en pointillés : un tiret d'un point sur
+  deux à 203 dpi sort gris et irrégulier, quand il sort.
+
+> Le retour en arrière serait **invisible à l'écran**, où Courier s'affiche
+> parfaitement — il ne se verrait qu'au comptoir, sur le papier déjà sorti. D'où
+> `CaisseTest::testLeTicketEstDansUnePoliceQuiSortSurUneTeteThermique`.
+
+> **Si le ticket sort encore mal, vérifier l'échelle d'impression du navigateur
+> avant le CSS** : Chrome propose « Ajuster à la page », qui réduit tout et rend
+> les petits corps illisibles. Il faut **100 %**, sans en-tête ni pied de page.
+
+> Le **code-barres tient de justesse** : 46 mm sur les 48 imprimables en HTML,
+> et 178 modules à deux points en ESC/POS, soit 356 des 384 points de la tête.
+> Un numéro de ticket plus long que `Vaammjj-00001` déborderait, et l'imprimante
+> tronquerait le symbole sans rien signaler. C'est la contrainte à vérifier avant
+> de toucher au format du numéro.
+
+> ⚠️ Les commentaires **CSS** de ces gabarits partent dans la réponse HTTP, à la
+> différence des commentaires Twig `{# … #}`. `FuiteDonneesCaisseTest` y interdit
+> tout terme de gestion : « tenir le contenu à l'**écart** des bords » a suffi à
+> faire échouer la suite. Écrire « en dehors de ».
+
+- **Vue HTML 58 mm** imprimable via `window.print()` (CSS `@media print`, `@page size: 58mm`) :
   `GET /caisse/ticket/{uuid}` → `templates/ticket/ticket.html.twig`. En-tête (**logo**,
   raison sociale, adresse Abengourou, NCC, n° ticket, date/heure, caissier), lignes,
   total, ventilation TVA, règlement(s), rendu, **pied paramétrable** et **code-barres
@@ -1288,7 +1410,7 @@ géométrie obtenue (barres en modules).
 
 - **Jeu B** parce qu'il couvre l'ASCII imprimable, et qu'un numéro mêle lettres,
   chiffres et tiret. Le jeu C serait deux fois plus compact sur les chiffres au
-  prix d'un changement de jeu en cours de chaîne — invisible sur 80 mm de papier.
+  prix d'un changement de jeu en cours de chaîne — invisible sur ce papier.
 - **Écrit à la main, sans dépendance** : la spécification tient en une table de
   motifs et une somme de contrôle, et elle ne bouge pas. Une bibliothèque
   n'aurait servi qu'au rendu HTML — côté thermique, c'est le firmware qui dessine.
@@ -1330,8 +1452,8 @@ géométrie obtenue (barres en modules).
 
 | Fichier | Rôle |
 |---|---|
-| `templates/ticket/_contenu.html.twig` | le **balisage** du ticket 80 mm |
-| `templates/ticket/_styles.html.twig` | le **style** du ticket 80 mm |
+| `templates/ticket/_contenu.html.twig` | le **balisage** du ticket 58 mm |
+| `templates/ticket/_styles.html.twig` | le **style** du ticket 58 mm |
 
 Tous deux sont inclus par `ticket/ticket.html.twig` (page imprimable) **et** par
 `caisse/index.html.twig` (reçu affiché après encaissement). Ce que la caissière voit
@@ -1343,11 +1465,11 @@ caisse, sans wrapper ni classe supplémentaire.
 
 > Les deux gabarits ont déjà eu **chacun sa copie** des mêmes règles, et elles
 > avaient divergé : la caisse avait oublié `.ticket` lui-même, le reçu s'étirait
-> donc à la largeur du panneau au lieu des 80 mm du papier.
+> donc à la largeur du panneau au lieu de celle du papier.
 > `CaisseTest::testLeRecuEtLeTicketPartagentLeMemeFormat` interdit le retour en
 > arrière — il échoue si les règles sont recopiées au lieu d'être incluses.
 
-**L'habillage « papier » est réservé à l'écran** : la bande de 80 mm dentelée en haut
+**L'habillage « papier » est réservé à l'écran** : la bande de 58 mm dentelée en haut
 et en bas (masque CSS) et son ombre portée (`filter: drop-shadow`, qui suit la
 découpe là où un `box-shadow` ne saurait pas) vivent dans `caisse/index.html.twig`.
 Le fichier partagé, lui, reste strictement noir et blanc — il part sur une
@@ -1450,11 +1572,12 @@ compare l'implémentation à cette description et signale les écarts.
 | Caisse tactile, mode boulangerie | ✅ | `/caisse` |
 | Caisse tactile, mode fast-food | ⚠️ partiel | variantes + commentaire seulement, voir écart n° 1 |
 | Encaissement idempotent, paiement mixte, remise plafonnée, rendu | ✅ | `POST /api/vente` |
+| Annulation du dernier ticket par le caissier (motif, audit, notification) | ✅ | panneau « Reçu » de `/caisse` |
 | Cycle de caisse : ouverture, dépenses, ticket X, clôture Z, écart | ✅ | `/caisse/session/*` |
 | Journée clôturée non modifiable | ✅ | `SessionCaisse::garantirOuverte()` |
 | Déstockage automatique par fiche technique | ✅ | `DestockageVenteListener` |
 | Pertes valorisées + synthèse mensuelle | ✅ | `/admin/pertes` |
-| Ticket 80 mm + génération ESC/POS | ⚠️ partiel | voir écart n° 3 |
+| Ticket 58 mm + génération ESC/POS | ⚠️ partiel | voir écart n° 3 |
 | Caisse hors ligne (Service Worker, IndexedDB, file de synchronisation) | ✅ | `public/sw.js`, `assets/offline/` |
 | Espace de pilotage responsive, ventes par caissière, courbe 30 jours | ✅ | `/pilotage` |
 | Téléchargement des rapports du jour (texte, CSV) | ✅ | `/pilotage/rapport.txt`, `.csv` |
@@ -1470,7 +1593,7 @@ compare l'implémentation à cette description et signale les écarts.
 | Paramètres de l'établissement, logo compris | ✅ | `/admin/parametres` |
 | Import du catalogue en masse (nom, prix) | ✅ | `/admin/articles/importer` |
 
-Tests : **469 tests PHPUnit** (`php bin/phpunit`) et **37 tests Node**
+Tests : **474 tests PHPUnit** (`php bin/phpunit`) et **37 tests Node**
 (`node --test "tests/js/*.test.js"`).
 
 ### Écarts par rapport au contexte métier — à traiter

@@ -39,6 +39,17 @@
    juraient avec l'ambre du reste de l'interface. Texte foncé de la même teinte que
    le fond — jamais de noir pur sur fond coloré, et un contraste qui tient en plein
    jour derrière le comptoir. #}
+{# Motifs d'annulation proposés d'un appui. Au comptoir, taper au clavier tactile
+   coûte plus cher que le geste qu'on est en train de corriger ; et des motifs
+   normalisés se relisent au pilotage, là où un champ libre donne autant de
+   formulations que de caissières. Le champ libre reste, pour le reste. #}
+{% set motifsAnnulation = [
+    'Erreur de saisie',
+    "Client s'est ravisé",
+    'Article indisponible',
+    'Erreur de règlement',
+] %}
+
 {% set teintes = [
     { fond: '#fce3b4', texte: '#7a4708' },
     { fond: '#fbd7bd', texte: '#8a4321' },
@@ -101,18 +112,29 @@
         box-shadow: none;
     }
 
+    /* Motif d'annulation retenu : aplat rouge plein (red-700), blanc à 6,4:1.
+       Rouge et non ambre — l'ambre marque les états courants de l'écran (famille,
+       mode), et ce geste-là n'en est pas un. Comme pour les règlements, la bordure
+       change de couleur mais jamais d'épaisseur : elle décalerait le texte au clic. */
+    .motif[data-actif] {
+        background: #b91c1c;
+        border-color: #b91c1c;
+        color: #fff;
+        font-weight: 600;
+    }
+
     /* Le reçu doit ressembler à ce qui sort de l'imprimante : bande de papier
        étroite, dentelée aux deux bouts, posée sur le comptoir.
 
        La caissière compare le reçu à l'écran avec le ticket qu'elle tend au
        client — les deux doivent se superposer sans effort. */
 
-    /* Bande de papier : 80 mm de large, dentelée en haut et en bas.
+    /* Bande de papier : 58 mm de large, dentelée en haut et en bas.
        Le masque découpe les dents ; l'ombre est portée par le conteneur, sinon
        elle serait découpée avec le reste. */
     .recu-papier {
         --dent: 6px;
-        width: 80mm;
+        width: 58mm;
         margin: 0 auto;
         background: #fff;
         -webkit-mask:
@@ -127,18 +149,21 @@
     /* L'ombre suit la découpe des dents, ce qu'un box-shadow ne saurait pas faire. */
     .recu-ombre { filter: drop-shadow(0 2px 5px rgba(0, 0, 0, .22)); }
 
-    /* Le fragment apporte sa propre largeur de 80 mm : dans la bande, il n'a plus
-       qu'à la remplir, dents comprises. */
+    /* Le fragment apporte sa propre largeur de papier : dans la bande, il n'a
+       plus qu'à la remplir, dents comprises. Le retrait latéral reste celui du
+       fragment — c'est ce qui fait que le reçu à l'écran et le ticket sur le
+       comptoir se superposent, jusqu'aux blancs de bord. */
     .recu-papier .ticket {
         width: 100%;
-        padding: calc(4mm + var(--dent)) 4mm;
+        padding: calc(3mm + var(--dent)) 5mm;
     }
 </style>
 
 <div class="h-screen flex flex-col bg-amber-50 text-stone-800 overflow-hidden select-none"
      data-controller="ticket"
      data-ticket-ticket-base-value="{{ path('app_caisse_ticket', {uuid: '__UUID__'}) }}"
-     data-ticket-apercu-base-value="{{ path('app_caisse_ticket_apercu', {uuid: '__UUID__'}) }}">
+     data-ticket-apercu-base-value="{{ path('app_caisse_ticket_apercu', {uuid: '__UUID__'}) }}"
+     data-ticket-annuler-base-value="{{ path('api_vente_annuler', {uuid: '__UUID__'}) }}">
 
     {# ---------- Barre fine : identité à gauche, état et caissière à droite ---------- #}
     {# Liseré ambre sous l'en-tête : même signature que /admin et /pilotage. #}
@@ -354,7 +379,7 @@
         </aside>
     </div>
 
-    {# ---------- Reçu affiché après encaissement, au format 80 mm ---------- #}
+    {# ---------- Reçu affiché après encaissement, au format du papier ---------- #}
     <div data-ticket-target="recu"
          class="hidden fixed inset-0 z-30 flex items-center justify-center bg-stone-900/40 p-6">
         <div class="flex max-h-full w-[420px] flex-col rounded-[12px] bg-white">
@@ -363,7 +388,7 @@
                 <span class="text-xs text-stone-500" data-ticket-target="recuNumero"></span>
             </div>
 
-            {# La monnaie est répétée en grand au-dessus du fragment 80 mm : c'est
+            {# La monnaie est répétée en grand au-dessus du fragment papier : c'est
                le geste qui suit l'encaissement, la caissière ne doit pas avoir à
                la relire en corps 9 sur la bande de papier. Elle figure aussi sur
                le ticket lui-même, ligne « Rendu » — le client la retrouve donc en
@@ -376,22 +401,68 @@
             </div>
 
             {# Fond sombre : la bande blanche s'en détache comme du papier sur le
-               comptoir. Le fragment 80 mm est injecté dans .recu-papier. #}
+               comptoir. Le fragment papier est injecté dans .recu-papier. #}
             <div class="flex-1 overflow-y-auto bg-stone-200 px-5 py-6">
                 <div class="recu-ombre">
                     <div class="recu-papier" data-ticket-target="recuContenu"></div>
                 </div>
             </div>
 
-            <div class="flex gap-2 border-t border-stone-200 p-4">
-                <button type="button" data-action="ticket#imprimerRecu"
-                        class="flex-1 rounded-[10px] border border-stone-200 py-3 text-sm text-stone-700 hover:bg-stone-50">
-                    Imprimer
+            {# Les deux gestes courants gardent leur place au pixel près : c'est là
+               que le pouce de la caissière va sans regarder, vingt fois par heure.
+               L'annulation vient **en dessous**, sur sa propre ligne — rare,
+               irréversible, elle ne doit pas se trouver sous un doigt qui enchaîne. #}
+            <div data-ticket-target="actionsRecu" class="border-t border-stone-200 p-4">
+                <div class="flex gap-2">
+                    <button type="button" data-action="ticket#imprimerRecu"
+                            class="flex-1 rounded-[10px] border border-stone-200 py-3 text-sm text-stone-700 hover:bg-stone-50">
+                        Imprimer
+                    </button>
+                    <button type="button" data-action="ticket#fermerRecu"
+                            class="flex-1 rounded-[10px] bg-stone-800 py-3 text-sm font-medium text-white hover:bg-stone-700">
+                        Nouveau ticket
+                    </button>
+                </div>
+                <button type="button" data-action="ticket#ouvrirAnnulation"
+                        class="mt-2 w-full rounded-[10px] border border-red-200 py-2.5 text-sm text-red-700 hover:bg-red-50">
+                    Annuler ce ticket
                 </button>
-                <button type="button" data-action="ticket#fermerRecu"
-                        class="flex-1 rounded-[10px] bg-stone-800 py-3 text-sm font-medium text-white hover:bg-stone-700">
-                    Nouveau ticket
-                </button>
+            </div>
+
+            {# Annulation : le motif est obligatoire côté serveur, il l'est donc
+               aussi ici — le bouton reste inerte tant que rien n'est choisi ni
+               tapé. Le fond rouge dit, sans qu'on lise, qu'on a quitté les gestes
+               courants ; « Revenir » ramène au reçu sans rien avoir touché. #}
+            <div data-ticket-target="annulation" class="hidden border-t border-red-200 bg-red-50 p-4">
+                <p class="mb-3 text-sm font-medium text-red-900">Pourquoi annuler ce ticket ?</p>
+
+                <div class="grid grid-cols-2 gap-2">
+                    {% for motif in motifsAnnulation %}
+                        <button type="button" data-action="ticket#choisirMotif" data-ticket-target="motif"
+                                data-motif="{{ motif }}"
+                                class="motif rounded-[10px] border border-red-200 bg-white px-3 py-3 text-left text-sm leading-snug text-stone-800 hover:bg-red-100">
+                            {{ motif }}
+                        </button>
+                    {% endfor %}
+                </div>
+
+                <input type="text" maxlength="120" autocomplete="off" placeholder="Autre motif…"
+                       data-ticket-target="motifLibre" data-action="ticket#saisirMotif"
+                       class="mt-2 w-full rounded-[10px] border border-red-200 bg-white px-3 py-3 text-sm text-stone-800
+                              placeholder:text-stone-400 focus:border-red-400 focus:outline-none">
+
+                <div class="mt-3 flex gap-2">
+                    <button type="button" data-action="ticket#fermerAnnulation"
+                            class="flex-1 rounded-[10px] border border-stone-300 bg-white py-3 text-sm text-stone-700 hover:bg-stone-100">
+                        Revenir
+                    </button>
+                    <button type="button" data-action="ticket#confirmerAnnulation"
+                            data-ticket-target="confirmerAnnulation" disabled
+                            class="flex-1 rounded-[10px] bg-red-700 py-3 text-sm font-semibold text-white hover:bg-red-800
+                                   disabled:bg-stone-200 disabled:text-stone-400">
+                        Annuler le ticket
+                    </button>
+                </div>
             </div>
         </div>
     </div>
