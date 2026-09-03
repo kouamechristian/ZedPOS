@@ -101,6 +101,18 @@ Ne refaites jamais une vente pour « corriger » : cela compterait deux fois.
 Vos ventes sont gardées dans la tablette et repartent seules. Seul le ticket papier
 attend le retour du réseau.
 
+## 4 bis. La pastille « Matériel »
+
+À côté du bandeau ci-dessus, elle dit si l'afficheur client, l'imprimante à tickets
+et le tiroir sont pilotés depuis la caisse.
+
+| Pastille | Ce que ça veut dire |
+|---|---|
+| 🟢 **Matériel connecté** | Le client voit les montants, le ticket sort tout seul. |
+| ⚪ **Matériel non connecté** | **Vendez normalement.** Le ticket s'imprime par le navigateur, comme avant. |
+
+Si le câble vient d'être rebranché, **touchez la pastille** : elle revérifie.
+
 ## 5. Sortir de l'argent du tiroir
 
 Touchez **Dépense** → *Dépense* ou *Sortie de caisse*, la catégorie, le montant, un

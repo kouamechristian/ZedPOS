@@ -6,6 +6,7 @@ use App\Repository\VenteRepository;
 use App\Security\Permission;
 use App\Service\ImpressionService;
 use App\Service\TicketBuilder;
+use App\Service\TicketMateriel;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -57,6 +58,28 @@ class TicketController extends AbstractController
             'ok' => true,
             'base64' => base64_encode($commande),
             'longueur' => \strlen($commande),
+        ]);
+    }
+
+    /**
+     * Ticket au format attendu par la route `/print` de l'agent matériel local.
+     *
+     * Sert deux appelants : l'écran de caisse juste après un encaissement, et le
+     * bouton « Réimprimer » de `/admin/ventes`. La réponse est identique à la clé
+     * `ticket` de `POST /api/vente` — même service, donc aucun risque qu'un ticket
+     * réimprimé diffère de celui qui est sorti à la vente.
+     *
+     * **`openDrawer` est toujours faux ici.** Une réimpression ne fait pas entrer
+     * d'argent : le tiroir s'est ouvert quand le client a payé, le rouvrir à la
+     * demande depuis un écran de gestion serait un moyen commode de le faire
+     * s'ouvrir sans vente. L'ouverture reste attachée au seul encaissement.
+     */
+    #[Route('/{uuid}/materiel', name: 'app_caisse_ticket_materiel', methods: ['GET'])]
+    public function materiel(string $uuid, VenteRepository $ventes, TicketMateriel $materiel): JsonResponse
+    {
+        return $this->json([
+            'ok' => true,
+            'ticket' => $materiel->pour($this->vente($uuid, $ventes), ouvrirTiroir: false),
         ]);
     }
 

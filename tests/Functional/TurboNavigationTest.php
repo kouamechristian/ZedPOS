@@ -323,11 +323,17 @@ class TurboNavigationTest extends WebTestCase
         // Rien de ce qui se passe **pendant la prise de commande** n'est
         // asynchrone : ajouter un article, +/−, retirer une ligne, vider le
         // ticket, saisir le montant reçu ou lire la monnaie à rendre restent en
-        // mémoire. Les cinq méthodes ci-dessous sortent sur le réseau, et toutes
+        // mémoire. Les sept méthodes ci-dessous sortent sur le réseau, et toutes
         // après coup : le catalogue au chargement, l'encaissement, sa
         // confirmation, l'affichage du reçu une fois la vente acquise, et
         // l'annulation de ce reçu — qui, elle, exige le réseau et le dit
         // franchement plutôt que de partir dans la file de synchronisation.
+        //
+        // `imprimerMateriel` et `chargerTicketMateriel` s'y ajoutent : elles
+        // impriment sur l'agent matériel local une fois la vente acquise, jamais
+        // pendant la prise de commande. Les appels à l'afficheur client, eux,
+        // partent de méthodes **synchrones** (`majAfficheur`, `afficher`) et sans
+        // `await` — un périphérique ne doit pas pouvoir ralentir la frappe.
         preg_match_all('/^    (?:async )?(\w+)\(/m', $source, $correspondances);
         $asynchrones = [];
         foreach ($correspondances[0] as $index => $signature) {
@@ -338,14 +344,24 @@ class TurboNavigationTest extends WebTestCase
 
         sort($asynchrones);
         $this->assertSame(
-            ['actualiserCatalogue', 'afficherRecu', 'confirmerAnnulation', 'encaisser', 'venteTransmise'],
+            [
+                'actualiserCatalogue', 'afficherRecu', 'chargerTicketMateriel', 'confirmerAnnulation',
+                'encaisser', 'imprimerMateriel', 'venteTransmise',
+            ],
             $asynchrones,
             'Aucune autre méthode du contrôleur de ticket ne doit faire d\'aller-retour serveur.',
         );
 
         // La monnaie se calcule à l'écran, sans réseau : hors ligne, la réponse
         // du serveur n'arriverait qu'après le départ du client.
-        foreach (['ajouter', 'incrementer', 'decrementer', 'vider', 'total', 'tva', 'saisirRecu', 'rendreRendu'] as $methode) {
+        foreach ([
+            'ajouter', 'incrementer', 'decrementer', 'vider', 'total', 'tva', 'saisirRecu', 'rendreRendu',
+            // L'afficheur client est piloté depuis ces deux méthodes : elles
+            // doivent rester synchrones. Un `await` sur un périphérique absent
+            // — le cas de la plupart des postes — mettrait une attente entre
+            // l'appui sur une touche produit et l'apparition de la ligne.
+            'majAfficheur', 'afficher',
+        ] as $methode) {
             $this->assertMatchesRegularExpression(
                 '/^    '.$methode.'\(/m',
                 $source,

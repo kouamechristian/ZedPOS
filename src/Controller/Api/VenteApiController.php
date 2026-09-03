@@ -8,6 +8,7 @@ use App\Repository\VenteRepository;
 use App\Security\Permission;
 use App\Service\EncaissementException;
 use App\Service\EncaissementService;
+use App\Service\TicketMateriel;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -19,8 +20,10 @@ use Symfony\Component\Uid\Uuid;
 #[Route('/api')]
 class VenteApiController extends AbstractController
 {
-    public function __construct(private readonly EncaissementService $encaissement)
-    {
+    public function __construct(
+        private readonly EncaissementService $encaissement,
+        private readonly TicketMateriel $materiel,
+    ) {
     }
 
     #[Route('/vente', name: 'api_vente_creer', methods: ['POST'])]
@@ -86,6 +89,19 @@ class VenteApiController extends AbstractController
     }
 
     /**
+     * Représentation JSON d'une vente encaissée.
+     *
+     * `ticket` est la charge utile destinée à la route `/print` de l'agent
+     * matériel local. Elle ne porte que ce qui s'imprime — identité de la
+     * boutique, lignes, totaux, monnaie — et **aucune donnée de gestion** :
+     * {@see \App\Tests\Functional\FuiteDonneesCaisseTest} fige la liste des clés
+     * de cette réponse et interdit tout terme de coût, de marge ou de stock. L'y
+     * ajouter était une décision, au même titre que `image` dans le catalogue.
+     *
+     * Montants en **FCFA entiers** dans `ticket`, en centimes partout ailleurs :
+     * l'agent imprime ce qu'on lui donne, la conversion se fait donc au moment de
+     * composer le ticket ({@see TicketMateriel}) et nulle part avant.
+     *
      * @return array<string, mixed>
      */
     private function representer(Vente $vente, int $rendu): array
@@ -100,6 +116,7 @@ class VenteApiController extends AbstractController
             'totalTtc' => $vente->getTotalTtc(),
             'remise' => $vente->getRemise(),
             'rendu' => $rendu,
+            'ticket' => $this->materiel->pour($vente),
         ];
     }
 }

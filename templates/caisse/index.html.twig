@@ -163,7 +163,8 @@
      data-controller="ticket"
      data-ticket-ticket-base-value="{{ path('app_caisse_ticket', {uuid: '__UUID__'}) }}"
      data-ticket-apercu-base-value="{{ path('app_caisse_ticket_apercu', {uuid: '__UUID__'}) }}"
-     data-ticket-annuler-base-value="{{ path('api_vente_annuler', {uuid: '__UUID__'}) }}">
+     data-ticket-annuler-base-value="{{ path('api_vente_annuler', {uuid: '__UUID__'}) }}"
+     data-ticket-materiel-base-value="{{ path('app_caisse_ticket_materiel', {uuid: '__UUID__'}) }}">
 
     {# ---------- Barre fine : identité à gauche, état et caissière à droite ---------- #}
     {# Liseré ambre sous l'en-tête : même signature que /admin et /pilotage. #}
@@ -190,6 +191,20 @@
                   role="status" aria-live="polite">
                 <span data-synchronisation-target="libelle">Vérification</span>
                 <span data-synchronisation-target="detail" class="opacity-70"></span>
+            </span>
+
+            {# Agent matériel local (afficheur client, tête thermique, tiroir).
+               Même gabarit que la pastille de synchronisation : ce sont deux
+               états d'environnement, ils se lisent au même endroit et de la même
+               façon. Son absence n'est pas une alerte — la plupart des postes
+               n'ont pas d'agent et impriment par le navigateur — mais elle ne
+               doit pas se découvrir quand le ticket ne sort pas. #}
+            <span data-controller="materiel"
+                  data-base-classes="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs"
+                  class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs bg-stone-100 text-stone-400"
+                  data-action="click->materiel#sonder"
+                  role="status" aria-live="polite">
+                <span data-materiel-target="libelle">Matériel</span>
             </span>
             <span class="text-stone-600">{{ app.user.nom }}</span>
             <a href="{{ path('app_logout') }}" class="text-stone-400 hover:text-stone-700">Verrouiller</a>

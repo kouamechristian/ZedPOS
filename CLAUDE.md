@@ -1516,6 +1516,102 @@ imprimante thermique. Attention aussi aux **commentaires CSS** de ces gabarits :
 `FuiteDonneesCaisseTest` interdit tout terme de gestion dans une réponse de caisse,
 et le mot « marge » dans un commentaire suffit à faire échouer le test.
 
+### Matériel de caisse (afficheur client, tête thermique, tiroir)
+
+Un **agent local en Node** tourne sur le terminal de caisse et expose
+`http://127.0.0.1:9100` : `POST /display` (afficheur client), `POST /print`
+(ticket 58 mm), `POST /drawer` (tiroir), `GET /status`. Il ne fait pas partie de
+ce dépôt — l'application ne fait que lui parler.
+
+**Le matériel est un agrément, jamais une dépendance.** La très grande majorité
+des postes n'a pas d'agent : tablette du comptoir, poste de secours, navigateur
+de la dirigeante. Sur chacun d'eux la caisse doit se comporter **exactement**
+comme avant. D'où la règle qui commande tout le reste :
+
+> `assets/js/pos-agent.js` — **aucune méthode ne rejette jamais.** Toutes
+> renvoient un booléen. L'appelant n'a donc ni `try/catch` ni `.catch()` à
+> écrire, et un `pos.display()` peut partir sans `await` au milieu d'une méthode
+> synchrone sans risquer de rejet non capturé. Sur un poste sans agent, l'appel
+> ne fait rien du tout.
+
+- **Délai court (1,2 s ; 6 s à l'impression).** L'agent est sur la boucle
+  locale : il répond en quelques millisecondes ou pas du tout. Attendre
+  davantage ferait traîner l'afficheur derrière la frappe de la caissière,
+  au bénéfice de personne.
+- **La présence de l'agent est mémorisée.** Elle décide du chemin d'impression à
+  chaque vente ; sonder la boucle locale vingt fois par heure pour la même
+  réponse n'apprendrait rien. `pos.verifier()` force une nouvelle sonde — c'est
+  ce que fait la pastille « Matériel » quand on la touche.
+
+**Afficheur client** — piloté depuis le seul `ticket_controller.majAfficheur()` :
+deux appels partis d'endroits différents se contrediraient, et le dernier arrivé
+gagnerait. Ticket vide → `clear` (et non « 0 FCFA », qui se lit comme un article
+gratuit) ; ticket en cours → sous-total en `price` ; règlement choisi → même
+montant en `total`. Après encaissement, la monnaie passe en `change` **15 s**,
+puis retour au repos — assez pour compter les billets devant le client, trop peu
+pour que le suivant lise ce qu'on a rendu à son voisin. Toute activité sur le
+ticket annule ce compte à rebours, sinon il effacerait un sous-total bien vivant.
+
+**Impression — l'un ou l'autre, jamais les deux.** `imprimerMateriel()` tente
+l'agent ; s'il est absent ou refuse, on retombe sur l'iframe `window.print()`
+d'origine. Laisser partir les deux sortirait **deux tickets par vente**, l'un par
+la tête thermique, l'autre par l'imprimante par défaut de Windows.
+
+**Le ticket est composé côté serveur**, par `App\Service\TicketMateriel`, à
+partir du même `TicketData` que la page 58 mm et la sortie ESC/POS : ce que
+l'agent imprime ne peut pas diverger de ce que la caissière a sous les yeux.
+
+- ⚠ **Les montants en sortent en FCFA entiers**, alors qu'ils circulent en
+  centimes partout ailleurs. L'agent imprime ce qu'on lui donne sans
+  l'interpréter : c'est une conversion de présentation, elle n'a lieu qu'ici
+  (`intdiv`, jamais de flottant). Côté JS, `ticket_controller.afficher()`
+  tronque de la même façon — un arrondi divergent ferait dire deux nombres
+  différents à l'afficheur et au papier.
+- La **remise voyage en ligne négative**, faute de champ dédié dans le format de
+  l'agent : sans elle, la somme des lignes ne tomberait pas sur le total et le
+  client aurait un ticket qui ne s'additionne pas.
+- Le **détail des règlements descend au pied**, le format de l'agent n'offrant
+  qu'un seul champ `paid` : sur un paiement mixte, il dirait « 5 000 » sans
+  jamais dire d'où ils viennent.
+
+**`openDrawer` est décidé par le serveur, l'écran peut seulement le refuser.**
+Vrai si la vente comporte des espèces — sur un règlement Wave ou MTN, personne ne
+touche au tiroir et l'ouvrir le laisserait béant devant la file.
+
+**Réimpression** — `GET /caisse/ticket/{uuid}/materiel`, la même charge utile,
+`openDrawer` **forcé à faux**. Une réimpression ne fait pas entrer d'argent : le
+tiroir s'est ouvert quand le client a payé, et un bouton qui le rouvre depuis un
+écran de gestion serait un moyen commode de l'ouvrir sans vente. La route passe
+par le contrôle d'accès du ticket papier (`VENTE_VOIR`) : un caissier ne
+réimprime pas la vente d'un collègue. Points d'appel : le panneau « Reçu » de
+`/caisse` et le bouton « Réimprimer » de `/admin/ventes`.
+
+> **Pourquoi une route GET alors que `POST /api/vente` renvoie déjà `ticket` ?**
+> Parce que l'écran de caisse ne voit jamais cette réponse : l'encaissement passe
+> par la file de synchronisation hors ligne, qui **jette le corps** dès que le
+> serveur a confirmé (`FileSynchronisation.transmettre()`). Plutôt que de toucher
+> à ce code — celui qui porte « aucune vente perdue, aucune vente dupliquée » —
+> le ticket est redemandé. La clé `ticket` de la réponse d'encaissement reste
+> exposée pour tout autre consommateur, et sort du **même service**.
+
+**Indicateur « Matériel »** (`materiel_controller.js`), à côté de la pastille de
+synchronisation et sur le même gabarit. L'absence d'agent est signalée en
+**stone, pas en rouge ni en ambre** : ce n'est pas une anomalie mais la
+configuration ordinaire de la plupart des postes, et une alerte permanente sur un
+état normal finit par ne plus rien vouloir dire — elle disputerait l'attention au
+bandeau voisin, qui lui signale de vraies ventes en attente.
+
+> ⚠ **Contexte sécurisé.** Servie en HTTPS, la page ne peut pas appeler
+> `http://127.0.0.1:9100` (contenu mixte, bloqué par le navigateur) : l'agent
+> devient invisible et la caisse retombe silencieusement sur `window.print()`.
+> À traiter avec le certificat évoqué dans « Limites connues » — l'agent devra
+> servir en HTTPS ou être exposé derrière le même hôte.
+
+Couverture : `TicketTest` (FCFA entiers, lignes, en-tête, tiroir fermé en
+réimpression, ticket d'un collègue refusé), `FuiteDonneesCaisseTest` (liste
+blanche des clés de `ticket`), `TurboNavigationTest` (les appels à l'afficheur
+restent synchrones).
+
 ### Démonstration client (`app:demo:reset` + `DEMO.md`)
 
 ```bash
@@ -1618,6 +1714,7 @@ compare l'implémentation à cette description et signale les écarts.
 | Déstockage automatique par fiche technique | ✅ | `DestockageVenteListener` |
 | Pertes valorisées + synthèse mensuelle | ✅ | `/admin/pertes` |
 | Ticket 58 mm + génération ESC/POS | ⚠️ partiel | voir écart n° 3 |
+| Matériel de caisse : afficheur client, tête thermique, tiroir | ✅ | `assets/js/pos-agent.js`, `App\Service\TicketMateriel` |
 | Caisse hors ligne (Service Worker, IndexedDB, file de synchronisation) | ✅ | `public/sw.js`, `assets/offline/` |
 | Espace de pilotage responsive, ventes par caissière, courbe 30 jours | ✅ | `/pilotage` |
 | Téléchargement des rapports du jour (texte, CSV) | ✅ | `/pilotage/rapport.txt`, `.csv` |
@@ -1658,14 +1755,18 @@ Classés par importance.
    TVA par taux — la ventilation actuelle se fait par compte de produits, pas par
    taux d'imposition.
 
-3. **Impression thermique non branchée.**
-   `ImpressionService` produit bien une commande ESC/POS, exposée en base64 par
-   `GET /caisse/ticket/{uuid}/escpos`, mais **aucun pont d'impression local ne la
-   consomme** : l'impression réelle passe aujourd'hui par `window.print()` du
-   navigateur. À prévoir : agent local ou impression réseau directe.
-   Corollaire : le **logo ne sort pas en ESC/POS**, qui n'envoie que du texte. Il
-   faudrait une trame raster (`GS v 0`) — à traiter avec le pont d'impression, pas
-   avant, puisque rien ne consomme encore cette sortie.
+3. **Sortie ESC/POS toujours sans consommateur.**
+   L'impression thermique est **branchée** depuis l'intégration de l'agent
+   matériel local (voir « Matériel de caisse » plus haut) — mais par la route
+   `/print` de l'agent, qui reçoit un ticket **structuré en JSON** et le compose
+   lui-même. `ImpressionService` et son `GET /caisse/ticket/{uuid}/escpos`
+   restent donc **sans appelant** : ils produisent une trame ESC/POS que personne
+   ne lit. Deux issues, à trancher : soit l'agent apprend à consommer la trame
+   base64 (et l'application reprend la main sur la mise en page au caractère
+   près), soit `ImpressionService` est retiré. En attendant, deux mises en page
+   thermiques coexistent et **doivent être modifiées ensemble**.
+   Corollaire inchangé : le **logo ne sort ni en ESC/POS ni sur `/print`**, qui
+   n'envoient que du texte. Il faudrait une trame raster (`GS v 0`).
 
 4. **Facture normalisée (RNE / DGI) non implémentée.**
    Le ticket porte désormais un code-barres, mais il encode le **numéro interne**

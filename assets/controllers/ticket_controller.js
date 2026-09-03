@@ -12,6 +12,7 @@ import {
     tvaIncluse,
 } from '../caisse/calculs.js';
 import { caisseHorsLigne } from '../offline/caisse_hors_ligne.js';
+import { EFFACER, MONNAIE, PRIX, TOTAL, pos } from '../js/pos-agent.js';
 
 /*
  * Ticket de caisse — état 100 % en mémoire.
@@ -25,6 +26,13 @@ import { caisseHorsLigne } from '../offline/caisse_hors_ligne.js';
  * Tous les montants circulent en **centimes entiers**. Aucun flottant : le
  * formatage en FCFA n'intervient qu'à l'affichage.
  */
+/**
+ * Durée d'affichage de la monnaie sur l'afficheur client, avant retour au repos.
+ * Assez long pour compter les billets devant le client, assez court pour que le
+ * suivant ne lise pas ce qu'on a rendu à son voisin.
+ */
+const DUREE_MONNAIE = 15000;
+
 export default class extends Controller {
     static targets = [
         'onglets', 'onglet', 'grilles', 'grille',
@@ -34,7 +42,7 @@ export default class extends Controller {
         'recu', 'recuContenu', 'recuNumero', 'recuRendu', 'recuRenduMontant',
         'actionsRecu', 'annulation', 'motif', 'motifLibre', 'confirmerAnnulation',
     ];
-    static values = { ticketBase: String, apercuBase: String, annulerBase: String };
+    static values = { ticketBase: String, apercuBase: String, annulerBase: String, materielBase: String };
 
     connect() {
         this.lignes = [];
@@ -43,6 +51,9 @@ export default class extends Controller {
         this.recu = null;
         /** Motif d'annulation en cours de choix. `null` = rien de retenu. */
         this.motif = null;
+        // `rendre()` remet du même coup l'afficheur client au repos : il garde
+        // sinon le dernier montant reçu, et rouvrir la caisse le laisserait sur le
+        // total du client de la veille.
         this.rendre();
         this.actualiserCatalogue();
     }
@@ -116,6 +127,10 @@ export default class extends Controller {
         this.reglementTargets.forEach((r) => this.marquer(r, r === event.currentTarget));
         this.majEspeces();
         this.majEncaisser();
+        // Choisir un règlement, c'est ouvrir l'encaissement : à partir d'ici le
+        // client ne suit plus l'ajout des articles, il regarde ce qu'il doit. Le
+        // mode « total » le dit à l'afficheur, qui le met en avant autrement.
+        this.majAfficheur();
     }
 
     // ------------------------------------------------- Espèces et rendu de monnaie
@@ -265,11 +280,16 @@ export default class extends Controller {
         // 3. Transmission, immédiate si le réseau est là.
         await this.horsLigne.synchroniser();
 
+        // La monnaie part à l'afficheur client dans tous les cas, hors ligne
+        // compris : elle se rend maintenant, au comptoir, et ne dépend d'aucune
+        // réponse du serveur.
+        this.annoncerMonnaie(rendu);
+
         if (await this.venteTransmise(uuid)) {
             // Le reçu s'affiche à l'écran, au format qui sortira de l'imprimante.
             await this.afficherRecu(uuid, rendu);
             if (imprimer) {
-                this.imprimerTicket(uuid);
+                await this.imprimerMateriel(uuid, true);
             }
         } else {
             // Hors ligne : pas de numéro de ticket tant que le serveur n'a pas
@@ -325,7 +345,9 @@ export default class extends Controller {
 
     imprimerRecu() {
         if (this.uuidRecu) {
-            this.imprimerTicket(this.uuidRecu);
+            // Réimpression demandée à la main : le tiroir ne se rouvre pas, il
+            // s'est déjà ouvert quand l'argent est entré.
+            this.imprimerMateriel(this.uuidRecu, false);
         }
     }
 
@@ -336,6 +358,9 @@ export default class extends Controller {
         this.recuTarget.classList.add('hidden');
         this.recuContenuTarget.innerHTML = '';
         this.uuidRecu = null;
+        // Une nouvelle vente commence : l'afficheur ne doit plus montrer la
+        // monnaie du client précédent.
+        this.majAfficheur();
     }
 
     // ------------------------------------------- Annulation du dernier ticket
@@ -430,6 +455,55 @@ export default class extends Controller {
         const entrees = await this.horsLigne.depot.toutes();
 
         return !entrees.some((entree) => entree.uuid === uuid);
+    }
+
+    /**
+     * Impression du ticket, par l'agent matériel s'il est là, par le navigateur
+     * sinon.
+     *
+     * **Jamais les deux** : sur un poste équipé, laisser aussi partir l'iframe
+     * `window.print()` sortirait deux tickets par vente — l'un par la tête
+     * thermique, l'autre par l'imprimante par défaut de Windows. Le repli n'est
+     * donc pris que si l'agent n'a rien imprimé, ce qui couvre du même coup le
+     * poste sans agent, l'agent arrêté et l'agent qui refuse.
+     *
+     * @param {boolean} tiroir ouvrir le tiroir-caisse. Faux en réimpression : le
+     *                         tiroir s'est ouvert quand l'argent est entré.
+     */
+    async imprimerMateriel(uuid, tiroir) {
+        if (await pos.available()) {
+            const ticket = await this.chargerTicketMateriel(uuid);
+
+            // `openDrawer` est décidé par le serveur (espèces ou non) ; l'écran ne
+            // peut que le refuser, jamais l'imposer.
+            if (ticket && await pos.print({ ...ticket, openDrawer: ticket.openDrawer && tiroir })) {
+                return;
+            }
+        }
+
+        this.imprimerTicket(uuid);
+    }
+
+    /**
+     * Charge la charge utile `/print` de la vente. C'est le même objet que la clé
+     * `ticket` de la réponse d'encaissement, construit par le même service côté
+     * serveur — mais la file de synchronisation ne rend pas le corps des réponses
+     * qu'elle transmet (elle le jette dès que le serveur a confirmé), donc on le
+     * redemande ici plutôt que de toucher à ce code, qui porte la garantie
+     * « aucune vente perdue, aucune vente dupliquée ».
+     */
+    async chargerTicketMateriel(uuid) {
+        try {
+            const reponse = await fetch(this.materielBaseValue.replace('__UUID__', uuid), {
+                credentials: 'same-origin',
+            });
+
+            return reponse.ok ? (await reponse.json()).ticket : null;
+        } catch {
+            // Réseau coupé : rien à imprimer sur la tête thermique, l'appelant
+            // retombe sur l'impression navigateur.
+            return null;
+        }
     }
 
     imprimerTicket(uuid) {
@@ -578,6 +652,32 @@ export default class extends Controller {
             this.rendreRendu();
         }
         this.majEncaisser();
+        this.majAfficheur();
+    }
+
+    /**
+     * Afficheur client, s'il y en a un — un seul endroit décide de ce qu'il
+     * montre, sinon deux appels partis de deux méthodes différentes se
+     * contrediraient et le dernier arrivé gagnerait.
+     *
+     * Ticket vide : état de repos, et non « 0 FCFA », qui se lit comme un article
+     * gratuit. Ticket en cours : le sous-total, en mode « prix ». Règlement
+     * choisi : le même montant, mais en mode « total » — c'est ce que le client
+     * doit sortir de sa poche, l'afficheur le met en avant autrement.
+     */
+    majAfficheur() {
+        // Le ticket bouge : la monnaie du client précédent n'a plus à attendre
+        // la fin de son délai, elle est effacée tout de suite. Sans cette
+        // annulation, le compte à rebours effacerait un sous-total bien vivant.
+        clearTimeout(this.timerAfficheur);
+
+        if (this.lignes.length === 0) {
+            this.afficher(0, EFFACER);
+
+            return;
+        }
+
+        this.afficher(this.total(), this.reglement ? TOTAL : PRIX);
     }
 
     rendreLignes() {
@@ -657,6 +757,48 @@ export default class extends Controller {
         clearTimeout(this.timer);
         this.timer = setTimeout(() => { zone.className = 'hidden'; }, 2500);
     }
+
+    // ------------------------------------------------------- Afficheur client
+
+    /**
+     * Envoie un montant à l'afficheur client, **sans jamais attendre**.
+     *
+     * Aucun `await` : c'est appelé depuis des méthodes synchrones, à chaque appui
+     * sur une touche produit, et la cadence de saisie ne doit dépendre d'aucun
+     * périphérique. `pos.display()` ne rejette jamais (voir `js/pos-agent.js`),
+     * il n'y a donc pas de rejet à capturer — sur un poste sans agent, la ligne
+     * ci-dessous ne fait rien du tout.
+     *
+     * Le montant part en **FCFA entiers** : l'afficheur écrit ce qu'on lui donne.
+     * Troncature et non arrondi, pour dire exactement le même nombre que le
+     * ticket, où le serveur applique `intdiv`.
+     */
+    afficher(centimes, mode) {
+        pos.display(Math.trunc(centimes / 100), mode);
+    }
+
+    /**
+     * Monnaie affichée au client, puis retour au repos.
+     *
+     * Le délai laisse le temps de compter les billets sous les yeux du client —
+     * c'est là tout l'intérêt d'un afficheur — sans laisser le montant en place
+     * devant la personne suivante. Toute activité sur le ticket l'interrompt
+     * avant l'heure (voir `majAfficheur()`).
+     */
+    annoncerMonnaie(rendu) {
+        clearTimeout(this.timerAfficheur);
+
+        if (rendu <= 0) {
+            this.afficher(0, EFFACER);
+
+            return;
+        }
+
+        this.afficher(rendu, MONNAIE);
+        this.timerAfficheur = setTimeout(() => this.afficher(0, EFFACER), DUREE_MONNAIE);
+    }
+
+    // -------------------------------------------------------------- Formatage
 
     /** Centimes → FCFA entiers, séparateur de milliers français. */
     fcfa(centimes) {

@@ -134,9 +134,24 @@ class FuiteDonneesCaisseTest extends WebTestCase
 
         $donnees = json_decode($charge, true);
         $this->assertSame(
-            ['ok', 'uuid', 'numero', 'statut', 'totalHt', 'totalTva', 'totalTtc', 'remise', 'rendu'],
+            // `ticket` : charge utile destinée à la route /print de l'agent
+            // matériel local. Elle ne porte que ce qui s'imprime — identité de la
+            // boutique, lignes, totaux, monnaie rendue — et rien de la gestion :
+            // l'assertion sur les termes interdits, juste au-dessus, porte aussi
+            // sur elle. L'y ajouter était une décision, comme `image` dans le
+            // catalogue, pas un effet de bord.
+            ['ok', 'uuid', 'numero', 'statut', 'totalHt', 'totalTva', 'totalTtc', 'remise', 'rendu', 'ticket'],
             array_keys($donnees),
             "La réponse d'encaissement expose exactement ces clés.",
+        );
+
+        // Liste blanche du ticket matériel elle aussi : c'est le format attendu
+        // par l'agent, et un champ ajouté par mégarde partirait vers un service
+        // qui tourne hors de l'application.
+        $this->assertSame(
+            ['header', 'lines', 'total', 'paid', 'change', 'footer', 'openDrawer'],
+            array_keys($donnees['ticket']),
+            'Le ticket matériel expose exactement les clés attendues par /print.',
         );
     }
 

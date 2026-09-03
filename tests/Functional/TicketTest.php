@@ -134,4 +134,96 @@ class TicketTest extends WebTestCase
         $this->client->request('GET', '/caisse/ticket/'.$this->uuid.'x/escpos');
         $this->assertResponseStatusCodeSame(404);
     }
+
+    // ------------------------------------------------- Agent matériel local
+
+    /**
+     * La charge utile destinée à la route /print de l'agent matériel.
+     *
+     * Le point qui compte : **des FCFA entiers**, alors que tout le reste de
+     * l'application manipule des centimes. L'agent imprime ce qu'on lui donne, il
+     * n'interprète rien — un montant en centimes sortirait multiplié par cent sur
+     * le papier, et une décimale sortirait telle quelle dans une devise qui n'en
+     * a pas.
+     */
+    public function testLeTicketMaterielSortEnFcfaEntiers(): void
+    {
+        $this->client->request('GET', '/caisse/ticket/'.$this->uuid.'/materiel');
+
+        $this->assertResponseIsSuccessful();
+        $ticket = json_decode($this->client->getResponse()->getContent(), true)['ticket'];
+
+        // 150 000 centimes = 1 500 FCFA ; tendu 200 000 = 2 000 ; rendu 50 000 = 500.
+        $this->assertSame(1500, $ticket['total']);
+        $this->assertSame(2000, $ticket['paid']);
+        $this->assertSame(500, $ticket['change']);
+
+        foreach (['total', 'paid', 'change'] as $champ) {
+            $this->assertIsInt($ticket[$champ], \sprintf('%s doit être un entier, jamais un flottant.', $champ));
+        }
+
+        $this->assertSame(
+            [
+                ['label' => 'Baguette', 'qty' => '1', 'price' => 1000],
+                ['label' => 'Sandwich (Sans oignon)', 'qty' => '1', 'price' => 500],
+            ],
+            $ticket['lines'],
+            'Une ligne par article, commentaire compris, en FCFA entiers.',
+        );
+
+        // L'en-tête porte l'identité de la boutique et les repères de la vente.
+        $this->assertContains('Ticket : V260725-00001', $ticket['header']);
+        $this->assertStringContainsString('ZedPOS', implode(' ', $ticket['header']));
+        $this->assertStringContainsString('Abengourou', implode(' ', $ticket['header']));
+
+        // Le pied reprend la ventilation de TVA, le règlement et la phrase de fin.
+        $pied = implode(' | ', $ticket['footer']);
+        $this->assertStringContainsString('TVA 18%', $pied);
+        $this->assertStringContainsString('Espèces : 2000 FCFA', $pied);
+    }
+
+    /**
+     * Une réimpression ne fait pas entrer d'argent : le tiroir s'est ouvert quand
+     * le client a payé. La règle est portée par le serveur et non par l'écran —
+     * sinon un bouton de réimpression deviendrait un moyen commode d'ouvrir le
+     * tiroir sans vente.
+     */
+    public function testUneReimpressionNOuvrePasLeTiroir(): void
+    {
+        $this->client->request('GET', '/caisse/ticket/'.$this->uuid.'/materiel');
+
+        $this->assertResponseIsSuccessful();
+        $ticket = json_decode($this->client->getResponse()->getContent(), true)['ticket'];
+
+        $this->assertFalse($ticket['openDrawer'], 'La route de réimpression n\'ouvre jamais le tiroir.');
+
+        // …alors que la vente est bien réglée en espèces : c'est donc le chemin
+        // qui décide, pas le mode de règlement. À l'encaissement, le même service
+        // ouvre le tiroir.
+        $vente = static::getContainer()->get(\App\Repository\VenteRepository::class)
+            ->findOneBy(['uuid' => \Symfony\Component\Uid\Uuid::fromString($this->uuid)]);
+
+        $this->assertTrue(
+            static::getContainer()->get(\App\Service\TicketMateriel::class)->pour($vente)['openDrawer'],
+            'À l\'encaissement en espèces, le tiroir s\'ouvre.',
+        );
+    }
+
+    /**
+     * Le ticket matériel suit le même contrôle d'accès que le ticket papier : un
+     * caissier ne réimprime pas la vente d'un collègue, même en connaissant son
+     * uuid.
+     */
+    public function testLeTicketMaterielDUnCollegueEstRefuse(): void
+    {
+        $autre = new Utilisateur('collegue@test.ci', 'Yao Kouassi');
+        $autre->setRoles(['ROLE_CAISSIER'])->setCodePin('y');
+        $this->em->persist($autre);
+        $this->em->flush();
+
+        $this->client->loginUser($autre);
+        $this->client->request('GET', '/caisse/ticket/'.$this->uuid.'/materiel');
+
+        $this->assertResponseStatusCodeSame(403);
+    }
 }
