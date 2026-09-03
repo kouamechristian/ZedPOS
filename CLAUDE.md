@@ -1574,9 +1574,24 @@ l'agent imprime ne peut pas diverger de ce que la caissière a sous les yeux.
   qu'un seul champ `paid` : sur un paiement mixte, il dirait « 5 000 » sans
   jamais dire d'où ils viennent.
 
-**`openDrawer` est décidé par le serveur, l'écran peut seulement le refuser.**
-Vrai si la vente comporte des espèces — sur un règlement Wave ou MTN, personne ne
-touche au tiroir et l'ouvrir le laisserait béant devant la file.
+**Le tiroir s'ouvre à l'appui sur « Encaisser », pas à l'impression.**
+`ticket_controller.encaisser()` appelle `pos.drawer()` (`POST /drawer`) dès que la
+vente est durablement en file, **sans `await`** : la caissière va prendre l'argent,
+le tiroir doit être sorti quand sa main y arrive, et un poste sans agent — le cas
+courant — ne doit pas payer une milliseconde d'attente pour ça. L'appel ne rejette
+jamais, il n'y a donc rien à rattraper.
+
+- **Espèces uniquement** (`this.especes`, donc `ESPECES` en règlement retenu). Sur
+  un Wave ou un MTN personne ne touche au tiroir, et l'ouvrir le laisserait béant
+  devant la file — même règle que l'`openDrawer` du serveur, appliquée à l'écran.
+  Le test se fait **avant** la remise à zéro du ticket, sans quoi `reglement` serait
+  déjà nul et le tiroir ne s'ouvrirait plus jamais.
+- **Le ticket ne le rouvre pas** : l'impression qui suit passe `tiroir = false`, une
+  seconde impulsion sur un tiroir déjà sorti n'ajoutant rien.
+- **L'ouverture ne dépend plus de l'impression.** Elle en dépendait tant qu'elle
+  voyageait dans la seule charge utile `/print` : la case « Imprimer le ticket »
+  décochée, le tiroir restait fermé sur une vente en espèces. `openDrawer` reste
+  calculé par le serveur et sert toujours la réimpression (forcé à faux).
 
 **Réimpression** — `GET /caisse/ticket/{uuid}/materiel`, la même charge utile,
 `openDrawer` **forcé à faux**. Une réimpression ne fait pas entrer d'argent : le

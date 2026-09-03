@@ -267,7 +267,21 @@ export default class extends Controller {
             return;
         }
 
-        // 2. La vente est acquise : l'écran se libère immédiatement.
+        // 2. Espèces : le tiroir s'ouvre dès l'appui, sans attendre quoi que ce soit.
+        //
+        // La vente est acquise (elle est durablement en file) : la caissière va
+        // prendre l'argent, le tiroir doit être sorti quand sa main y arrive. Aucun
+        // `await` — l'appel ne rejette jamais (voir `js/pos-agent.js`) et un poste
+        // sans agent ne doit pas payer une milliseconde d'attente pour ça.
+        //
+        // Sur un règlement électronique, personne ne touche au tiroir : l'ouvrir
+        // le laisserait béant devant la file. `this.reglement` n'est remis à zéro
+        // qu'à l'étape suivante, `especes` répond donc encore de cette vente-ci.
+        if (this.especes) {
+            pos.drawer();
+        }
+
+        // 3. La vente est acquise : l'écran se libère immédiatement.
         const imprimer = this.hasImprimerTarget ? this.imprimerTarget.checked : false;
         this.lignes = [];
         this.reglement = null;
@@ -277,7 +291,7 @@ export default class extends Controller {
         this.rendre();
         this.encaisserTarget.disabled = false;
 
-        // 3. Transmission, immédiate si le réseau est là.
+        // 4. Transmission, immédiate si le réseau est là.
         await this.horsLigne.synchroniser();
 
         // La monnaie part à l'afficheur client dans tous les cas, hors ligne
@@ -289,7 +303,10 @@ export default class extends Controller {
             // Le reçu s'affiche à l'écran, au format qui sortira de l'imprimante.
             await this.afficherRecu(uuid, rendu);
             if (imprimer) {
-                await this.imprimerMateriel(uuid, true);
+                // Tiroir déjà ouvert à l'appui sur « Encaisser » : le rouvrir avec
+                // le ticket n'ajouterait qu'une seconde impulsion sur un tiroir
+                // qui est déjà sorti.
+                await this.imprimerMateriel(uuid, false);
             }
         } else {
             // Hors ligne : pas de numéro de ticket tant que le serveur n'a pas
