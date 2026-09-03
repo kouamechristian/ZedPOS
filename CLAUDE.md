@@ -1430,7 +1430,9 @@ point, disparaissaient purement et simplement.
   `GET /caisse/ticket/{uuid}` → `templates/ticket/ticket.html.twig`. En-tête (**logo**,
   raison sociale, adresse Abengourou, NCC, n° ticket, date/heure, caissier), lignes,
   total, ventilation TVA, règlement(s), rendu, **pied paramétrable** et **code-barres
-  du numéro de ticket**.
+  du numéro de ticket**. Le pied précède le code-barres : celui-ci se scanne, il
+  doit rester le dernier élément avant la coupe plutôt que d'être suivi d'une
+  phrase de remerciement que le lecteur devrait enjamber.
 - Infos boutique saisies dans le **back-office** (`/admin/parametres`, table
   `parametre`) → service `App\Service\ParametresTicket`, dont
   `ParametresBoutique::pourTicket()` est la fabrique. Elles étaient auparavant dans

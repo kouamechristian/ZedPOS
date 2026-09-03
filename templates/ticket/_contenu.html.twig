@@ -70,6 +70,7 @@
            elle est mise en avant comme lui. #}
         <div class="row rendu"><span class="g">Rendu</span><span class="d">{{ fmt.fcfa(ticket.rendu) }}</span></div>
     {% endif %}
+    {% if ticket.pied %}<div class="center">{{ ticket.pied }}</div>{% endif %}
 
     {# Code-barres du numéro de ticket (Code 128, jeu B), pour retrouver une vente
        en la scannant plutôt qu'en la cherchant.
@@ -91,6 +92,4 @@
         </svg>
         <div class="code-barres-valeur">{{ ticket.codeBarres.valeur }}</div>
     {% endif %}
-
-    {% if ticket.pied %}<div class="center">{{ ticket.pied }}</div>{% endif %}
 </div>
