@@ -84,6 +84,57 @@ async function appeler(route, corps = null, delai = DELAI) {
     }
 }
 
+/**
+ * Impulsion sans charge utile — le tiroir, aujourd'hui.
+ *
+ * `appeler()` ne convient pas ici, et l'écart est tout sauf théorique : il envoie
+ * un `Content-Type: application/json`, en-tête qui n'est pas sur la liste sûre du
+ * CORS. Le navigateur fait donc précéder le POST d'un **préflight OPTIONS**, et si
+ * l'agent ne répond pas à cette méthode — le cas d'un agent qui n'expose que
+ * `POST /drawer` — le `fetch` échoue avant d'avoir rien envoyé. Le tiroir reste
+ * fermé alors que la même requête passe parfaitement depuis un terminal
+ * (`Invoke-RestMethod`, `curl`), où le CORS n'existe pas. Symptôme déroutant : la
+ * commande « marche à la main » mais jamais depuis la caisse.
+ *
+ * D'où deux essais, du plus informatif au plus obstiné :
+ *
+ *   1. requête **simple** — ni en-tête, ni corps — donc aucun préflight. On lit
+ *      `reponse.ok` si l'agent renvoie l'en-tête `Access-Control-Allow-Origin`.
+ *   2. `no-cors` — la requête part quand même, la réponse est opaque. On ne sait
+ *      plus si l'agent a dit oui, seulement qu'il a répondu quelque chose : pour
+ *      un tiroir, c'est le geste qui compte, pas l'accusé de réception.
+ *
+ * Un agent absent fait échouer les deux (la connexion est refusée) : `false`, et
+ * la caisse continue comme si de rien n'était.
+ */
+async function impulsion(route) {
+    try {
+        const reponse = await fetch(BASE + route, {
+            method: 'POST',
+            signal: expiration(DELAI),
+            credentials: 'omit',
+            mode: 'cors',
+        });
+
+        return reponse.ok;
+    } catch {
+        // Agent muet sur le CORS, ou absent : on tranche à l'essai suivant.
+    }
+
+    try {
+        await fetch(BASE + route, {
+            method: 'POST',
+            signal: expiration(DELAI),
+            credentials: 'omit',
+            mode: 'no-cors',
+        });
+
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 /** Montant sûr pour l'agent : entier positif, jamais de décimale ni de NaN. */
 function entier(montant) {
     const valeur = Math.round(Number(montant));
@@ -164,9 +215,15 @@ class PosAgent {
         return appeler('/print', ticket, DELAI_IMPRESSION);
     }
 
-    /** Ouverture du tiroir hors impression (rendu de monnaie, contrôle). */
+    /**
+     * Ouverture du tiroir hors impression (appui sur « Encaisser », contrôle).
+     *
+     * Passe par `impulsion()` et non par `appeler()` : sur cette route il n'y a
+     * rien à transmettre, et s'en tenir à une requête sans en-tête évite le
+     * préflight qui laissait le tiroir fermé. Voir le commentaire d'`impulsion()`.
+     */
     async drawer() {
-        return appeler('/drawer');
+        return impulsion('/drawer');
     }
 }
 

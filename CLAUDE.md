@@ -1592,6 +1592,18 @@ jamais, il n'y a donc rien à rattraper.
   voyageait dans la seule charge utile `/print` : la case « Imprimer le ticket »
   décochée, le tiroir restait fermé sur une vente en espèces. `openDrawer` reste
   calculé par le serveur et sert toujours la réimpression (forcé à faux).
+- **`/drawer` part sans en-tête ni corps** (`pos-agent.impulsion()`), et non par
+  `appeler()` comme `/display` et `/print`. Un `Content-Type: application/json`
+  n'est pas sur la liste sûre du CORS : le navigateur ferait précéder le POST d'un
+  **préflight OPTIONS**, auquel un agent qui n'expose que `POST /drawer` ne répond
+  pas — le `fetch` échouerait avant d'avoir rien envoyé. Le symptôme est
+  déroutant : `Invoke-RestMethod -Method Post -Uri http://127.0.0.1:9100/drawer`
+  ouvre le tiroir depuis un terminal (pas de CORS dans un shell), et le même appel
+  depuis la caisse ne fait rien. Un second essai en **`no-cors`** suit, pour l'agent
+  qui n'envoie pas `Access-Control-Allow-Origin` : la requête part, la réponse est
+  opaque — sur un tiroir, c'est le geste qui compte, pas l'accusé de réception.
+  Les deux essais échouent si rien n'écoute sur 9100, et la caisse continue comme
+  si de rien n'était.
 
 **Réimpression** — `GET /caisse/ticket/{uuid}/materiel`, la même charge utile,
 `openDrawer` **forcé à faux**. Une réimpression ne fait pas entrer d'argent : le
