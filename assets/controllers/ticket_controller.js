@@ -267,13 +267,14 @@ export default class extends Controller {
             return;
         }
 
-        // 2. Le tiroir s'ouvre dès l'appui sur « Encaisser », sans attendre quoi que ce soit.
+        // 2. Espèces uniquement : le tiroir s'ouvre si la caissière a choisi le paiement en espèces.
         //
-        // La vente est acquise (elle est durablement en file) : le tiroir doit
-        // être sorti pour accueillir l'encaissement. Aucun `await` — l'appel ne
-        // rejette jamais (voir `js/pos-agent.js`) et un poste sans agent ne doit
-        // pas payer une milliseconde d'attente pour ça.
-        pos.drawer();
+        // Sur un règlement électronique (Wave, Orange Money, MTN, Moov), le tiroir reste fermé.
+        if (this.especes) {
+            pos.drawer();
+        } else {
+            console.info(`[ZedPOS Matériel] Règlement "${this.reglement}" : tiroir-caisse non sollicité.`);
+        }
 
         // 3. La vente est acquise : l'écran se libère immédiatement.
         const imprimer = this.hasImprimerTarget ? this.imprimerTarget.checked : false;
