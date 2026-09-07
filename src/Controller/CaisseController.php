@@ -7,6 +7,7 @@ use App\Repository\ArticleRepository;
 use App\Repository\FamilleProduitRepository;
 use App\Repository\SessionCaisseRepository;
 use App\Service\ImageArticle;
+use App\Service\ParametresBoutique;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
@@ -30,6 +31,7 @@ class CaisseController extends AbstractController
         FamilleProduitRepository $familles,
         ArticleRepository $articles,
         SessionCaisseRepository $sessions,
+        ParametresBoutique $parametres,
     ): Response {
         // Pas de vente sans session ouverte : le fond de caisse doit être saisi.
         $session = $sessions->ouvertePour($this->utilisateur());
@@ -51,6 +53,7 @@ class CaisseController extends AbstractController
         return $this->render('caisse/index.html.twig', [
             'catalogue' => $catalogue,
             'session' => $session,
+            'parametresTicket' => $parametres->pourTicket(),
         ]);
     }
 

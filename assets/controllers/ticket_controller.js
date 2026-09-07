@@ -42,7 +42,7 @@ export default class extends Controller {
         'recu', 'recuContenu', 'recuNumero', 'recuRendu', 'recuRenduMontant',
         'actionsRecu', 'annulation', 'motif', 'motifLibre', 'confirmerAnnulation',
     ];
-    static values = { ticketBase: String, apercuBase: String, annulerBase: String, materielBase: String };
+    static values = { ticketBase: String, apercuBase: String, annulerBase: String, materielBase: String, parametres: Object };
 
     connect() {
         this.lignes = [];
@@ -373,62 +373,100 @@ export default class extends Controller {
 
     htmlRecuLocal(ticket) {
         const lignes = (ticket.lines ?? []).map((ligne) => `
-            <div class="flex items-start justify-between gap-3 text-sm">
-                <div class="min-w-0 flex-1">
-                    <div class="font-semibold text-stone-800">${this.esc(ligne.label)}</div>
-                    <div class="text-stone-500">Qté ${this.esc(ligne.qty)}</div>
-                </div>
-                <div class="whitespace-nowrap font-semibold text-stone-900">${this.fcfa(ligne.price * 100)}</div>
+            <div class="row">
+                <span class="g">${this.esc(ligne.qty)} × ${this.esc(ligne.label)}</span>
+                <span class="d">${this.fcfa(ligne.price * 100)}</span>
+            </div>
+            ${ligne.comment ? `<div class="commentaire">${this.esc(ligne.comment)}</div>` : ''}
+        `).join('');
+        const ventilation = (ticket.tva ?? []).map((tva) => `
+            <div class="row">
+                <span class="g">TVA ${this.taux(tva.taux)} % — base ${this.fcfa(tva.base * 100)}</span>
+                <span class="d">${this.fcfa(tva.montant * 100)}</span>
             </div>
         `).join('');
-
-        const footer = (ticket.footer ?? []).map((ligne) => `<div class="text-xs text-stone-600">${this.esc(ligne)}</div>`).join('');
+        const reglements = (ticket.reglements ?? []).map((reglement) => `
+            <div class="row"><span class="g">${this.esc(reglement.label)}</span><span class="d">${this.fcfa(reglement.montant * 100)}</span></div>
+        `).join('');
 
         return `
-            <div class="space-y-3 p-3 text-stone-700">
-                <div class="space-y-1 border-b border-stone-200 pb-3 text-center">
-                    ${(ticket.header ?? []).map((ligne) => `<div class="text-sm">${this.esc(ligne)}</div>`).join('')}
-                </div>
-                <div class="space-y-2">${lignes}</div>
-                <div class="border-t border-stone-200 pt-3">
-                    <div class="flex items-center justify-between text-base font-bold text-stone-900">
-                        <span>Total</span>
-                        <span>${this.fcfa(ticket.total * 100)}</span>
-                    </div>
-                    <div class="flex items-center justify-between text-sm text-stone-700">
-                        <span>Reçu</span>
-                        <span>${this.fcfa(ticket.paid * 100)}</span>
-                    </div>
-                    <div class="flex items-center justify-between text-sm text-stone-700">
-                        <span>Monnaie</span>
-                        <span>${this.fcfa(ticket.change * 100)}</span>
-                    </div>
-                </div>
-                <div class="border-t border-stone-200 pt-3 space-y-1 text-center">${footer}</div>
+            <div class="ticket">
+                ${ticket.logo ? `<img class="logo" src="${this.esc(ticket.logo)}" alt="${this.esc(ticket.header?.[0] ?? '')}" onerror="this.remove()">` : ''}
+                ${(ticket.header ?? []).map((ligne, index) => `<div class="${0 === index ? 'center bold big' : 'center'}">${this.esc(ligne)}</div>`).join('')}
+                <div class="sep"></div>
+                <div>Ticket : ${this.esc(ticket.numero)}</div>
+                <div>Date&nbsp;&nbsp; : ${this.esc(ticket.date)}</div>
+                <div>Caisse : ${this.esc(ticket.caissier)}</div>
+                <div class="sep"></div>
+                ${lignes}
+                <div class="sep"></div>
+                <div class="row total"><span class="g">TOTAL</span><span class="d">${this.fcfa(ticket.total * 100)}</span></div>
+                <div class="sep"></div>
+                <div class="muted">Ventilation TVA</div>
+                ${ventilation}
+                <div class="row"><span class="g">Total HT</span><span class="d">${this.fcfa(ticket.totalHt * 100)}</span></div>
+                <div class="row"><span class="g">Total TVA</span><span class="d">${this.fcfa(ticket.totalTva * 100)}</span></div>
+                <div class="sep"></div>
+                ${reglements}
+                ${ticket.change > 0 ? `<div class="row rendu"><span class="g">Rendu</span><span class="d">${this.fcfa(ticket.change * 100)}</span></div>` : ''}
+                ${(ticket.footer ?? []).map((ligne) => `<div class="center">${this.esc(ligne)}</div>`).join('')}
             </div>
         `;
     }
 
     ticketLocal(uuid, encaisse, rendu) {
         const total = this.total();
+        const totalTva = tvaIncluse(this.lignes);
+        const taux = [...new Set(this.lignes.filter((ligne) => ligne.tva > 0).map((ligne) => ligne.tva))].sort((a, b) => a - b);
+        const reglementLabels = {
+            ESPECES: 'Espèces',
+            WAVE: 'Wave',
+            ORANGE_MONEY: 'Orange Money',
+            MTN_MOMO: 'MTN MoMo',
+            MOOV_MONEY: 'Moov Money',
+        };
+        const date = new Date().toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
 
         return {
             header: [
-                'ZedPOS',
-                'Ticket hors ligne',
-                `Ticket : ${uuid.slice(0, 8).toUpperCase()}`,
-                `Date : ${new Date().toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}`,
-                `Caisse : ${this.hasMessageTarget ? 'Caisse' : 'Caisse'}`,
+                this.parametresValue.raisonSociale,
+                this.parametresValue.adresse,
+                ...(this.parametresValue.telephone ? [`Tél : ${this.parametresValue.telephone}`] : []),
+                ...(this.parametresValue.email ? [this.parametresValue.email] : []),
+                ...(this.parametresValue.ncc ? [`NCC : ${this.parametresValue.ncc}`] : []),
+                ...(this.parametresValue.rccm ? [`RCCM : ${this.parametresValue.rccm}`] : []),
             ],
+            numero: uuid.slice(0, 8).toUpperCase(),
+            date,
+            caissier: 'Caisse',
+            logo: this.parametresValue.logo,
             lines: this.lignes.map((ligne) => ({
                 label: ligne.nom,
                 qty: String(ligne.quantite),
                 price: Math.trunc((ligne.prix * ligne.quantite) / 100),
+                comment: '',
             })),
             total: Math.trunc(total / 100),
+            totalHt: Math.trunc((total - totalTva) / 100),
+            totalTva: Math.trunc(totalTva / 100),
+            tva: taux.map((tauxBp) => {
+                const base = this.lignes
+                    .filter((ligne) => ligne.tva === tauxBp)
+                    .reduce((somme, ligne) => somme + ligne.quantite * ligne.prix - Math.round((ligne.quantite * ligne.prix * ligne.tva) / (10000 + ligne.tva)), 0);
+
+                return {
+                    taux: tauxBp,
+                    base: Math.trunc(base / 100),
+                    montant: Math.trunc(tvaIncluse(this.lignes.filter((ligne) => ligne.tva === tauxBp)) / 100),
+                };
+            }),
             paid: Math.trunc(encaisse / 100),
             change: Math.trunc(rendu / 100),
-            footer: ['Merci', 'Vente enregistrée hors ligne'],
+            reglements: [{
+                label: reglementLabels[this.reglement] ?? this.reglement,
+                montant: Math.trunc(encaisse / 100),
+            }],
+            footer: [this.parametresValue.pied],
             openDrawer: this.especes,
         };
     }
@@ -631,36 +669,25 @@ export default class extends Controller {
                 <head>
                     <title>Ticket</title>
                     <style>
-                        body { margin: 0; font-family: Arial, sans-serif; background: white; }
-                        .ticket { width: 58mm; padding: 8mm 5mm 5mm; box-sizing: border-box; color: #111827; }
-                        .ligne { display: flex; justify-content: space-between; gap: 12px; margin: 6px 0; }
-                        .libelle { flex: 1; min-width: 0; }
-                        .montant { white-space: nowrap; font-weight: 700; }
-                        .centre { text-align: center; }
-                        .separateur { border-top: 1px solid #111827; margin: 10px 0; }
+                        * { margin: 0; padding: 0; box-sizing: border-box; }
+                        body { margin: 0; background: white; }
+                        .ticket { width: 58mm; padding: 3mm 5mm; background: #fff; color: #000; font-family: Tahoma, Verdana, 'DejaVu Sans', Arial, sans-serif; font-size: 11px; font-variant-numeric: tabular-nums; line-height: 1.35; }
+                        .logo { display: block; max-width: 44mm; max-height: 16mm; margin: 0 auto 3px; object-fit: contain; }
+                        .center { text-align: center; }
+                        .bold { font-weight: bold; }
+                        .big { font-size: 14px; }
+                        .muted { color: #333; }
+                        .row { display: flex; justify-content: space-between; gap: 6px; }
+                        .row .g { flex: 1; overflow: hidden; }
+                        .row .d { white-space: nowrap; text-align: right; }
+                        .sep { border-top: 1px solid #000; margin: 5px 0; }
+                        .commentaire { font-size: 10px; padding-left: 8px; font-style: italic; }
+                        .total .g, .total .d { font-size: 14px; font-weight: bold; }
+                        .rendu .g, .rendu .d { font-size: 13px; font-weight: bold; }
+                        @page { size: 58mm auto; margin: 0; }
                     </style>
                 </head>
-                <body onload="window.print(); setTimeout(() => window.close(), 500);">
-                    <div class="ticket">
-                        ${(ticket.header ?? []).map((ligne) => `<div class="centre">${this.esc(ligne)}</div>`).join('')}
-                        <div class="separateur"></div>
-                        ${(ticket.lines ?? []).map((ligne) => `
-                            <div class="ligne">
-                                <div class="libelle">
-                                    <div>${this.esc(ligne.label)}</div>
-                                    <div>Qté ${this.esc(ligne.qty)}</div>
-                                </div>
-                                <div class="montant">${this.fcfa(ligne.price * 100)}</div>
-                            </div>
-                        `).join('')}
-                        <div class="separateur"></div>
-                        <div class="ligne"><span>Total</span><span class="montant">${this.fcfa(ticket.total * 100)}</span></div>
-                        <div class="ligne"><span>Reçu</span><span class="montant">${this.fcfa(ticket.paid * 100)}</span></div>
-                        <div class="ligne"><span>Monnaie</span><span class="montant">${this.fcfa(ticket.change * 100)}</span></div>
-                        <div class="separateur"></div>
-                        ${(ticket.footer ?? []).map((ligne) => `<div class="centre">${this.esc(ligne)}</div>`).join('')}
-                    </div>
-                </body>
+                <body onload="window.print(); setTimeout(() => window.close(), 500);">${this.htmlRecuLocal(ticket)}</body>
             </html>
         `;
 
@@ -962,6 +989,10 @@ export default class extends Controller {
     /** Centimes → FCFA entiers, séparateur de milliers français. */
     fcfa(centimes) {
         return formaterFcfa(centimes);
+    }
+
+    taux(pointsDeBase) {
+        return Number(pointsDeBase) / 100;
     }
 
     esc(texte) {

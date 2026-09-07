@@ -164,7 +164,17 @@
      data-ticket-ticket-base-value="{{ path('app_caisse_ticket', {uuid: '__UUID__'}) }}"
      data-ticket-apercu-base-value="{{ path('app_caisse_ticket_apercu', {uuid: '__UUID__'}) }}"
      data-ticket-annuler-base-value="{{ path('api_vente_annuler', {uuid: '__UUID__'}) }}"
-     data-ticket-materiel-base-value="{{ path('app_caisse_ticket_materiel', {uuid: '__UUID__'}) }}">
+     data-ticket-materiel-base-value="{{ path('app_caisse_ticket_materiel', {uuid: '__UUID__'}) }}"
+     data-ticket-parametres-value="{{ {
+         raisonSociale: parametresTicket.raisonSociale,
+         adresse: parametresTicket.adresse,
+         telephone: parametresTicket.telephone,
+         email: parametresTicket.email,
+         ncc: parametresTicket.ncc,
+         rccm: parametresTicket.rccm,
+         pied: parametresTicket.pied,
+         logo: parametresTicket.logo
+     }|json_encode|e('html_attr') }}">
 
     {# ---------- Barre fine : identité à gauche, état et caissière à droite ---------- #}
     {# Liseré ambre sous l'en-tête : même signature que /admin et /pilotage. #}
