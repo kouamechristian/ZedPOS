@@ -98,10 +98,11 @@ export class FileSynchronisation {
      * @param {string} uuid   identifiant idempotent généré à l'encaissement
      * @param {object} charge corps JSON destiné à POST /api/vente
      */
-    async enfiler(uuid, charge) {
+    async enfiler(uuid, charge, ticket = null) {
         await this.depot.ajouter({
             uuid,
             charge,
+            ticket,
             statut: EN_ATTENTE,
             tentatives: 0,
             creeA: this.maintenant(),

@@ -142,6 +142,26 @@ describe('FileSynchronisation — 20 ventes hors ligne puis reconnexion', () => 
         assert.ok(serveur.appels > 20, 'des rejeux ont bien eu lieu');
     });
 
+    it('conserve le ticket local prêt à imprimer dans la file hors ligne', async () => {
+        const serveur = serveurIdempotent();
+        const { file, depot } = creerFile(serveur);
+        const ticketLocal = {
+            header: ['ZedPOS', 'Ticket : V-00001'],
+            lines: [{ label: 'Baguette', qty: '1', price: 250 }],
+            total: 250,
+            paid: 500,
+            change: 250,
+            footer: ['Merci'],
+            openDrawer: false,
+        };
+
+        await file.enfiler('uuid-a', { uuid: 'uuid-a', ...ticket(0) }, ticketLocal);
+
+        const [entree] = await depot.toutes();
+        assert.deepEqual(entree.ticket, ticketLocal, 'le reçu hors ligne est conservé pour l’impression');
+        assert.equal(entree.charge.uuid, 'uuid-a');
+    });
+
     it('conserve les ventes tant que le serveur ne les a pas confirmées', async () => {
         const serveur = serveurIdempotent();
         const { file, depot } = creerFile(serveur);

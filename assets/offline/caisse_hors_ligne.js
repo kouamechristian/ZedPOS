@@ -99,6 +99,14 @@ export function caisseHorsLigne() {
             return file.notifier();
         },
 
+        /** Récupère le ticket local enregistré pour un uuid donné. */
+        async ticket(uuid) {
+            const entrees = await depot.toutes();
+            const entree = entrees.find((item) => item.uuid === uuid);
+
+            return entree?.ticket ?? null;
+        },
+
         /** Branche les déclencheurs de reprise. À appeler une seule fois. */
         demarrer() {
             if (this.demarree) {

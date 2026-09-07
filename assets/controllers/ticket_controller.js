@@ -258,8 +258,10 @@ export default class extends Controller {
         this.encaisserTarget.disabled = true;
 
         // 1. Durabilité avant tout appel réseau.
+        const ticketLocal = this.ticketLocal(uuid, encaisse, rendu);
+
         try {
-            await this.horsLigne.file.enfiler(uuid, charge);
+            await this.horsLigne.file.enfiler(uuid, charge, ticketLocal);
         } catch (e) {
             this.encaisserTarget.disabled = false;
             this.notifier('Enregistrement impossible — appelez le gérant', true);
@@ -304,13 +306,18 @@ export default class extends Controller {
                 await this.imprimerMateriel(uuid, false);
             }
         } else {
-            // Hors ligne : pas de numéro de ticket tant que le serveur n'a pas
-            // répondu, donc rien à afficher — on le dit franchement. La monnaie,
-            // elle, se rend maintenant : elle est rappelée dans le message.
+            // Hors ligne : on garde un reçu local prêt à l'impression, au même titre
+            // que la vente enregistrée. On peut donc afficher un aperçu de secours
+            // et lancer l'impression sur l'agent local même si le serveur n'a pas
+            // encore confirmé la vente.
+            this.afficherRecuLocal(ticketLocal, uuid);
+            if (imprimer) {
+                await this.imprimerMateriel(uuid, false, ticketLocal);
+            }
             this.notifier(
                 rendu > 0
                     ? `Enregistrée hors ligne — rendre ${this.fcfa(rendu)}`
-                    : 'Enregistrée — reçu disponible au retour du réseau',
+                    : 'Enregistrée hors ligne — reçu prêt à l’impression',
                 false,
             );
         }
@@ -341,10 +348,89 @@ export default class extends Controller {
             this.recuTarget.classList.remove('hidden');
             this.uuidRecu = uuid;
         } catch {
+            const ticket = await this.horsLigne.ticket(uuid);
+            if (ticket) {
+                this.afficherRecuLocal(ticket, uuid);
+                return;
+            }
+
             // L'aperçu est un confort, pas une garantie : on n'immobilise pas la
             // caisse s'il échoue.
             this.notifier('Vente encaissée', false);
         }
+    }
+
+    afficherRecuLocal(ticket, uuid) {
+        if (!ticket) {
+            return;
+        }
+
+        this.recuContenuTarget.innerHTML = this.htmlRecuLocal(ticket);
+        this.recuNumeroTarget.textContent = this.numeroAffiche();
+        this.recuTarget.classList.remove('hidden');
+        this.uuidRecu = uuid;
+    }
+
+    htmlRecuLocal(ticket) {
+        const lignes = (ticket.lines ?? []).map((ligne) => `
+            <div class="flex items-start justify-between gap-3 text-sm">
+                <div class="min-w-0 flex-1">
+                    <div class="font-semibold text-stone-800">${this.esc(ligne.label)}</div>
+                    <div class="text-stone-500">Qté ${this.esc(ligne.qty)}</div>
+                </div>
+                <div class="whitespace-nowrap font-semibold text-stone-900">${this.fcfa(ligne.price * 100)}</div>
+            </div>
+        `).join('');
+
+        const footer = (ticket.footer ?? []).map((ligne) => `<div class="text-xs text-stone-600">${this.esc(ligne)}</div>`).join('');
+
+        return `
+            <div class="space-y-3 p-3 text-stone-700">
+                <div class="space-y-1 border-b border-stone-200 pb-3 text-center">
+                    ${(ticket.header ?? []).map((ligne) => `<div class="text-sm">${this.esc(ligne)}</div>`).join('')}
+                </div>
+                <div class="space-y-2">${lignes}</div>
+                <div class="border-t border-stone-200 pt-3">
+                    <div class="flex items-center justify-between text-base font-bold text-stone-900">
+                        <span>Total</span>
+                        <span>${this.fcfa(ticket.total * 100)}</span>
+                    </div>
+                    <div class="flex items-center justify-between text-sm text-stone-700">
+                        <span>Reçu</span>
+                        <span>${this.fcfa(ticket.paid * 100)}</span>
+                    </div>
+                    <div class="flex items-center justify-between text-sm text-stone-700">
+                        <span>Monnaie</span>
+                        <span>${this.fcfa(ticket.change * 100)}</span>
+                    </div>
+                </div>
+                <div class="border-t border-stone-200 pt-3 space-y-1 text-center">${footer}</div>
+            </div>
+        `;
+    }
+
+    ticketLocal(uuid, encaisse, rendu) {
+        const total = this.total();
+
+        return {
+            header: [
+                'ZedPOS',
+                'Ticket hors ligne',
+                `Ticket : ${uuid.slice(0, 8).toUpperCase()}`,
+                `Date : ${new Date().toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}`,
+                `Caisse : ${this.hasMessageTarget ? 'Caisse' : 'Caisse'}`,
+            ],
+            lines: this.lignes.map((ligne) => ({
+                label: ligne.nom,
+                qty: String(ligne.quantite),
+                price: Math.trunc((ligne.prix * ligne.quantite) / 100),
+            })),
+            total: Math.trunc(total / 100),
+            paid: Math.trunc(encaisse / 100),
+            change: Math.trunc(rendu / 100),
+            footer: ['Merci', 'Vente enregistrée hors ligne'],
+            openDrawer: this.especes,
+        };
     }
 
     /** Numéro lu dans le fragment, pour l'afficher en tête du panneau. */
@@ -482,15 +568,21 @@ export default class extends Controller {
      * @param {boolean} tiroir ouvrir le tiroir-caisse. Faux en réimpression : le
      *                         tiroir s'est ouvert quand l'argent est entré.
      */
-    async imprimerMateriel(uuid, tiroir) {
+    async imprimerMateriel(uuid, tiroir, ticketLocal = null) {
         if (await pos.available()) {
-            const ticket = await this.chargerTicketMateriel(uuid);
+            const ticket = ticketLocal ?? await this.chargerTicketMateriel(uuid) ?? await this.horsLigne.ticket(uuid);
 
             // `openDrawer` est décidé par le serveur (espèces ou non) ; l'écran ne
             // peut que le refuser, jamais l'imposer.
-            if (ticket && await pos.print({ ...ticket, openDrawer: ticket.openDrawer && tiroir })) {
+            if (ticket && await pos.print({ ...ticket, openDrawer: Boolean(ticket.openDrawer) && tiroir })) {
                 return;
             }
+        }
+
+        if (ticketLocal) {
+            this.afficherRecuLocal(ticketLocal, uuid);
+            this.imprimerTicketLocal(ticketLocal);
+            return;
         }
 
         this.imprimerTicket(uuid);
@@ -522,6 +614,61 @@ export default class extends Controller {
         if (this.hasImpressionTarget) {
             this.impressionTarget.src = `${this.ticketBaseValue.replace('__UUID__', uuid)}?auto=1`;
         }
+    }
+
+    imprimerTicketLocal(ticket) {
+        if (!ticket || typeof window === 'undefined') {
+            return false;
+        }
+
+        const win = window.open('', '_blank', 'noopener,noreferrer');
+        if (!win) {
+            return false;
+        }
+
+        const contenu = `
+            <html>
+                <head>
+                    <title>Ticket</title>
+                    <style>
+                        body { margin: 0; font-family: Arial, sans-serif; background: white; }
+                        .ticket { width: 58mm; padding: 8mm 5mm 5mm; box-sizing: border-box; color: #111827; }
+                        .ligne { display: flex; justify-content: space-between; gap: 12px; margin: 6px 0; }
+                        .libelle { flex: 1; min-width: 0; }
+                        .montant { white-space: nowrap; font-weight: 700; }
+                        .centre { text-align: center; }
+                        .separateur { border-top: 1px solid #111827; margin: 10px 0; }
+                    </style>
+                </head>
+                <body onload="window.print(); setTimeout(() => window.close(), 500);">
+                    <div class="ticket">
+                        ${(ticket.header ?? []).map((ligne) => `<div class="centre">${this.esc(ligne)}</div>`).join('')}
+                        <div class="separateur"></div>
+                        ${(ticket.lines ?? []).map((ligne) => `
+                            <div class="ligne">
+                                <div class="libelle">
+                                    <div>${this.esc(ligne.label)}</div>
+                                    <div>Qté ${this.esc(ligne.qty)}</div>
+                                </div>
+                                <div class="montant">${this.fcfa(ligne.price * 100)}</div>
+                            </div>
+                        `).join('')}
+                        <div class="separateur"></div>
+                        <div class="ligne"><span>Total</span><span class="montant">${this.fcfa(ticket.total * 100)}</span></div>
+                        <div class="ligne"><span>Reçu</span><span class="montant">${this.fcfa(ticket.paid * 100)}</span></div>
+                        <div class="ligne"><span>Monnaie</span><span class="montant">${this.fcfa(ticket.change * 100)}</span></div>
+                        <div class="separateur"></div>
+                        ${(ticket.footer ?? []).map((ligne) => `<div class="centre">${this.esc(ligne)}</div>`).join('')}
+                    </div>
+                </body>
+            </html>
+        `;
+
+        win.document.write(contenu);
+        win.document.close();
+        win.focus();
+
+        return true;
     }
 
     genererUuid() {
