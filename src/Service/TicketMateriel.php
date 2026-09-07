@@ -72,7 +72,7 @@ class TicketMateriel
         return $this->sansVide([
             $ticket->raisonSociale,
             $ticket->adresse,
-            '' !== $ticket->telephone ? 'Tél : '.$ticket->telephone : '',
+            '' !== $ticket->telephone ? 'Tel : '.$ticket->telephone : '',
             $ticket->email,
             '' !== $ticket->ncc ? 'NCC : '.$ticket->ncc : '',
             '' !== $ticket->rccm ? 'RCCM : '.$ticket->rccm : '',
@@ -96,12 +96,12 @@ class TicketMateriel
         $lignes = [];
 
         foreach ($ticket->lignes as $ligne) {
-            $libelle = $ligne['nom'];
+            $libelle = $this->ascii($ligne['nom']);
             // Le commentaire d'une commande fast-food (« sans oignon ») fait
             // partie de ce que le client doit relire : il tient sur la même
             // ligne, l'agent ne sachant pas rendre de sous-ligne.
             if (null !== $ligne['commentaire'] && '' !== $ligne['commentaire']) {
-                $libelle .= ' ('.$ligne['commentaire'].')';
+                $libelle .= ' ('.$this->ascii($ligne['commentaire']).')';
             }
 
             $lignes[] = [
@@ -147,7 +147,7 @@ class TicketMateriel
         }
 
         foreach ($ticket->reglements as $reglement) {
-            $lignes[] = \sprintf('%s : %d FCFA', $reglement['libelle'], $this->fcfa($reglement['montant']));
+            $lignes[] = \sprintf('%s : %d FCFA', $this->ascii($reglement['libelle']), $this->fcfa($reglement['montant']));
         }
 
         $lignes[] = $ticket->pied;
@@ -208,6 +208,31 @@ class TicketMateriel
      */
     private function sansVide(array $lignes): array
     {
-        return array_values(array_filter($lignes, static fn (string $ligne) => '' !== trim($ligne)));
+        $nettoyees = array_map(fn (string $ligne) => $this->ascii(trim($ligne)), $lignes);
+
+        return array_values(array_filter($nettoyees, static fn (string $ligne) => '' !== $ligne));
+    }
+
+    /**
+     * Translittère l'UTF-8 en ASCII pur pour l'impression thermique.
+     * Évite que les caractères accentués soient interprétés comme des caractères chinois/GBK par l'imprimante.
+     */
+    private function ascii(string $texte): string
+    {
+        $remplacements = [
+            'à' => 'a', 'â' => 'a', 'ä' => 'a', 'á' => 'a',
+            'é' => 'e', 'è' => 'e', 'ê' => 'e', 'ë' => 'e',
+            'î' => 'i', 'ï' => 'i', 'í' => 'i',
+            'ô' => 'o', 'ö' => 'o', 'ó' => 'o',
+            'ù' => 'u', 'û' => 'u', 'ü' => 'u', 'ú' => 'u',
+            'ç' => 'c', 'ñ' => 'n',
+            'À' => 'A', 'Â' => 'A', 'É' => 'E', 'È' => 'E', 'Ê' => 'E',
+            'Î' => 'I', 'Ô' => 'O', 'Û' => 'U', 'Ç' => 'C',
+            '’' => "'", '€' => 'E', '–' => '-', '—' => '-',
+            'œ' => 'oe', 'Œ' => 'OE', 'æ' => 'ae', 'Æ' => 'AE',
+            "\u{202f}" => ' ', "\u{00a0}" => ' ',
+        ];
+
+        return strtr($texte, $remplacements);
     }
 }

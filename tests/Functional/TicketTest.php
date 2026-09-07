@@ -179,7 +179,7 @@ class TicketTest extends WebTestCase
         // Le pied reprend la ventilation de TVA, le règlement et la phrase de fin.
         $pied = implode(' | ', $ticket['footer']);
         $this->assertStringContainsString('TVA 18%', $pied);
-        $this->assertStringContainsString('Espèces : 2000 FCFA', $pied);
+        $this->assertStringContainsString('Especes : 2000 FCFA', $pied);
     }
 
     /**
