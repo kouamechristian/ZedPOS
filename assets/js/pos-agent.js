@@ -108,29 +108,41 @@ async function appeler(route, corps = null, delai = DELAI) {
  * la caisse continue comme si de rien n'était.
  */
 async function impulsion(route) {
+    const url = BASE + route;
     try {
-        const reponse = await fetch(BASE + route, {
+        console.info(`[ZedPOS Matériel] Envoi impulsion tiroir vers ${url} (essai 1 - mode cors)...`);
+        const reponse = await fetch(url, {
             method: 'POST',
             signal: expiration(DELAI),
             credentials: 'omit',
             mode: 'cors',
         });
 
-        return reponse.ok;
-    } catch {
-        // Agent muet sur le CORS, ou absent : on tranche à l'essai suivant.
+        if (reponse.ok) {
+            console.info(`[ZedPOS Matériel] Réponse positive de l'agent sur ${url}`);
+            return true;
+        }
+    } catch (e) {
+        // Agent muet sur le CORS, préflight refusé, ou absence d'agent
+        console.warn(`[ZedPOS Matériel] Essai CORS vers ${url} non concluant (${e?.message || e}). Tentative en mode no-cors...`);
     }
 
     try {
-        await fetch(BASE + route, {
+        await fetch(url, {
             method: 'POST',
             signal: expiration(DELAI),
             credentials: 'omit',
             mode: 'no-cors',
         });
 
+        console.info(`[ZedPOS Matériel] Impulsion transmise avec succès en mode no-cors vers ${url}`);
         return true;
-    } catch {
+    } catch (e) {
+        console.warn(`[ZedPOS Matériel] Impossible de joindre l'agent matériel sur ${url} :`, e);
+        if (typeof window !== 'undefined' && window.location && window.location.protocol === 'https:') {
+            console.warn('[ZedPOS Matériel] NOTE : Vous êtes sur un site en HTTPS. Pour autoriser la communication avec http://127.0.0.1:9100, activez l\'option "Contenu non sécurisé" (Insecure content) dans les paramètres de site de votre navigateur pour cette adresse.');
+        }
+
         return false;
     }
 }
@@ -179,8 +191,12 @@ class PosAgent {
                     mode: 'cors',
                 });
                 this.present = reponse.ok;
-            } catch {
+                if (this.present) {
+                    console.info(`[ZedPOS Matériel] Agent local détecté avec succès sur ${BASE}`);
+                }
+            } catch (e) {
                 this.present = false;
+                console.debug(`[ZedPOS Matériel] Agent non détecté sur ${BASE} :`, e?.message || e);
             } finally {
                 this.sonde = null;
             }

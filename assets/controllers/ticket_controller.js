@@ -267,19 +267,13 @@ export default class extends Controller {
             return;
         }
 
-        // 2. Espèces : le tiroir s'ouvre dès l'appui, sans attendre quoi que ce soit.
+        // 2. Le tiroir s'ouvre dès l'appui sur « Encaisser », sans attendre quoi que ce soit.
         //
-        // La vente est acquise (elle est durablement en file) : la caissière va
-        // prendre l'argent, le tiroir doit être sorti quand sa main y arrive. Aucun
-        // `await` — l'appel ne rejette jamais (voir `js/pos-agent.js`) et un poste
-        // sans agent ne doit pas payer une milliseconde d'attente pour ça.
-        //
-        // Sur un règlement électronique, personne ne touche au tiroir : l'ouvrir
-        // le laisserait béant devant la file. `this.reglement` n'est remis à zéro
-        // qu'à l'étape suivante, `especes` répond donc encore de cette vente-ci.
-        if (this.especes) {
-            pos.drawer();
-        }
+        // La vente est acquise (elle est durablement en file) : le tiroir doit
+        // être sorti pour accueillir l'encaissement. Aucun `await` — l'appel ne
+        // rejette jamais (voir `js/pos-agent.js`) et un poste sans agent ne doit
+        // pas payer une milliseconde d'attente pour ça.
+        pos.drawer();
 
         // 3. La vente est acquise : l'écran se libère immédiatement.
         const imprimer = this.hasImprimerTarget ? this.imprimerTarget.checked : false;
