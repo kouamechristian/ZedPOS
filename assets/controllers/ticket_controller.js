@@ -706,8 +706,15 @@ export default class extends Controller {
      *                         tiroir s'est ouvert quand l'argent est entré.
      */
     async imprimerMateriel(uuid, tiroir, ticketLocal = null) {
+        // Vente encore dans la file : le serveur ne la connaît pas, et le ticket
+        // rangé avec elle est le seul qui existe. Sans cette reprise, la
+        // réimpression hors ligne d'un poste sans agent chargeait
+        // `/caisse/ticket/{uuid}` dans l'iframe — une page que le réseau ne
+        // pouvait pas servir — et rien ne sortait.
+        ticketLocal ??= await this.horsLigne.ticket(uuid);
+
         if (await pos.available()) {
-            const ticket = ticketLocal ?? await this.chargerTicketMateriel(uuid) ?? await this.horsLigne.ticket(uuid);
+            const ticket = ticketLocal ?? await this.chargerTicketMateriel(uuid);
 
             // `openDrawer` est décidé par le serveur (espèces ou non) ; l'écran ne
             // peut que le refuser, jamais l'imposer.
@@ -716,8 +723,9 @@ export default class extends Controller {
             }
         }
 
+        // Le reçu est déjà à l'écran (encaissement ou réimpression depuis le
+        // panneau) : on imprime sans le redessiner.
         if (ticketLocal) {
-            this.afficherRecuLocal(ticketLocal, uuid);
             this.imprimerTicketLocal(ticketLocal);
             return;
         }

@@ -1737,6 +1737,13 @@ logo. C'est `App\Service\LogoThermique` qui le prépare, pour que l'agent n'ait
   est une page vierge que le Service Worker ne contrôle pas forcément, la requête
   échouait hors ligne et `onerror` retirait le logo. Ne pas y remettre d'URL.
   `testLeTicketImprimeHorsLigneNeVaPasChercherLeLogoSurLeReseau` le fige.
+- **Réimpression hors ligne** : `imprimerMateriel()` reprend d'abord le ticket
+  rangé avec la vente dans la file (`horsLigne.ticket()`), et n'interroge le
+  serveur qu'à défaut. Une vente encore en file n'existe pas côté serveur : le
+  bouton « Imprimer » du reçu chargeait `/caisse/ticket/{uuid}` dans l'iframe et
+  rien ne sortait. `testLaReimpressionHorsLigneReprendLeTicketDeLaFile` le fige.
+  Limite : une vente **déjà transmise**, réimprimée après une coupure, n'a plus de
+  ticket local — elle attend le retour du réseau.
 
 > ⚠ **L'agent Node doit être mis à jour pour l'imprimer** — il n'est pas dans ce
 > dépôt. Tant qu'il ignore la clé, le ticket sort comme avant, sans logo. Avec

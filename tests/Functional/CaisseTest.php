@@ -165,6 +165,26 @@ class CaisseTest extends WebTestCase
     }
 
     /**
+     * Une vente encaissée hors ligne n'existe pas encore sur le serveur : la
+     * réimprimer en chargeant `/caisse/ticket/{uuid}` ne sortait rien. Toute
+     * impression reprend d'abord le ticket rangé avec la vente dans la file, et
+     * n'interroge le serveur qu'à défaut.
+     */
+    public function testLaReimpressionHorsLigneReprendLeTicketDeLaFile(): void
+    {
+        $source = (string) file_get_contents(\dirname(__DIR__, 2).'/assets/controllers/ticket_controller.js');
+
+        $this->assertMatchesRegularExpression('/async imprimerMateriel\(uuid, tiroir, ticketLocal = null\) \{/', $source);
+        $debut = strpos($source, 'async imprimerMateriel(');
+        $corps = substr($source, $debut, strpos($source, "\n    }\n", $debut) - $debut);
+
+        $reprise = strpos($corps, 'ticketLocal ??= await this.horsLigne.ticket(uuid);');
+        $this->assertNotFalse($reprise, 'La réimpression doit reprendre le ticket local de la file.');
+        $this->assertLessThan(strpos($corps, 'this.imprimerTicket(uuid)'), $reprise, 'Le ticket local passe avant la page du serveur.');
+        $this->assertLessThan(strpos($corps, 'this.chargerTicketMateriel(uuid)'), $reprise, 'Le ticket local passe avant la charge utile du serveur.');
+    }
+
+    /**
      * L'écran de caisse tient sur trois repères visuels : gris clair en fond,
      * blanc sur ce qui est retenu, vert sur l'argent.
      *
