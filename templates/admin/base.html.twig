@@ -162,6 +162,9 @@
                                 <div class="truncate text-xs text-stone-500">{{ app.user.email }}</div>
                             </div>
                             <div class="my-1 h-px bg-stone-100"></div>
+                            <a href="{{ path('app_compte_mot_de_passe') }}" class="menu-lien">
+                                {{ ui.icone('cle') }} Changer mon mot de passe
+                            </a>
                             <a href="{{ path('app_logout') }}" class="menu-lien">
                                 {{ ui.icone('deconnexion') }} Déconnexion
                             </a>

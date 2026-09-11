@@ -31,3 +31,21 @@ framework:
             policy: 'sliding_window'
             limit: 10
             interval: '5 minutes'
+
+        # Changement de son propre secret, **par compte** : seuls les échecs sur
+        # le secret actuel consomment un jeton (voir CreationUtilisateur).
+        #
+        # Exiger le secret actuel protège d'une session laissée ouverte — la
+        # caisse reste allumée au comptoir. Sans limite, ce formulaire deviendrait
+        # l'endroit où l'on balaie un PIN de quatre chiffres sans passer par la
+        # porte gardée du pavé de connexion : 10 000 essais, et le code appris
+        # servirait ensuite à se connecter sous le nom de la caissière.
+        #
+        # Par compte et non par IP : l'attaquant est déjà dans la session, et
+        # toute la boutique sort par la même IP — un blocage par IP gênerait les
+        # collègues qui, eux, n'ont rien fait. 5 par quart d'heure : on se trompe
+        # une fois de son propre code, pas cinq.
+        changement_secret:
+            policy: 'sliding_window'
+            limit: 5
+            interval: '15 minutes'

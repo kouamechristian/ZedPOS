@@ -8,6 +8,7 @@ use App\Repository\UtilisateurRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\PasswordHasher\Hasher\PasswordHasherFactoryInterface;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
+use Symfony\Component\RateLimiter\RateLimiterFactoryInterface;
 
 /**
  * Vie d'un compte utilisateur : **création** et **modification**.
@@ -29,6 +30,7 @@ class CreationUtilisateur
         private readonly UserPasswordHasherInterface $hasher,
         private readonly PasswordHasherFactoryInterface $hasherFactory,
         private readonly AuditLogger $audit,
+        private readonly RateLimiterFactoryInterface $changementSecretLimiter,
     ) {
     }
 
@@ -143,6 +145,79 @@ class CreationUtilisateur
         $this->audit->utilisateurModifie($utilisateur, $avant, '' !== $secret);
 
         return $utilisateur;
+    }
+
+    /**
+     * L'utilisateur connecté change **son propre** mot de passe.
+     *
+     * @throws CreationUtilisateurException secret actuel faux, trop d'essais,
+     *                                      nouveau secret invalide ou identique
+     */
+    public function changerMotDePasse(Utilisateur $utilisateur, string $actuel, string $nouveau): void
+    {
+        if (null === $utilisateur->getMotDePasse()) {
+            throw new CreationUtilisateurException('Ce compte se connecte au code PIN, pas par mot de passe.');
+        }
+
+        $this->verifierSecretActuel($utilisateur, $utilisateur->getMotDePasse(), $actuel, 'Mot de passe actuel incorrect.');
+
+        if ($actuel === $nouveau) {
+            throw new CreationUtilisateurException('Le nouveau mot de passe doit être différent de l\'actuel.');
+        }
+
+        $this->definirMotDePasse($utilisateur, $nouveau);
+        $this->em->flush();
+        $this->audit->secretModifie($utilisateur, 'mot_de_passe');
+    }
+
+    /**
+     * Le caissier connecté change **son propre** code PIN.
+     *
+     * Mêmes règles qu'à la création : quatre chiffres, et **unique** parmi les
+     * caissiers actifs — deux caissiers au même PIN seraient indistinguables au
+     * pavé de connexion.
+     *
+     * @throws CreationUtilisateurException
+     */
+    public function changerCodePin(Utilisateur $utilisateur, string $actuel, string $nouveau): void
+    {
+        if (null === $utilisateur->getCodePin()) {
+            throw new CreationUtilisateurException('Ce compte se connecte par mot de passe, pas au code PIN.');
+        }
+
+        $this->verifierSecretActuel($utilisateur, $utilisateur->getCodePin(), $actuel, 'Code PIN actuel incorrect.');
+
+        if ($actuel === $nouveau) {
+            throw new CreationUtilisateurException('Le nouveau code PIN doit être différent de l\'actuel.');
+        }
+
+        $this->definirCodePin($utilisateur, $nouveau, $utilisateur);
+        $this->em->flush();
+        $this->audit->secretModifie($utilisateur, 'code_pin');
+    }
+
+    /**
+     * Le secret actuel est exigé : sans lui, quiconque passe devant une session
+     * restée ouverte — la caisse du comptoir, un téléphone posé — changerait
+     * l'accès de quelqu'un d'autre et l'enfermerait dehors.
+     *
+     * Même discipline que `CaisseAuthenticator` : le quota est **consulté avant**
+     * de hacher quoi que ce soit, et **seul un échec** consomme un jeton. On lit
+     * `getRemainingTokens()` et jamais `isAccepted()` sur un `consume(0)`, qui est
+     * toujours accepté par construction.
+     */
+    private function verifierSecretActuel(Utilisateur $utilisateur, string $hash, string $saisi, string $message): void
+    {
+        $limiteur = $this->changementSecretLimiter->create('utilisateur-'.$utilisateur->getId());
+        if ($limiteur->consume(0)->getRemainingTokens() <= 0) {
+            throw new CreationUtilisateurException('Trop d\'essais erronés. Réessayez dans un quart d\'heure.');
+        }
+
+        if (!$this->hasherFactory->getPasswordHasher(Utilisateur::class)->verify($hash, $saisi)) {
+            $limiteur->consume();
+
+            throw new CreationUtilisateurException($message);
+        }
     }
 
     /**

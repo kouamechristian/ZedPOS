@@ -18,9 +18,10 @@ use Symfony\Component\Validator\Constraints as Assert;
  * Proposer un choix laisserait installer une caisse sans personne au-dessus
  * d'elle, et il n'y aurait alors plus aucun moyen de créer la dirigeante.
  *
- * **Le mot de passe est saisi deux fois.** C'est le seul du système : une faute de
- * frappe sur celui-là et l'installation est perdue, sans second compte pour la
- * rattraper. Ailleurs dans l'application la confirmation ne se justifie pas — la
+ * **Le mot de passe est saisi deux fois** : une faute de frappe sur celui-là et
+ * l'installation est perdue, sans second compte pour la rattraper. Seul le
+ * changement de son propre secret en fait autant, pour la même raison
+ * ({@see ChangerMotDePasseType}). Ailleurs la confirmation ne se justifie pas — la
  * dirigeante peut toujours réinitialiser un mot de passe oublié.
  */
 class InstallationType extends AbstractType

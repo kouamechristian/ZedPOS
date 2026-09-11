@@ -99,10 +99,11 @@ porte d'entrée.
 - Passe par `CreationUtilisateur` comme partout ailleurs — unicité, hachage et
   trace d'audit ne se réimplémentent pas pour le premier compte. L'auteur de
   l'entrée d'audit est **nul** (personne n'était connecté), et c'est exact.
-- **Mot de passe saisi deux fois** (`RepeatedType`). C'est le seul du système :
-  une faute de frappe et l'installation est perdue, sans second compte pour la
-  rattraper. Ailleurs la confirmation ne se justifie pas, la dirigeante pouvant
-  réinitialiser n'importe quel mot de passe.
+- **Mot de passe saisi deux fois** (`RepeatedType`) : une faute de frappe et
+  l'installation est perdue, sans second compte pour la rattraper. Le seul autre
+  endroit où l'on confirme est le **changement de son propre secret** (voir
+  « Sécurité et rôles ») — pour la même raison. Ailleurs la confirmation ne se
+  justifie pas, la dirigeante pouvant réinitialiser n'importe quel mot de passe.
 - Pas de connexion automatique après création : mieux vaut vérifier le mot de
   passe tout de suite, tant qu'on l'a en tête.
 - `exclusion` : le sous-abonné laisse passer `/_*` (profileur, barre de débogage)
@@ -166,6 +167,41 @@ base est vide, et plus rien n'y mène ensuite.
   > des tables** : `SecurityTest::setUp()` purge `test.cache.rate_limiter`, sans
   > quoi un test qui échoue à se connecter lègue sa dette au suivant et l'ordre
   > d'exécution décide du résultat.
+- **Changer son propre secret** — `App\Controller\CompteController`, deux écrans
+  parce qu'il y a deux portes :
+
+  | Écran | Pour | Lien depuis |
+  |---|---|---|
+  | `/compte/mot-de-passe` | dirigeante, gérant, comptable | menu utilisateur de `/admin`, en-têtes de `/pilotage` et `/comptabilite` |
+  | `/caisse/code-pin` | caissier | panneau et barre de `/caisse`, en-tête de l'ouverture |
+
+  Réinitialiser le secret **d'un autre** reste `/admin/utilisateurs/{id}/modifier`.
+  Règles, dans `CreationUtilisateur::changerMotDePasse()` / `changerCodePin()` :
+  - **Le secret actuel est exigé.** Sans lui, quiconque passe devant une session
+    restée ouverte — la caisse du comptoir — changerait l'accès de quelqu'un
+    d'autre et l'enfermerait dehors.
+  - **Limiteur `changement_secret`, 5 échecs / 15 min, par compte** (et non par
+    IP : l'attaquant est déjà dans la session, et toute la boutique partage
+    l'IP). Même discipline que `CaisseAuthenticator` : quota lu **avant** de
+    hacher, seuls les échecs consomment. Sans lui, ce formulaire devenait l'endroit
+    où balayer un PIN de quatre chiffres hors de la porte gardée.
+  - **Nouveau secret saisi deux fois** : la dirigeante n'a personne au-dessus
+    d'elle pour lui rouvrir la porte. Mêmes règles qu'à la création (6 caractères,
+    PIN à 4 chiffres **unique**), et différent de l'actuel.
+  - `error_mapping: {'.': 'first'}` sur le `RepeatedType` : ses erreurs restent
+    sinon sur le parent, que les gabarits ne rendent pas — « ne correspondent
+    pas » ne s'afficherait nulle part.
+  - **La session en cours survit, les autres tombent.** Symfony compare le hachage
+    gardé en session à celui de la base : les autres appareils sont déconnectés
+    d'office, la session courante sérialise l'entité modifiée et reste ouverte.
+    (Un PIN n'est pas `getPassword()` : les sessions de caisse, elles, restent.)
+  - Un compte renvoyé vers le mauvais écran est **redirigé** vers le sien.
+  - Le PIN se tape au pavé (`pave_pin_controller.js`) : avance au champ suivant
+    au quatrième chiffre, **pas de soumission automatique** — on relit avant
+    d'engager son identifiant. Après succès, retour sur l'écran du code et non
+    sur `/caisse`, qui n'affiche pas les messages.
+  - Audit `SECRET_MODIFIE` (`moyen`: `mot_de_passe` | `code_pin`), jamais le
+    secret. `ChangementSecretTest` couvre le tout.
 - **Créer un compte** — deux chemins, un seul service :
   - back-office `/admin/utilisateurs/nouveau` (bouton « + Nouvel utilisateur »),
     ouvert au **gérant et à la dirigeante** (`Permission::UTILISATEUR_GERER`,
@@ -1391,7 +1427,8 @@ automatique le 1er du mois, pour le mois écoulé :
   `ECHEC_CONNEXION`, `VENTE_ANNULEE`, `REMISE_ACCORDEE`, `PRIX_MODIFIE`,
   `PERTE_SAISIE`, `INVENTAIRE_VALIDE`, `CAISSE_CLOTUREE`, `ECART_CAISSE`,
   `UTILISATEUR_CREE`, `UTILISATEUR_MODIFIE`, `UTILISATEUR_ACTIVE`,
-  `UTILISATEUR_DESACTIVE`.
+  `UTILISATEUR_DESACTIVE`, `SECRET_MODIFIE` (changement de **son propre** mot de
+  passe ou PIN — non surligné : personne n'a rien redistribué).
   Une clôture avec écart produit **deux** entrées (clôture + écart), pour filtrer
   les écarts seuls.
   `UTILISATEUR_MODIFIE` est **sensible** (surligné) : un rôle changé ou un
@@ -1935,6 +1972,7 @@ compare l'implémentation à cette description et signale les écarts.
 | Téléchargement des rapports du jour (texte, CSV) | ✅ | `/pilotage/rapport.txt`, `.csv` |
 | Journal d'audit inaltérable + consultation | ✅ | `/pilotage/audit` |
 | Gestion des comptes (création, modification, activation) | ✅ | `/admin/utilisateurs` |
+| Changement de son propre mot de passe / code PIN | ✅ | `/compte/mot-de-passe`, `/caisse/code-pin` |
 | Amorçage du premier compte sur base vierge | ✅ | `/installation` |
 | Notification de la dirigeante sur annulation | ✅ | `NotificateurDirigeante` |
 | Rapport quotidien texte (WhatsApp / e-mail) | ✅ | `app:rapport-quotidien` |

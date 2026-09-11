@@ -53,9 +53,17 @@
                         <div class="truncate text-xs font-medium text-amber-700">Pilotage · {{ block('page_title') }}</div>
                     </div>
                 </div>
-                <a href="{{ path('app_logout') }}" class="btn btn-secondaire btn-sm shrink-0">
-                    {{ ui.icone('deconnexion') }}<span class="max-sm:hidden">Quitter</span>
-                </a>
+                <div class="flex shrink-0 items-center gap-2">
+                    {# Icône seule sur téléphone : l'en-tête est déjà partagé entre
+                       le nom de la boutique et « Quitter ». #}
+                    <a href="{{ path('app_compte_mot_de_passe') }}" class="btn btn-secondaire btn-sm"
+                       title="Changer mon mot de passe" aria-label="Changer mon mot de passe">
+                        {{ ui.icone('cle') }}<span class="max-lg:hidden">Mot de passe</span>
+                    </a>
+                    <a href="{{ path('app_logout') }}" class="btn btn-secondaire btn-sm">
+                        {{ ui.icone('deconnexion') }}<span class="max-sm:hidden">Quitter</span>
+                    </a>
+                </div>
             </div>
 
             <nav class="hidden pb-3 md:block" data-turbo-prefetch="true" aria-label="Espaces de pilotage">

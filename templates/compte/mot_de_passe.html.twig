@@ -1,0 +1,62 @@
+{# Changement de son propre mot de passe — dirigeante, gérant, comptable.
+
+   Cadre autonome et non celui d'un espace : on y arrive du back-office, du
+   pilotage ou de la comptabilité, et le lien « Retour » ramène chacun chez lui
+   (`RoleRedirectionHandler::urlPour()`). #}
+{% extends 'base.html.twig' %}
+{% form_theme form 'admin/_form_theme.html.twig' %}
+{% import 'admin/_icones.html.twig' as ui %}
+
+{% block title %}Mot de passe — {{ nom_boutique() }}{% endblock %}
+
+{% block body %}
+<div class="espace-gestion min-h-screen pb-10">
+    <header class="entete-flottante">
+        <div class="mx-auto flex h-16 max-w-xl items-center justify-between gap-3 px-4 sm:px-6">
+            <div class="flex min-w-0 items-center gap-3">
+                <span class="marque-pastille">Z</span>
+                <div class="min-w-0 leading-tight">
+                    <div class="truncate text-[15px] font-bold tracking-tight text-stone-900">{{ nom_boutique() }}</div>
+                    <div class="truncate text-xs font-medium text-amber-700">Mon compte · {{ app.user.nom }}</div>
+                </div>
+            </div>
+            <a href="{{ accueil }}" class="btn btn-secondaire btn-sm shrink-0">
+                {{ ui.icone('retour') }}<span class="max-sm:hidden">Retour</span>
+            </a>
+        </div>
+    </header>
+
+    <main class="contenu max-w-xl">
+        <div class="entete-page apparition">
+            <div class="min-w-0">
+                <div class="sur-titre">Mon compte</div>
+                <h1>Changer mon mot de passe</h1>
+                <p class="mt-1.5 text-sm text-stone-500">{{ app.user.email }}</p>
+            </div>
+        </div>
+
+        <div class="carte apparition" style="--i: 1">
+            {{ form_start(form) }}
+            <div class="carte-corps">
+                {{ form_errors(form) }}
+
+                {{ form_row(form.actuel) }}
+                {{ form_row(form.nouveau.first) }}
+                {{ form_row(form.nouveau.second) }}
+
+                <div class="alerte alerte-bleu">
+                    {{ ui.icone('info') }}
+                    <p>Vos autres appareils seront déconnectés : ils redemanderont le nouveau mot de passe. Cet écran-ci reste connecté.</p>
+                </div>
+            </div>
+            <div class="carte-pied">
+                <a href="{{ accueil }}" class="btn btn-fantome">Annuler</a>
+                <button class="btn btn-primaire">{{ ui.icone('valide') }} Enregistrer</button>
+            </div>
+            {{ form_end(form) }}
+        </div>
+    </main>
+
+    {{ include('admin/_toasts.html.twig') }}
+</div>
+{% endblock %}

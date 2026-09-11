@@ -30,6 +30,10 @@
                         {{ ui.icone('backoffice') }} Back-office
                     </a>
                 {% endif %}
+                <a href="{{ path('app_compte_mot_de_passe') }}" class="btn btn-secondaire btn-sm"
+                   title="Changer mon mot de passe" aria-label="Changer mon mot de passe">
+                    {{ ui.icone('cle') }}<span class="max-lg:hidden">Mot de passe</span>
+                </a>
                 <a href="{{ path('app_logout') }}" class="btn btn-secondaire btn-sm">
                     {{ ui.icone('deconnexion') }}<span class="max-sm:hidden">Quitter</span>
                 </a>

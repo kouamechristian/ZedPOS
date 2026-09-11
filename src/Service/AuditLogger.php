@@ -265,6 +265,26 @@ class AuditLogger
     }
 
     /**
+     * Un utilisateur a changé **son propre** mot de passe ou code PIN.
+     *
+     * Même règle que pour une modification : ni l'ancien secret ni le nouveau,
+     * même hachés. Seul le moyen de connexion concerné figure au journal.
+     *
+     * @param 'mot_de_passe'|'code_pin' $moyen
+     */
+    public function secretModifie(Utilisateur $utilisateur, string $moyen): JournalAudit
+    {
+        return $this->enregistrer(
+            ActionAudit::SECRET_MODIFIE,
+            'Utilisateur',
+            $utilisateur->getId(),
+            null,
+            ['moyen' => $moyen],
+            $utilisateur,
+        );
+    }
+
+    /**
      * Modification d'un compte : nom, e-mail, rôle, réinitialisation du secret.
      *
      * Le secret lui-même n'est **jamais** journalisé, pas même haché — seul le

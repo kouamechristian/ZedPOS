@@ -33,6 +33,10 @@ enum ActionAudit: string
     case UTILISATEUR_MODIFIE = 'UTILISATEUR_MODIFIE';
     case UTILISATEUR_ACTIVE = 'UTILISATEUR_ACTIVE';
     case UTILISATEUR_DESACTIVE = 'UTILISATEUR_DESACTIVE';
+    // Changement de **son propre** mot de passe ou code PIN. Distinct de
+    // UTILISATEUR_MODIFIE, qui trace l'intervention d'un gérant sur le compte
+    // d'un autre : ici personne n'a rien redistribué.
+    case SECRET_MODIFIE = 'SECRET_MODIFIE';
 
     public function libelle(): string
     {
@@ -51,6 +55,7 @@ enum ActionAudit: string
             self::UTILISATEUR_MODIFIE => 'Modification d\'utilisateur',
             self::UTILISATEUR_ACTIVE => 'Activation d\'utilisateur',
             self::UTILISATEUR_DESACTIVE => 'Désactivation d\'utilisateur',
+            self::SECRET_MODIFIE => 'Changement de mot de passe ou de code PIN',
         };
     }
 
@@ -81,7 +86,8 @@ enum ActionAudit: string
             self::PRIX_MODIFIE, self::PERTE_SAISIE, self::INVENTAIRE_VALIDE => 'Catalogue et stock',
             self::CAISSE_CLOTUREE, self::ECART_CAISSE => 'Caisse',
             self::UTILISATEUR_CREE, self::UTILISATEUR_MODIFIE,
-            self::UTILISATEUR_ACTIVE, self::UTILISATEUR_DESACTIVE => 'Comptes',
+            self::UTILISATEUR_ACTIVE, self::UTILISATEUR_DESACTIVE,
+            self::SECRET_MODIFIE => 'Comptes',
         };
     }
 }

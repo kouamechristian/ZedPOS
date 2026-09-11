@@ -1,0 +1,54 @@
+{# Changement de son propre code PIN — caissier. Contrôleur : `pave_pin_controller.js`.
+
+   Même cadre clair que l'ouverture et la clôture : c'est un écran du cycle de
+   caisse, pas l'écran de vente. #}
+{% extends 'caisse/_session_base.html.twig' %}
+{% form_theme form 'caisse/_form_theme.html.twig' %}
+
+{% block page_title %}Code PIN{% endblock %}
+
+{% block entete_actions %}
+    <a href="{{ path('app_caisse') }}" class="rounded-lg bg-white border border-gray-300 px-3 py-2 font-medium text-gray-700 hover:bg-gray-100">← Caisse</a>
+{% endblock %}
+
+{% block caisse_content %}
+{% set champ_pin = 'text-center text-3xl tracking-[0.6em] data-[actif=true]:border-amber-600 data-[actif=true]:ring-2 data-[actif=true]:ring-amber-500' %}
+<div class="mx-auto max-w-md bg-white text-stone-800 rounded-2xl shadow-xl p-6" data-controller="pave-pin">
+    <h1 class="text-2xl font-black text-stone-900">Changer mon code PIN</h1>
+    <p class="mt-1 mb-6 text-sm text-stone-500">
+        Saisissez votre code actuel, puis le nouveau deux fois. Il servira dès votre
+        prochaine connexion au pavé de caisse.
+    </p>
+
+    {{ form_start(form) }}
+        {% if form.vars.errors|length > 0 %}
+            <div class="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
+                {% for erreur in form.vars.errors %}<p>{{ erreur.message }}</p>{% endfor %}
+            </div>
+        {% endif %}
+
+        {% for champ in [form.actuel, form.nouveau.first, form.nouveau.second] %}
+            {{ form_row(champ, {attr: champ.vars.attr|merge({class: champ_pin})}) }}
+        {% endfor %}
+
+        <div class="mb-5 grid grid-cols-3 gap-2" role="group" aria-label="Clavier numérique du code PIN">
+            {% for touche in ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'effacer', '0', 'retour'] %}
+                {% if touche == 'effacer' %}
+                    <button type="button" data-action="pave-pin#effacer"
+                            class="h-14 touch-manipulation rounded-xl border border-stone-300 bg-stone-200 text-sm font-semibold text-stone-700 hover:bg-stone-300 active:bg-stone-400">Effacer</button>
+                {% elseif touche == 'retour' %}
+                    <button type="button" data-action="pave-pin#reculer" aria-label="Effacer le dernier chiffre"
+                            class="h-14 touch-manipulation rounded-xl border border-stone-300 bg-stone-200 text-2xl font-bold text-stone-700 hover:bg-stone-300 active:bg-stone-400">⌫</button>
+                {% else %}
+                    <button type="button" data-action="pave-pin#appuyer" data-chiffre="{{ touche }}"
+                            class="h-14 touch-manipulation rounded-xl border border-stone-200 bg-stone-50 text-2xl font-bold tabular-nums text-stone-900 hover:bg-stone-100 active:bg-amber-100">{{ touche }}</button>
+                {% endif %}
+            {% endfor %}
+        </div>
+
+        <button class="w-full rounded-xl bg-green-600 text-white text-lg font-bold py-4 hover:bg-green-500">
+            Enregistrer le nouveau code
+        </button>
+    {{ form_end(form) }}
+</div>
+{% endblock %}

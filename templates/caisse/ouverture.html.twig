@@ -4,6 +4,9 @@
 {% block page_title %}Ouverture de caisse{% endblock %}
 
 {% block entete_actions %}
+    {# Premier écran après la connexion au pavé : c'est ici que la caissière
+       arrive, et donc ici qu'elle doit trouver son code. #}
+    <a href="{{ path('app_caisse_code_pin') }}" class="rounded-lg bg-white border border-gray-300 px-3 py-2 font-medium text-gray-700 hover:bg-gray-100">Code PIN</a>
     <a href="{{ path('app_logout') }}" class="rounded-lg bg-white border border-gray-300 px-3 py-2 font-medium text-gray-700 hover:bg-gray-100">Verrouiller</a>
 {% endblock %}
 
