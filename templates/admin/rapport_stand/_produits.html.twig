@@ -1,0 +1,44 @@
+{# Les dix produits les plus vendus de chaque stand sur la plage, à partir des
+   points validés. Pas de graphique : dix barres par stand n'apprendraient rien de
+   plus que le tableau. #}
+{% import 'admin/_macros.html.twig' as fmt %}
+
+<div class="grid gap-4 xl:grid-cols-2">
+    {% for stand in donnees %}
+        <section class="tableau-conteneur apparition" style="--i: {{ loop.index }}">
+            <div class="carte-entete"><h2 class="carte-titre">{{ stand.stand }}</h2></div>
+            <div class="defilement-x">
+            <table class="tableau" data-rapport="produits">
+                <thead>
+                    <tr>
+                        <th class="num">#</th>
+                        <th>Produit</th>
+                        <th class="num">Vendu</th>
+                        <th class="num">Retourné</th>
+                        <th class="num">Invendus</th>
+                        <th class="num">Perdu</th>
+                        <th class="num">CA</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for produit in stand.produits %}
+                        <tr>
+                            <td class="num cellule-douce">{{ produit.rang }}</td>
+                            <td class="cellule-principale">{{ produit.produit }}</td>
+                            <td class="num tabular-nums font-semibold">{{ fmt.unites(produit.vendue) }}</td>
+                            <td class="num tabular-nums">{{ fmt.unites(produit.retournee) }}</td>
+                            <td class="num tabular-nums">{{ produit.tauxInvendus is null ? '—' : fmt.pourcent(produit.tauxInvendus) }}</td>
+                            <td class="num tabular-nums">{{ fmt.unites(produit.perdue) }}</td>
+                            <td class="num tabular-nums">{{ fmt.fcfa(produit.ca) }}</td>
+                        </tr>
+                    {% else %}
+                        <tr><td colspan="7" class="cellule-vide">Rien de vendu sur la période.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        </section>
+    {% else %}
+        <div class="carte p-8 text-center text-stone-600">Aucun point validé sur la période : rien à classer.</div>
+    {% endfor %}
+</div>

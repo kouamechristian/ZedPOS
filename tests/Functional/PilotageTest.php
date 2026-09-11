@@ -202,7 +202,9 @@ class PilotageTest extends WebTestCase
         $remisee->enregistrerRemiseEtRendu(10000, 'Client fidèle', 0);
         $this->em->flush();
 
-        $farine = (new MatierePremiere('Farine', 'kg'))->setCoutMoyenPondere(45000)->setStockActuel(1000)->setStockMini(50000);
+        // 3 kg pour une perte de 2 : une perte ne peut plus dépasser le stock
+        // (StockManager), et il en reste 1 kg — toujours sous le seuil de 50.
+        $farine = (new MatierePremiere('Farine', 'kg'))->setCoutMoyenPondere(45000)->setStockActuel(3000)->setStockMini(50000);
         $this->em->persist($farine);
         $this->em->flush();
 

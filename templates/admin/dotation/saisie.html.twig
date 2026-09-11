@@ -1,0 +1,201 @@
+{% extends 'admin/base.html.twig' %}
+{% import 'admin/_icones.html.twig' as ui %}
+{% import 'admin/_macros.html.twig' as fmt %}
+
+{# Saisie d'un bon de dotation — faite au doigt, chaque matin, en quelques minutes.
+
+   Tout ce qui se répète est pré-rempli : le vendeur habituel du stand, la date du
+   jour, et d'un appui les quantités de la dernière dotation validée. Le stock dépôt
+   restant et les totaux suivent chaque appui (`dotation_controller.js`) ; le
+   serveur revérifie tout à la validation.
+
+   Chaque vignette porte son champ caché `quantites[id]` : le formulaire part tel
+   quel, et une erreur réaffiche l'écran (422) avec ce qui avait été tapé. #}
+
+{% block page_title %}{{ bon ? 'Brouillon ' ~ bon.numero : 'Nouvelle dotation' }}{% endblock %}
+{% block page_sous_titre %}{{ stand.libelle }} · marchandise confiée en dépôt-vente{% endblock %}
+
+{% block page_actions %}
+    {% if bon %}
+        <a href="{{ path('admin_dotation_show', {id: bon.id}) }}" class="btn btn-fantome">{{ ui.icone('retour') }} Le bon</a>
+    {% else %}
+        <a href="{{ path('admin_dotation_new') }}" class="btn btn-fantome">{{ ui.icone('retour') }} Changer de stand</a>
+    {% endif %}
+{% endblock %}
+
+{% block admin_content %}
+{% set familles = {} %}
+{% for article in articles %}
+    {% if article.familleProduit and familles['f' ~ article.familleProduit.id] is not defined %}
+        {% set familles = familles|merge({('f' ~ article.familleProduit.id): article.familleProduit}) %}
+    {% endif %}
+{% endfor %}
+
+<form method="post"
+      action="{{ bon ? path('admin_dotation_edit', {id: bon.id}) : path('admin_dotation_new', {stand: stand.id}) }}"
+      data-controller="dotation"
+      data-dotation-mode-value="{{ stand.modeRemuneration.value }}"
+      data-dotation-taux-value="{{ stand.tauxCommission }}"
+      data-dotation-reprise-value="{{ reprise is empty ? '{}' : reprise|json_encode }}"
+      data-dotation-reprise-libelle-value="{{ derniere ? derniere.numero ~ ' du ' ~ derniere.dateDotation|date('d/m/Y') : '' }}"
+      data-dotation-suggestion-value="{{ suggestion.quantites is empty ? '{}' : suggestion.quantites|json_encode }}">
+    <input type="hidden" name="_token" value="{{ csrf_token(jeton) }}">
+    <input type="hidden" name="stand" value="{{ stand.id }}">
+
+    {% if erreur %}
+        <div class="alerte alerte-rouge apparition mb-4" role="alert">
+            {{ ui.icone('erreur') }}
+            <p>{{ erreur }}</p>
+        </div>
+    {% endif %}
+
+    {# ---- Vendeur, date, reprise ---- #}
+    <div class="carte apparition mb-3">
+        <div class="carte-corps grid items-end gap-4 md:grid-cols-[minmax(0,1fr)_11rem_auto_auto]">
+            <label class="block">
+                <span class="etiquette">Vendeur</span>
+                <select name="vendeur" class="champ h-12 text-base" required data-action="dotation#changerVendeur">
+                    <option value="">— Choisir —</option>
+                    {% for vendeur in vendeurs %}
+                        <option value="{{ vendeur.id }}" {% if vendeur.id == vendeur_id %}selected{% endif %}>{{ vendeur.nom }}{% if stand.vendeurHabituel and stand.vendeurHabituel.id == vendeur.id %} (habituel){% endif %}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label class="block">
+                <span class="etiquette">Date de dotation</span>
+                <input type="date" name="date" value="{{ date }}" class="champ h-12 text-base" required>
+            </label>
+            <button type="button" class="btn btn-secondaire btn-lg h-12"
+                    data-action="dotation#reprendre" {% if not derniere %}disabled title="Aucune dotation validée sur ce stand"{% endif %}>
+                {{ ui.icone('importer', 'h-4 w-4') }}
+                <span class="text-left leading-tight">
+                    Reprendre la dotation d'hier
+                    {% if derniere %}<span class="block text-[11px] font-normal text-stone-500">{{ derniere.numero }} du {{ derniere.dateDotation|date('d/m/Y') }}</span>{% endif %}
+                </span>
+            </button>
+            {# Ce que le stand vend d'ordinaire ce jour-là : moyenne des quatre derniers
+               mêmes jours de semaine dont le point est validé. #}
+            {% set jours_semaine = ['dimanches', 'lundis', 'mardis', 'mercredis', 'jeudis', 'vendredis', 'samedis'] %}
+            <button type="button" class="btn btn-secondaire btn-lg h-12"
+                    data-action="dotation#suggerer" {% if suggestion.quantites is empty %}disabled title="Aucun point validé sur les mêmes jours de semaine"{% endif %}>
+                {{ ui.icone('tendance', 'h-4 w-4') }}
+                <span class="text-left leading-tight">
+                    Suggestion
+                    <span class="block text-[11px] font-normal text-stone-500">moyenne des {{ suggestion.jours|length > 0 ? suggestion.jours|length : 4 }} derniers {{ jours_semaine[jour_suggestion|date('w')] }}</span>
+                </span>
+            </button>
+        </div>
+    </div>
+
+    {# Vendeur endetté au-delà du seuil paramétré : on le dit avant de lui confier
+       la marchandise, sans rien bloquer — la décision reste à la gérante. Une alerte
+       par vendeur concerné, montrée selon le vendeur choisi. #}
+    {% for vendeur in vendeurs|filter(v => dettes[v.id] is defined) %}
+        <div class="alerte alerte-rouge apparition mb-3" role="alert" data-dotation-target="alerteDette" data-vendeur="{{ vendeur.id }}" {% if vendeur.id != vendeur_id %}hidden{% endif %}>
+            {{ ui.icone('pertes') }}
+            <p>
+                <strong>{{ vendeur.nom }} doit {{ fmt.fcfa(dettes[vendeur.id]) }}</strong>, au-delà du seuil d'alerte de {{ fmt.fcfa(seuil_dette) }}.
+                <a href="{{ path('admin_vendeur_show', {id: vendeur.id}) }}" class="lien font-medium" data-turbo-frame="_top">Voir sa fiche</a>
+            </p>
+        </div>
+    {% endfor %}
+
+    <p data-dotation-target="message" class="mb-2 min-h-5 text-sm font-medium text-amber-700" aria-live="polite"></p>
+
+    <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_19rem]">
+        <div class="min-w-0">
+            {# Filtre par famille, d'un appui. #}
+            {% if familles|length > 1 %}
+                <div class="mb-3 flex flex-wrap gap-2" role="group" aria-label="Filtrer par famille">
+                    <button type="button" data-dotation-target="famille" data-action="dotation#filtrer" data-famille="" aria-pressed="true"
+                            class="h-10 rounded-full border border-stone-300 bg-white px-4 text-sm font-semibold text-stone-700 aria-pressed:border-amber-700 aria-pressed:bg-amber-700 aria-pressed:text-white">Tout</button>
+                    {% for famille in familles %}
+                        <button type="button" data-dotation-target="famille" data-action="dotation#filtrer" data-famille="{{ famille.id }}" aria-pressed="false"
+                                class="h-10 rounded-full border border-stone-300 bg-white px-4 text-sm font-semibold text-stone-700 aria-pressed:border-amber-700 aria-pressed:bg-amber-700 aria-pressed:text-white">{{ famille.nom }}</button>
+                    {% endfor %}
+                </div>
+            {% endif %}
+
+            {# ---- Vignettes produits ---- #}
+            <div class="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-4">
+                {% for article in articles %}
+                    {% set stock = stocks[article.id] %}
+                    <div role="button" tabindex="0" aria-pressed="false"
+                         data-dotation-target="tuile"
+                         data-action="click->dotation#selectionner keydown->dotation#selectionnerAuClavier"
+                         data-nom="{{ article.nom }}"
+                         data-famille="{{ article.familleProduit ? article.familleProduit.id : '' }}"
+                         data-stock="{{ stock is null ? '' : stock }}"
+                         data-prix-vente="{{ article.prixVenteTtc }}"
+                         data-prix-cession="{{ article.prixCession }}"
+                         class="tuile-dotation relative flex min-h-32 cursor-pointer select-none flex-col overflow-hidden rounded-2xl border-2 border-stone-200 bg-white text-left transition hover:border-stone-300 focus-visible:outline-2 focus-visible:outline-amber-600 data-[saisie]:bg-amber-50 data-[manque]:border-red-500 data-[active]:border-amber-600 data-[active]:ring-4 data-[active]:ring-amber-500/25">
+                        {% if article.image %}
+                            <img src="{{ image_article(article.image) }}" alt="" loading="lazy" onerror="this.remove()" class="h-16 w-full object-cover">
+                        {% endif %}
+                        <div class="flex flex-1 flex-col p-2.5">
+                            <span class="pr-9 font-semibold leading-tight text-stone-900">{{ article.nom }}</span>
+                            <span class="mt-0.5 text-[11px] text-stone-500">
+                                {{ fmt.fcfa(article.prixVenteTtc) }}
+                                {# Le prix de cession ne compte que pour un stand payé à la marge. #}
+                                {% if stand.modeRemuneration.value == 'MARGE' %}
+                                    · {% if article.prixCession > 0 %}cession {{ fmt.fcfa(article.prixCession) }}{% else %}<span class="font-semibold text-red-700">cession non fixée</span>{% endif %}
+                                {% endif %}
+                            </span>
+                            <span data-dotation-target="reste" class="mt-auto pt-1 text-xs font-medium text-stone-600"></span>
+                        </div>
+                        <span data-dotation-target="badge"
+                              class="absolute right-2 top-2 min-w-9 rounded-full bg-amber-700 px-2 py-0.5 text-center text-lg font-bold tabular-nums text-white shadow empty:hidden"></span>
+                        <input type="hidden" name="quantites[{{ article.id }}]" value="{{ quantites[article.id] ?? '' }}"
+                               data-dotation-target="saisie" data-article="{{ article.id }}">
+                    </div>
+                {% else %}
+                    <p class="cellule-vide col-span-full">Aucun article actif.</p>
+                {% endfor %}
+            </div>
+        </div>
+
+        {# ---- Pavé numérique : collant, toujours sous le pouce ---- #}
+        <aside class="carte self-start lg:sticky lg:top-20">
+            <div class="carte-corps">
+                <div class="text-xs font-medium uppercase tracking-wide text-stone-500">Quantité de</div>
+                <div data-dotation-target="actif" class="truncate text-base font-semibold text-stone-900">Touchez un produit</div>
+                <div data-dotation-target="afficheur"
+                     class="my-3 rounded-xl bg-stone-100 py-3 text-center text-4xl font-bold tabular-nums text-stone-900">—</div>
+                <div class="grid grid-cols-3 gap-2" role="group" aria-label="Clavier numérique de la quantité">
+                    {% for touche in ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'effacer', '0', 'retour'] %}
+                        {% if touche == 'effacer' %}
+                            <button type="button" data-action="dotation#effacer"
+                                    class="h-14 touch-manipulation rounded-xl border border-stone-300 bg-stone-200 text-sm font-semibold text-stone-700 hover:bg-stone-300 active:bg-stone-400">Effacer</button>
+                        {% elseif touche == 'retour' %}
+                            <button type="button" data-action="dotation#reculer" aria-label="Effacer le dernier chiffre"
+                                    class="h-14 touch-manipulation rounded-xl border border-stone-300 bg-stone-200 text-2xl font-bold text-stone-700 hover:bg-stone-300 active:bg-stone-400">⌫</button>
+                        {% else %}
+                            <button type="button" data-action="dotation#appuyer" data-chiffre="{{ touche }}"
+                                    class="h-14 touch-manipulation rounded-xl border border-stone-200 bg-stone-50 text-2xl font-bold tabular-nums text-stone-900 hover:bg-stone-100 active:bg-amber-100">{{ touche }}</button>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+                <p class="aide mt-3">Stock dépôt affiché après cette dotation. « Non suivi » : article fabriqué, le dépôt n'en tient pas de stock.</p>
+            </div>
+        </aside>
+    </div>
+
+    {# ---- Totaux et actions : collés en bas, visibles pendant toute la saisie ---- #}
+    <div class="sticky bottom-3 z-10 mt-4 flex flex-wrap items-center gap-3 rounded-2xl border border-stone-200 bg-white/95 p-3 shadow-lg backdrop-blur">
+        <div class="min-w-0 flex-1">
+            <div data-dotation-target="totalProduits" class="text-xs text-stone-500"></div>
+            <div class="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+                <span class="text-sm text-stone-600">Valeur de vente <strong data-dotation-target="totalVente" class="tabular-nums text-stone-900"></strong></span>
+                <span class="text-sm text-stone-600">
+                    Net si tout est vendu
+                    <span class="text-xs text-stone-500">({{ stand.modeRemuneration.value == 'MARGE' ? 'marge' : 'commission ' ~ (stand.tauxCommission / 100)|number_format(stand.tauxCommission % 100 ? 2 : 0, ',', ' ') ~ ' %' }})</span>
+                    <strong data-dotation-target="totalCession" class="text-xl tabular-nums text-stone-900"></strong>
+                </span>
+            </div>
+            <p data-dotation-target="manque" hidden class="text-sm font-medium text-red-700">Stock dépôt insuffisant sur au moins un produit : la validation sera refusée.</p>
+        </div>
+        <button type="submit" name="action" value="brouillon" class="btn btn-secondaire btn-lg">Enregistrer le brouillon</button>
+        <button type="submit" name="action" value="valider" class="btn btn-primaire btn-lg">{{ ui.icone('valide') }} Valider la dotation</button>
+    </div>
+</form>
+{% endblock %}

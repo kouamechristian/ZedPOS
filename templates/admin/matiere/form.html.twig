@@ -18,14 +18,14 @@
             {{ form_row(form.fournisseur) }}
             {# Le stock de départ n'est saisissable qu'à la création : ensuite il se
                compte, par un inventaire, qui laisse un mouvement et une trace. #}
-            {% if form.stockActuel is defined %}
-                {{ form_row(form.stockActuel) }}
+            {% if form.stockInitial is defined %}
+                {{ form_row(form.stockInitial) }}
             {% endif %}
             {{ form_row(form.stockMini) }}
             {{ form_row(form.coutMoyenPondere) }}
         </div>
 
-        {% if form.stockActuel is not defined %}
+        {% if form.stockInitial is not defined %}
             <div class="alerte alerte-bleu mt-1">
                 {{ ui.icone('info') }}
                 <p>

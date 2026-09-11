@@ -12,11 +12,12 @@ use Symfony\Component\Form\Extension\Core\Type\NumberType;
 use Symfony\Component\Form\Extension\Core\Type\TextType;
 use Symfony\Component\Form\FormBuilderInterface;
 use Symfony\Component\OptionsResolver\OptionsResolver;
+use Symfony\Component\Validator\Constraints\GreaterThanOrEqual;
 
 /**
  * Fiche d'une matière première.
  *
- * **`stockActuel` n'y figure qu'à la création**, pour saisir le stock de départ.
+ * **Le stock de départ n'y figure qu'à la création** (`stockInitial`, non mappé).
  * Passée cette étape, un stock ne se corrige plus à la main : il se compte, par
  * l'inventaire (`/admin/inventaires`), qui produit un `MouvementStock` et une
  * trace d'audit. Écrire directement dans le champ ne faisait ni l'un ni l'autre,
@@ -44,10 +45,16 @@ class MatierePremiereType extends AbstractType
             ]);
 
         if ($options['stock_initial']) {
-            $builder->add('stockActuel', NumberType::class, [
+            // Non mappé : un stock ne s'écrit que par StockManager. Le contrôleur
+            // en fait un mouvement AJUSTEMENT au dépôt principal, une fois la
+            // matière enregistrée.
+            $builder->add('stockInitial', NumberType::class, [
                 'label' => 'Stock de départ',
                 'help' => 'Ensuite, le stock ne se corrige que par un inventaire.',
                 'scale' => 3,
+                'mapped' => false,
+                'required' => false,
+                'constraints' => [new GreaterThanOrEqual(0, message: 'Le stock de départ ne peut pas être négatif.')],
             ]);
         }
 
@@ -58,7 +65,7 @@ class MatierePremiereType extends AbstractType
         ));
 
         // Stock stocké en millièmes d'unité ; saisie en unités.
-        $champs = $options['stock_initial'] ? ['stockActuel', 'stockMini'] : ['stockMini'];
+        $champs = $options['stock_initial'] ? ['stockInitial', 'stockMini'] : ['stockMini'];
         foreach ($champs as $champ) {
             $builder->get($champ)->addModelTransformer(new CallbackTransformer(
                 static fn (?int $millimes): ?float => null === $millimes ? null : $millimes / 1000,

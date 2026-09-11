@@ -8,6 +8,7 @@ use App\Form\PerteType;
 use App\Repository\PerteRepository;
 use App\Service\PerteService;
 use Doctrine\DBAL\Connection;
+use Symfony\Component\Form\FormError;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -98,6 +99,10 @@ class PerteController extends AbstractController
                 return $this->redirectToRoute('admin_perte_saisie', [], Response::HTTP_SEE_OTHER);
             } catch (\InvalidArgumentException $e) {
                 $this->addFlash('error', $e->getMessage());
+            } catch (\DomainException $e) {
+                // Stock insuffisant : erreur posée sur la quantité, le formulaire
+                // devient invalide et répond 422 — Turbo le réaffiche avec le message.
+                $form->get('quantite')->addError(new FormError($e->getMessage()));
             }
         }
 

@@ -24,7 +24,13 @@ class MatierePremiere
     #[ORM\Column(length: 20)]
     private string $uniteStock;
 
-    /** Stock courant, exprimé en millièmes d'unité (entier, jamais de float). */
+    /**
+     * Stock au **dépôt principal**, en millièmes d'unité (entier, jamais de float).
+     *
+     * Champ historique, conservé le temps de la bascule vers le stock par
+     * emplacement : la référence est `StockCourant`, et ce champ n'en est que la
+     * copie, tenue par `StockManager`. Ne pas l'écrire ailleurs.
+     */
     #[ORM\Column(type: Types::BIGINT, options: ['default' => 0])]
     private int $stockActuel = 0;
 

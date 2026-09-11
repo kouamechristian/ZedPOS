@@ -1,0 +1,162 @@
+{# Bon de sortie d'une dotation, à signer par la gérante et le vendeur.
+
+   **C'est la seule pièce que le vendeur emporte** : il n'a aucun outil, et ce
+   papier dit ce qu'on lui a confié et ce qu'il devra. D'où les prix de cession en
+   clair, les totaux, et deux signatures.
+
+   Page autonome en noir et blanc, comme la feuille d'inventaire : elle sort d'une
+   imprimante. Un brouillon ou un bon annulé s'imprime aussi, barré de son statut —
+   un papier qui circule sans valoir quelque chose doit le dire en grand. #}
+{% import 'admin/_macros.html.twig' as fmt %}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Bon de sortie {{ bon.numero }}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+            font-size: 12px;
+            color: #000;
+            background: #fff;
+            padding: 12mm;
+        }
+
+        .entete { display: flex; justify-content: space-between; align-items: flex-start; gap: 8mm; margin-bottom: 8mm; }
+        .boutique { display: flex; align-items: center; gap: 4mm; }
+        .boutique img { max-height: 18mm; max-width: 40mm; object-fit: contain; }
+        .boutique .nom { font-size: 15px; font-weight: 700; }
+        h1 { font-size: 18px; text-align: right; }
+        .numero { text-align: right; font-size: 14px; font-weight: 700; letter-spacing: .03em; }
+
+        .mention {
+            border: 2px solid #000;
+            padding: 3mm 4mm;
+            margin-bottom: 6mm;
+            font-size: 14px;
+            font-weight: 700;
+            text-align: center;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+        }
+
+        .infos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm; margin-bottom: 6mm; }
+        .infos div { border: 1px solid #999; padding: 2mm 3mm; }
+        .infos span { display: block; font-size: 10px; text-transform: uppercase; color: #444; }
+        .infos strong { font-size: 13px; }
+
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border-bottom: 1px solid #999; padding: 5px 4px; text-align: left; }
+        th { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
+        .droite { text-align: right; font-variant-numeric: tabular-nums; }
+        tfoot td { border-bottom: none; font-weight: 700; padding-top: 8px; }
+        tfoot .grand { font-size: 15px; }
+
+        .statut {
+            margin-bottom: 6mm;
+            padding: 3mm;
+            border: 3px double #000;
+            font-size: 16px;
+            font-weight: 800;
+            text-align: center;
+            text-transform: uppercase;
+        }
+
+        .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 10mm; margin-top: 14mm; }
+        .signature { border-top: 1px solid #000; padding-top: 2mm; min-height: 28mm; }
+        .signature strong { display: block; margin-bottom: 1mm; }
+        .signature small { color: #444; }
+
+        .pied { margin-top: 8mm; font-size: 10px; color: #444; }
+
+        @page { size: A4 portrait; margin: 0; }
+        @media print {
+            thead { display: table-header-group; }
+            tr { break-inside: avoid; }
+            .signatures { break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+    <div class="entete">
+        <div class="boutique">
+            {% set logo = logo_boutique() %}
+            {% if logo %}<img src="{{ logo }}" alt="" onerror="this.remove()">{% endif %}
+            <div class="nom">{{ nom_boutique() }}</div>
+        </div>
+        <div>
+            <h1>Bon de sortie</h1>
+            <div class="numero">{{ bon.numero }}</div>
+        </div>
+    </div>
+
+    {% if not bon.estValide %}
+        <div class="statut">
+            {% if bon.estAnnule %}Bon annulé — sans valeur{% else %}Brouillon — non validé, sans valeur{% endif %}
+        </div>
+    {% endif %}
+
+    <div class="mention">Marchandise confiée en dépôt-vente</div>
+
+    <div class="infos">
+        <div><span>Stand</span><strong>{{ bon.stand.libelle }}</strong></div>
+        <div><span>Vendeur</span><strong>{{ bon.vendeur.nom }}</strong>{% if bon.vendeur.telephone %}<br>{{ bon.vendeur.telephone }}{% endif %}</div>
+        <div><span>Date de dotation</span><strong>{{ bon.dateDotation|date('d/m/Y') }}</strong></div>
+    </div>
+
+    {# Le prix de cession ne parle qu'à un stand payé à la marge ; à la commission,
+       ce qui compte est la valeur de vente et le taux. #}
+    {% set marge = bon.stand.modeRemuneration.value == 'MARGE' %}
+    <table>
+        <thead>
+            <tr>
+                <th>Produit</th>
+                <th class="droite">Quantité</th>
+                <th class="droite">Prix de vente</th>
+                {% if marge %}<th class="droite">Prix de cession</th>{% endif %}
+                <th class="droite">{{ marge ? 'Dû si vendu' : 'Valeur' }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ligne in bon.lignes %}
+                <tr>
+                    <td>{{ ligne.produit.nom }}</td>
+                    <td class="droite">{{ fmt.unites(ligne.quantite) }} {{ ligne.produit.unite }}</td>
+                    <td class="droite">{{ fmt.fcfa(ligne.prixVenteUnitaire ?? ligne.produit.prixVenteTtc) }}</td>
+                    {% if marge %}<td class="droite">{{ fmt.fcfa(ligne.prixCessionUnitaire ?? ligne.produit.prixCession) }}</td>{% endif %}
+                    <td class="droite">{{ fmt.fcfa(marge ? ligne.montantCession : ligne.montantVente) }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr>
+                <td colspan="2">Valeur au prix de vente : {{ fmt.fcfa(bon.totalVente) }}</td>
+                <td colspan="{{ marge ? 2 : 1 }}" class="droite">
+                    {% if marge %}Total dû si tout est vendu{% else %}Net à remettre si tout est vendu (commission {{ (bon.stand.tauxCommission / 100)|number_format(bon.stand.tauxCommission % 100 ? 2 : 0, ',', ' ') }} %){% endif %}
+                </td>
+                <td class="droite grand">{{ fmt.fcfa(bon.netSiToutVendu) }}</td>
+            </tr>
+        </tfoot>
+    </table>
+
+    <div class="signatures">
+        <div class="signature">
+            <strong>La gérante</strong>
+            <small>{{ bon.createdBy.nom }} — nom et signature</small>
+        </div>
+        <div class="signature">
+            <strong>Le vendeur</strong>
+            <small>{{ bon.vendeur.nom }} — « reçu la marchandise ci-dessus », signature</small>
+        </div>
+    </div>
+
+    <div class="pied">
+        La marchandise reste la propriété de {{ nom_boutique() }} jusqu'à sa vente. Les invendus sont
+        rapportés au point ; le vendeur règle les produits vendus
+        {% if marge %}au prix de cession{% else %}au prix de vente, déduction faite de sa commission{% endif %}.
+        {% if bon.valideAt %}Validé le {{ bon.valideAt|date('d/m/Y à H:i') }}.{% endif %}
+    </div>
+</body>
+</html>

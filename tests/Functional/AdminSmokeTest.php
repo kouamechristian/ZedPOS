@@ -28,7 +28,7 @@ class AdminSmokeTest extends WebTestCase
 
         $connexion = $this->em->getConnection();
         $connexion->executeStatement('SET FOREIGN_KEY_CHECKS = 0');
-        foreach (['ligne_fiche_technique', 'fiche_technique', 'ligne_vente', 'reglement', 'vente', 'mouvement_caisse', 'session_caisse', 'mouvement_stock', 'perte', 'article', 'matiere_premiere', 'fournisseur', 'famille_produit', 'journal_audit', 'utilisateur'] as $table) {
+        foreach (['remboursement_dette', 'dette_vendeur', 'ligne_retour', 'bon_retour', 'ligne_dotation', 'bon_dotation', 'arrete', 'vendeur', 'ligne_fiche_technique', 'fiche_technique', 'ligne_vente', 'reglement', 'vente', 'mouvement_caisse', 'session_caisse', 'mouvement_stock', 'perte', 'article', 'matiere_premiere', 'fournisseur', 'famille_produit', 'journal_audit', 'utilisateur'] as $table) {
             $connexion->executeStatement('DELETE FROM '.$table);
         }
         $connexion->executeStatement('SET FOREIGN_KEY_CHECKS = 1');
@@ -85,6 +85,14 @@ class AdminSmokeTest extends WebTestCase
             ['/admin/articles/nouveau'],
             ['/admin/stock/nouvelle'],
             ['/admin/fournisseurs/nouveau'],
+            ['/admin/dotations'],
+            ['/admin/dotations/nouvelle'],  // choix du stand
+            ['/admin/stands'],
+            ['/admin/stands/nouveau'],
+            ['/admin/vendeurs'],
+            ['/admin/vendeurs/nouveau'],
+            ['/admin/points'],
+            ['/admin/points/nouveau'],
         ];
     }
 

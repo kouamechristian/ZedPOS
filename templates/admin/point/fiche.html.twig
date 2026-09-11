@@ -1,0 +1,142 @@
+{# Fiche de point imprimable, à signer par la gérante et le vendeur.
+
+   Ce que le vendeur emporte du point : la période, ce qu'on lui a confié et ce qui
+   est revenu, ce qu'il devait, ce qu'il a remis, l'écart. Noir et blanc, A4, page
+   autonome comme le bon de sortie. Un brouillon ou un point annulé s'imprime barré
+   « sans valeur ». #}
+{% import 'admin/_macros.html.twig' as fmt %}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Fiche de point {{ arrete.numero }}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 12px; color: #000; background: #fff; padding: 12mm; }
+
+        .entete { display: flex; justify-content: space-between; align-items: flex-start; gap: 8mm; margin-bottom: 6mm; }
+        .boutique { display: flex; align-items: center; gap: 4mm; }
+        .boutique img { max-height: 18mm; max-width: 40mm; object-fit: contain; }
+        .boutique .nom { font-size: 15px; font-weight: 700; }
+        h1 { font-size: 18px; text-align: right; }
+        .numero { text-align: right; font-size: 14px; font-weight: 700; }
+
+        .periode { border: 2px solid #000; padding: 3mm 4mm; margin-bottom: 5mm; font-size: 15px; font-weight: 700; text-align: center; }
+        .statut { margin-bottom: 5mm; padding: 3mm; border: 3px double #000; font-size: 16px; font-weight: 800; text-align: center; text-transform: uppercase; }
+
+        .infos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm; margin-bottom: 5mm; }
+        .infos div { border: 1px solid #999; padding: 2mm 3mm; }
+        .infos span { display: block; font-size: 10px; text-transform: uppercase; color: #444; }
+        .infos strong { font-size: 13px; }
+
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border-bottom: 1px solid #999; padding: 5px 4px; text-align: left; }
+        th { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
+        .droite { text-align: right; font-variant-numeric: tabular-nums; }
+
+        .totaux { margin-top: 5mm; margin-left: auto; width: 95mm; }
+        .totaux div { display: flex; justify-content: space-between; padding: 1.5mm 0; border-bottom: 1px solid #ccc; font-variant-numeric: tabular-nums; }
+        .totaux .fort { font-size: 15px; font-weight: 800; border-bottom: 2px solid #000; }
+        .ecart { font-weight: 800; }
+        .justification { margin-top: 3mm; padding: 2mm 3mm; border: 1px solid #999; }
+
+        .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 10mm; margin-top: 12mm; }
+        .signature { border-top: 1px solid #000; padding-top: 2mm; min-height: 26mm; }
+        .signature strong { display: block; margin-bottom: 1mm; }
+        .signature small { color: #444; }
+
+        @page { size: A4 portrait; margin: 0; }
+        @media print { thead { display: table-header-group; } tr, .totaux, .signatures { break-inside: avoid; } }
+    </style>
+</head>
+<body>
+    <div class="entete">
+        <div class="boutique">
+            {% set logo = logo_boutique() %}
+            {% if logo %}<img src="{{ logo }}" alt="" onerror="this.remove()">{% endif %}
+            <div class="nom">{{ nom_boutique() }}</div>
+        </div>
+        <div>
+            <h1>Fiche de point</h1>
+            <div class="numero">{{ arrete.numero }}</div>
+        </div>
+    </div>
+
+    {% if not arrete.estValide %}
+        <div class="statut">{{ arrete.estAnnule ? 'Point annulé — sans valeur' : 'Brouillon — non validé, sans valeur' }}</div>
+    {% endif %}
+
+    <div class="periode">Période du {{ arrete.dateDebut|date('d/m/Y') }} au {{ arrete.dateFin|date('d/m/Y') }}</div>
+
+    <div class="infos">
+        <div><span>Stand</span><strong>{{ arrete.stand.libelle }}</strong></div>
+        <div><span>Vendeur</span><strong>{{ arrete.vendeur.nom }}</strong></div>
+        <div><span>Rémunération</span><strong>{% if arrete.modeRemuneration.value == 'COMMISSION' %}Commission {{ (arrete.tauxCommission / 100)|number_format(arrete.tauxCommission % 100 ? 2 : 0, ',', ' ') }} %{% else %}Marge{% endif %}</strong></div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Produit</th>
+                <th class="droite">Confié</th>
+                <th class="droite">Invendus</th>
+                <th class="droite">Pertes</th>
+                <th class="droite">Vendu</th>
+                <th class="droite">Prix</th>
+                <th class="droite">Montant</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ligne in resultat ? resultat.lignes : [] %}
+                <tr>
+                    <td>{{ ligne.produit }}</td>
+                    <td class="droite">{{ fmt.unites(ligne.qteConfiee) }}</td>
+                    <td class="droite">{{ fmt.unites(ligne.qteRetournee) }}</td>
+                    <td class="droite">{{ fmt.unites(ligne.qtePerdue) }}</td>
+                    <td class="droite"><strong>{{ fmt.unites(ligne.qteVendue) }}</strong></td>
+                    <td class="droite">
+                        {% if ligne.prixUnique is not null %}{{ fmt.fcfa(ligne.prixUnique) }}{% else %}{% for t in ligne.tranches %}{% if t.quantiteVendue > 0 %}{{ fmt.unites(t.quantiteVendue) }} × {{ fmt.fcfa(t.prixVente) }}<br>{% endif %}{% endfor %}{% endif %}
+                    </td>
+                    <td class="droite">{{ fmt.fcfa(ligne.montantAttendu) }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="totaux">
+        <div><span>Montant attendu</span><span>{{ fmt.fcfa(arrete.montantAttendu) }}</span></div>
+        <div><span>Rémunération du vendeur</span><span>− {{ fmt.fcfa(arrete.remunerationVendeur) }}</span></div>
+        <div class="fort"><span>Net à remettre</span><span>{{ fmt.fcfa(arrete.netARemettre) }}</span></div>
+        <div><span>Espèces remises</span><span>{{ arrete.montantRemis is null ? '—' : fmt.fcfa(arrete.montantRemis) }}</span></div>
+        <div class="ecart">
+            <span>Écart{% if arrete.ecart is not null and arrete.ecart != 0 %} ({{ arrete.ecart < 0 ? 'manquant' : 'trop-perçu' }}){% endif %}</span>
+            <span>{{ arrete.ecart is null ? '—' : fmt.fcfa(arrete.ecart) }}</span>
+        </div>
+    </div>
+    {% if arrete.traitementEcart and arrete.ecart is not null and arrete.ecart < 0 %}
+        {# Le vendeur signe ce papier : s'il reconnaît une dette, elle doit y figurer en toutes lettres. #}
+        <div class="justification">
+            <strong>Manquant :</strong>
+            {% if arrete.traitementEcart.value == 'DETTE' %}
+                imputé en dette de {{ arrete.vendeur.nom }}, qui reconnaît devoir {{ fmt.fcfa(-arrete.ecart) }} à la boutique.
+            {% else %}
+                passé en perte par la boutique.
+            {% endif %}
+        </div>
+    {% endif %}
+    {% if arrete.commentaireEcart %}
+        <div class="justification"><strong>Justification :</strong> {{ arrete.commentaireEcart }}</div>
+    {% endif %}
+
+    <div class="signatures">
+        <div class="signature">
+            <strong>La gérante</strong>
+            <small>{{ arrete.createdBy.nom }} — nom et signature</small>
+        </div>
+        <div class="signature">
+            <strong>Le vendeur</strong>
+            <small>{{ arrete.vendeur.nom }} — « d'accord sur ce point et les espèces remises », signature</small>
+        </div>
+    </div>
+</body>
+</html>

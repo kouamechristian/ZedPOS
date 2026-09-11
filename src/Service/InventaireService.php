@@ -2,9 +2,10 @@
 
 namespace App\Service;
 
+use App\Entity\Article;
 use App\Entity\Inventaire;
 use App\Entity\LigneInventaire;
-use App\Entity\MouvementStock;
+use App\Entity\MatierePremiere;
 use App\Entity\Utilisateur;
 use App\Enum\TypeMouvementStock;
 use App\Repository\ArticleRepository;
@@ -18,6 +19,9 @@ use Doctrine\ORM\EntityManagerInterface;
  * C'est le seul chemin par lequel un stock se corrige : la modification directe
  * de `stockActuel` ne créait aucun mouvement et n'était pas auditée, si bien que
  * l'historique divergeait du stock affiché sans que rien ne le signale.
+ *
+ * L'inventaire compte le **dépôt principal** : les écarts y sont reportés en
+ * AJUSTEMENT, et refusés en bloc si l'un d'eux laissait un stock négatif.
  */
 class InventaireService
 {
@@ -27,6 +31,7 @@ class InventaireService
         private readonly MatierePremiereRepository $matieres,
         private readonly ArticleRepository $articles,
         private readonly AuditLogger $audit,
+        private readonly StockManager $stock,
     ) {
     }
 
@@ -110,7 +115,9 @@ class InventaireService
      * comptage constate un écart à un instant donné, c'est cet écart qu'on reporte.
      *
      * @throws \DomainException si la feuille est déjà validée, si rien n'a été
-     *                          compté, ou si un écart est constaté sans commentaire
+     *                          compté, si un écart est constaté sans commentaire,
+     *                          ou si un écart laisserait un stock négatif
+     *                          ({@see StockInsuffisantException})
      */
     public function valider(Inventaire $inventaire, Utilisateur $validePar, ?string $commentaire = null): Inventaire
     {
@@ -118,50 +125,61 @@ class InventaireService
         // avant toute écriture : rien n'est appliqué si la feuille est refusée.
         $inventaire->valider($validePar, $commentaire);
 
-        foreach ($inventaire->lignesAvecEcart() as $ligne) {
-            $this->appliquer($inventaire, $ligne, (string) $inventaire->getCommentaire());
+        $lignes = $inventaire->lignesAvecEcart();
+        $depot = $this->stock->depotPrincipal();
+        $demandes = [];
+
+        foreach ($lignes as $ligne) {
+            $demandes[] = new DemandeMouvementStock(
+                $this->produit($ligne),
+                $depot,
+                $ligne->ecart(),
+                TypeMouvementStock::AJUSTEMENT,
+                'inventaire',
+                $inventaire->getId(),
+                'Inventaire n° '.$inventaire->getId(),
+            );
         }
 
-        $this->em->flush();
+        try {
+            // Un seul lot : toute la feuille passe, ou rien. Le passage de la
+            // feuille à « validée » part dans la même écriture.
+            if ([] === $demandes) {
+                $this->em->flush();
+            } else {
+                $this->stock->enregistrerMouvements($demandes, $validePar);
+            }
+        } catch (\DomainException $e) {
+            // Refus (stock insuffisant) : rien n'a été écrit, mais la feuille est
+            // marquée validée en mémoire. On la relit, sans quoi l'écran afficherait
+            // validée une feuille qui ne l'est pas.
+            $this->em->refresh($inventaire);
+
+            throw $e;
+        }
+
+        foreach ($lignes as $ligne) {
+            $produit = $this->produit($ligne);
+            $apres = $produit->getStockActuel();
+
+            $this->audit->ecartInventaire(
+                $produit instanceof MatierePremiere ? 'MatierePremiere' : 'Article',
+                $produit->getId(),
+                $ligne->getLibelle(),
+                $apres - $ligne->ecart(),
+                $apres,
+                (string) $inventaire->getCommentaire(),
+                $inventaire->getId(),
+            );
+        }
 
         return $inventaire;
     }
 
-    /**
-     * Reporte l'écart d'une ligne : mouvement de stock, correction du stock, trace
-     * d'audit. Les trois vont ensemble — c'est précisément ce qui manquait à la
-     * modification directe de `stockActuel`.
-     */
-    private function appliquer(Inventaire $inventaire, LigneInventaire $ligne, string $commentaire): void
+    private function produit(LigneInventaire $ligne): Article|MatierePremiere
     {
-        $ecart = $ligne->ecart();
-
-        $mouvement = new MouvementStock(TypeMouvementStock::INVENTAIRE, $ecart);
-        $mouvement->setMotif('Inventaire n° '.$inventaire->getId())
-            ->setSource('inventaire', $inventaire->getId());
-
-        $matiere = $ligne->getMatierePremiere();
-        $article = $ligne->getArticle();
-
-        if (null !== $matiere) {
-            $avant = $matiere->getStockActuel();
-            $matiere->setStockActuel($avant + $ecart);
-            $mouvement->setMatierePremiere($matiere);
-            $entite = 'MatierePremiere';
-            $id = $matiere->getId();
-            $apres = $matiere->getStockActuel();
-        } else {
-            \assert(null !== $article);
-            $avant = $article->getStockActuel();
-            $article->setStockActuel($avant + $ecart);
-            $mouvement->setArticle($article);
-            $entite = 'Article';
-            $id = $article->getId();
-            $apres = $article->getStockActuel();
-        }
-
-        $this->em->persist($mouvement);
-        $this->audit->ecartInventaire($entite, $id, $ligne->getLibelle(), $avant, $apres, $commentaire, $inventaire->getId());
+        return $ligne->getMatierePremiere() ?? $ligne->getArticle()
+            ?? throw new \LogicException('Ligne d\'inventaire sans produit.');
     }
 
     /**

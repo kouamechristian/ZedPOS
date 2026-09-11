@@ -74,6 +74,16 @@ Ces conventions sont **impératives**. Toute contribution doit les respecter.
   de Doctrine DBAL 4, ce qui casserait `make:migration` et `migrate`. Un middleware
   DBAL (`src/Doctrine/DBAL/`) substitue une plateforme MariaDB corrigée : ne pas le
   retirer tant que le serveur reste en 10.4.
+- ⚠ **Le poste de développement tourne en réalité sous MySQL 9.7** (constaté le
+  11/09/2026 par `SELECT VERSION()`), bien que `DATABASE_URL` annonce
+  `serverVersion=10.4.32-MariaDB`. Écrire le SQL des migrations **portable entre
+  les deux** : pas de `RENAME INDEX` (absent de MariaDB 10.4), pas de `VALUES()`
+  dans `ON DUPLICATE KEY UPDATE` (retiré de MySQL). Le `mysqldump` de XAMPP ne sait
+  pas s'y connecter : prendre celui de `C:\Program Files\MySQL\MySQL Server 9.7\bin`.
+- **Base de test** : son historique de migrations ne correspond pas à `migrations/`
+  (anciennes versions regroupées). Y appliquer une nouvelle migration par
+  `doctrine:migrations:execute 'DoctrineMigrations\VersionXXX' --up --env=test`,
+  jamais `migrate`, qui tenterait de rejouer la migration initiale.
 
 ### Amorçage — premier démarrage sur une base vierge
 
@@ -264,6 +274,9 @@ contrôleurs et gabarits testent une **permission**, jamais un rôle.
 | Gérer les comptes            | non      | oui    | oui        | non       |
 | Agir sur un compte dirigeante| non      | **non**| oui        | non       |
 | Attribuer le rôle dirigeante | non      | **non**| oui        | non       |
+| Gérer stands, dotations, points | non   | oui    | oui        | non       |
+| Fixer la rémunération d'un stand | non  | **non**| **oui**    | non       |
+| Fixer un prix de cession     | non      | **non**| **oui**    | non       |
 
 (L) = lecture seule. Le comptable ne reçoit **aucune** permission d'écriture.
 
@@ -1428,7 +1441,12 @@ automatique le 1er du mois, pour le mois écoulé :
   `PERTE_SAISIE`, `INVENTAIRE_VALIDE`, `CAISSE_CLOTUREE`, `ECART_CAISSE`,
   `UTILISATEUR_CREE`, `UTILISATEUR_MODIFIE`, `UTILISATEUR_ACTIVE`,
   `UTILISATEUR_DESACTIVE`, `SECRET_MODIFIE` (changement de **son propre** mot de
-  passe ou PIN — non surligné : personne n'a rien redistribué).
+  passe ou PIN — non surligné : personne n'a rien redistribué),
+  `DOTATION_VALIDEE`, `DOTATION_ANNULEE` (surlignée) — voir « Revendeurs » —,
+  `ARRETE_VALIDE`, `ARRETE_ANNULE` et `ECART_POINT` (surlignées) — voir « Point des
+  stands » —, `DETTE_CREEE`, `DETTE_REMBOURSEE` (avec la répartition et le solde
+  avant / après) et `DETTE_ANNULEE` (surlignée) — voir « Dettes des vendeurs ».
+  `PRIX_MODIFIE` couvre aussi le **prix de cession** (clé `prixCession`).
   Une clôture avec écart produit **deux** entrées (clôture + écart), pour filtrer
   les écarts seuls.
   `UTILISATEUR_MODIFIE` est **sensible** (surligné) : un rôle changé ou un
@@ -1486,7 +1504,8 @@ Entités `Inventaire` + `LigneInventaire`, service `App\Service\InventaireServic
   l'appelant et lève **avant toute écriture** : rien n'est appliqué si la feuille
   est refusée. **Commentaire obligatoire dès qu'un écart est constaté**, même règle
   que la clôture de caisse. Chaque écart produit alors un `MouvementStock`
-  **INVENTAIRE** (quantité signée, `source = inventaire`) et une entrée
+  **AJUSTEMENT** au dépôt principal (quantité signée, document `inventaire`, toute
+  la feuille en un lot — refusée en bloc si un écart laissait un stock négatif) et une entrée
   `INVENTAIRE_VALIDE` au journal d'audit — une par ligne corrigée, parce que le
   journal se lit pour retrouver ce qui est arrivé à *un* produit.
 - **Immuabilité** : `Inventaire::garantirEnCours()`, appelée par
@@ -1510,13 +1529,384 @@ Aucune écriture de stock n'a eu lieu, il n'y a rien à défaire.
   motif (casse, périmé, invendu, erreur de production, personnel, offert), commentaire.
 - `App\Service\ValorisationService` valorise automatiquement au **coût moyen pondéré**
   (matière) ou au **coût de revient** (article avec fiche). `App\Service\PerteService`
-  crée la `Perte` valorisée + un `MouvementStock` **PERTE** et décrémente le stock
-  (matière toujours, article seulement si `suiviStock`).
+  crée la `Perte` valorisée + un `MouvementStock` **PERTE** au dépôt principal
+  (matière toujours, article seulement si `suiviStock`). Le mouvement est tenté
+  **avant** la perte : refusé pour stock insuffisant, il ne laisse aucune perte
+  derrière lui.
 - **Synthèse mensuelle** `/admin/pertes?mois=YYYY-MM` : total valorisé, ventilation par
   motif, top 5 des produits les plus perdus, détail du mois.
 - **Alertes de seuil** : `App\Service\AlerteStockService` liste les matières sous
   `stockMini` (exposé en **variable globale Twig `alertesStock`**) → bandeau ambre
   affiché dans le back-office et sur l'écran de caisse.
+
+### Revendeurs : stands, vendeurs, dotations (`/admin/dotations`)
+
+Chaque matin, la boutique confie de la marchandise à des vendeurs ambulants.
+**Ils n'ont aucun outil** : c'est la gérante qui saisit tout, depuis le terminal.
+
+- **Un seul rôle** : `Permission::STAND_GERER` (`StandVoter`) = `ROLE_GERANT`, la
+  dirigeante par héritage. Caissier et comptable : 403. **Aucun rôle n'a été créé
+  pour ce module, et il ne doit pas en être créé.**
+- **Les vendeurs sont des entités métier sans compte** (`Vendeur` : nom,
+  téléphone, actif). Jamais un `Utilisateur`. Ils se désactivent, ne se
+  suppriment pas.
+- **Un stand est un `Emplacement` de type STAND** (pas d'entité `Stand`). Il porte
+  `periodicitePoint` (`JOUR` | `SEMAINE` | `MOIS`, défaut `JOUR`) — **valeur
+  proposée à l'écran, jamais une contrainte** : rien ne la vérifie — et
+  `vendeurHabituel`, proposé d'office sur un nouveau bon.
+- Le stand porte aussi la **rémunération du vendeur** — `modeRemuneration`
+  (`COMMISSION` | `MARGE`) et `tauxCommission` (points de base), **fixés par la
+  dirigeante seule** (`Permission::REMUNERATION_FIXER`, champs absents du formulaire
+  sinon) — et `seuilEcartAlerte` (centimes), réglé par la gérante.
+- Il n'y a **pas de notion de tournée ni de journée fermée** : un bon est rattaché
+  à un stand, puis à l'**arrêté** qui le solde — voir « Point des stands ».
+
+**`BonDotation`** : numéro `DOT-AAAAMMJJ-XXX` (séquence par date de dotation,
+`MAX` des numéros existants), stand, vendeur, `dateDotation` (défaut aujourd'hui),
+statut `BROUILLON` → `VALIDE` → `ANNULE`, `arrete` (nullable), `createdBy`,
+`createdAt`. **`LigneDotation`** : produit (`Article`), quantité (millièmes),
+`prixVenteUnitaire`, `prixCessionUnitaire`. Plusieurs bons par jour sur un stand :
+permis, c'est un réapprovisionnement.
+
+Règles, portées par l'entité (levées **avant toute écriture**) et appliquées par
+`BonDotationService` **dans une seule transaction** (contrôles → `StockManager` →
+statut → audit) :
+
+- **Validation** : transfert DEPOT → stand par `StockManager::transfererLot()`,
+  tout le bon ou rien. Prix **copiés depuis l'article à cet instant**, puis le bon
+  est **immuable** (`garantirBrouillon()`). Refusée si le bon est vide, si le dépôt
+  n'a pas le stock, si un article n'a **pas de prix de cession** (stand en MARGE
+  seulement), ou si la date tombe dans une **période déjà arrêtée**
+  (`BonDotationService::verifierDateOuverte()`, à la création, à la modification
+  et à la validation).
+- **Articles fabriqués (non suivis)** : le dépôt n'en tient pas de stock
+  (`StockManager::suitLeStock()`), la dotation **crédite le stand sans débiter le
+  dépôt** — comme la caisse, qui vend du pain sans stock. Les articles suivis
+  (boissons) font un vrai transfert contrôlé.
+- **Annulation** : contre-passation des mouvements (`StockManager::contrepasser()`,
+  même type, signes opposés). **Interdite** si le bon est rattaché à un **arrêté
+  validé** ; refusée par le stock si le stand a déjà vendu une partie ; **motif
+  obligatoire** pour un bon validé. Un brouillon s'annule sans mouvement.
+- **Journal d'audit** : `DOTATION_VALIDEE` et `DOTATION_ANNULEE`, auteur passé
+  explicitement, avec l'état complet avant/après (statut, totaux vente et cession,
+  lignes et prix). **Pas de double validation : cette trace est la seule
+  sécurité.** Tracée au niveau du **bon**, pas de chaque transfert — un bon de
+  trente produits ferait trente et une entrées.
+
+**Prix de cession** (`Article::$prixCession`, centimes, 0 = non fixé) : ce que le
+vendeur doit par unité vendue **sur un stand payé à la marge**. **Même règle que le
+prix de vente** — champ présent dans `ArticleType` seulement avec `modifier_prix`
+(dirigeante), tracé en `PRIX_MODIFIE`. La gérante le voit sans pouvoir le changer.
+À la commission, il n'entre dans aucun calcul : écrans et bon de sortie affichent
+alors la valeur de vente et le « net si tout est vendu » après commission
+(`BonDotation::netSiToutVendu()`, indicatif — c'est l'arrêté qui fige).
+
+**Écran de saisie** (`admin/dotation/saisie.html.twig`, `dotation_controller.js`),
+fait pour être rempli **au doigt en quelques minutes** :
+
+- stand choisi d'un appui (tuiles), vendeur habituel pré-sélectionné, date du jour ;
+- **vignettes produits** (ordre de la caisse, filtre par famille) + **pavé
+  numérique** collant ; chiffres et retour arrière au clavier physique aussi ;
+- **« Reprendre la dotation d'hier »** : quantités de la **dernière dotation
+  validée** du stand (`BonDotationRepository::derniereValidee()`, brouillons et
+  annulés ignorés), rendues dans la page — aucun appel réseau ;
+- **stock dépôt restant affiché en direct** (lu en **une requête**,
+  `StockManager::stocksArticles()` ; « non suivi » ≠ zéro) et **totaux valorisés**
+  (vente, dû par le vendeur) en bas, collés à l'écran. Calculs en entiers dans
+  `assets/dotation/calculs.js`, testés sous Node ;
+- pas de formulaire Symfony : chaque vignette porte son champ caché
+  `quantites[id]`. Une erreur **réaffiche l'écran en 422 avec ce qui a été tapé** ;
+  une validation refusée garde le **brouillon** et y ramène avec le message ;
+- identifiants lus par `entier()` et **jamais `getInt()`** : sous Symfony 7, il
+  répond 400 sur un champ vide.
+
+**Bon de sortie imprimable** (`/admin/dotations/{id}/bon`, A4 autonome comme la
+feuille d'inventaire) : mention **« Marchandise confiée en dépôt-vente »**,
+lignes avec prix de cession, total dû si tout est vendu, **zones de signature
+gérante / vendeur**. Un brouillon ou un bon annulé s'imprime **barré « sans
+valeur »**. C'est la seule pièce que le vendeur emporte.
+
+Couverture : `BonDotationServiceTest`, `DotationEcranTest`, `StockManagerTest`,
+`tests/js/dotation_calculs.test.js`.
+
+### Point des stands (`/admin/points`)
+
+Le cœur du module : la gérante fait le point avec le vendeur sur une période
+qu'elle choisit — un jour, une semaine, un mois. Entités `Arrete` (numéro
+`PTS-AAAAMMJJ-XXX`, stand, vendeur, granularité, `dateDebut`, `dateFin`, statut
+`BROUILLON` → `VALIDE` → `ANNULE`, mode et taux de rémunération **figés**,
+`montantAttendu`, `remunerationVendeur`, `netARemettre`, `montantRemis`, `ecart`,
+`commentaireEcart`, `createdBy`, `dateValidation`), `BonRetour` / `LigneRetour`
+(produit, quantité, motif `INVENDU` | `CASSE` | `PERIME` | `AUTRE`, commentaire,
+`dateRetour`, `arrete`). Service `App\Service\ArreteService`, calcul
+`App\Service\Point\PointCalculator`.
+
+**RÈGLE CRITIQUE — la date de début n'est jamais saisie.** Elle vaut le lendemain
+de la `dateFin` du **dernier arrêté VALIDE** du stand, ou la date de sa **première
+dotation** (brouillons compris, annulés exclus) s'il n'y en a pas
+(`ArreteService::debutPeriode()`), et elle est **recalculée à chaque
+enregistrement et à la validation**. La gérante ne choisit que la fin : trois
+raccourcis — Aujourd'hui, Fin de semaine, Fin de mois (de la semaine / du mois
+**du début**, lundi → dimanche) — ou une date libre ; jamais avant le début, jamais
+après aujourd'hui (`PeriodeArrete`). La **granularité se déduit des dates**, elle
+ne se déclare pas. Un `debut` glissé dans la requête est ignoré
+(`PointEcranTest::testUnDebutForgeEstIgnore`).
+
+> Deux ajouts rendent la règle étanche. **Côté dotations**, une date déjà arrêtée
+> est refusée (`verifierDateOuverte()`) — sinon un bon antidaté ne serait arrêté
+> nulle part. **Un seul brouillon d'arrêté par stand**, repris à chaque visite.
+
+**Ce que l'arrêté embarque** : toutes les dotations **VALIDE** et tous les retours
+**VALIDE** du stand datés dans `[dateDebut, dateFin]` dont `arrete_id` est NULL.
+**Validation interdite tant qu'une dotation BROUILLON existe sur la période**
+(`DotationsEnBrouillonException`) : l'écran les liste, avec leur lien.
+
+**Validation**, une transaction, contrôles d'abord (brouillons, retours ≤ confié,
+espèces saisies, justification) puis :
+
+1. les retours saisis au point — gardés en `BonRetour` BROUILLON, sans mouvement,
+   tant que l'arrêté est un brouillon — sont écrits : `INVENDU` en **RETOUR**
+   (stand → dépôt, côté dépôt omis pour un article non suivi), les autres en
+   **PERTE** au stand ;
+2. **le vendu sort du stand en VENTE_STAND** : le stand retombe sur ce qu'il détient
+   réellement. Les matières des produits fabriqués vendus par les stands **ne sont
+   pas consommées** — écart connu, à traiter avec un module de production ;
+3. dotations et retours rattachés (`arrete_id`) ;
+4. montants, mode et taux figés, statut VALIDE, audit `ARRETE_VALIDE` (+
+   `ECART_POINT` si écart ≠ 0, comme une clôture de caisse).
+
+**Calcul** (`PointCalculator`, pur, sans base) par produit puis en total :
+`qteVendue = confiée − retournée (INVENDU) − perdue (autres)` ;
+`montantAttendu = Σ vendu × prix de vente figé` ;
+`remuneration = taux × attendu` (COMMISSION, **arrondie au franc le plus proche**,
+calculée sur le total) ou `Σ vendu × (prix vente − prix cession)` (MARGE) ;
+`net = attendu − rémunération` ; `écart = remis − net`.
+
+- **Prix figés, jamais relus sur le produit.** Si un produit a été doté à plusieurs
+  prix, le vendu est imputé **aux dotations les plus anciennes d'abord** : invendus
+  et pertes sont ceux des plus récentes. 20 à 150 F puis 20 à 200 F, 10 invendus →
+  20 × 150 + 10 × 200 = 5 000 F.
+- **Retour au-delà du confié refusé** (retourné + perdu > confié).
+- **Justification obligatoire** si `|écart| > seuilEcartAlerte` du stand.
+- L'écran refait ce calcul en direct (`assets/point/calculs.js`, pendant JS exact,
+  testé sur les **mêmes cas** que le PHP) ; le serveur recalcule tout.
+
+**Immuabilité et annulation.** Un arrêté VALIDE ne se modifie plus. **Seul le
+dernier arrêté validé du stand s'annule** — un plus ancien laisserait un trou
+entre deux périodes — avec motif obligatoire : mouvements contre-passés, retours
+ANNULE, dotations détachées (redeviennent à arrêter), statut ANNULE (l'arrêté
+reste, pour le journal et la numérotation), audit `ARRETE_ANNULE`. Refusée par le
+stock si ce qui est revenu au dépôt en est reparti.
+
+**Écran** (`admin/point/saisie.html.twig`, `point_controller.js`), une page
+tactile : choix du stand → « Période à arrêter : du … au … » et les raccourcis →
+tableau pré-rempli des produits confiés (confié, prix, déjà revenu) où la gérante
+ne tape que **invendus** et **pertes** (+ motif) → vendu et montant par ligne en
+direct → bloc **collé en bas** : attendu, rémunération, net, **espèces remises**,
+**écart coloré** (vert juste, rouge manquant, orange trop-perçu), justification
+au-delà du seuil. Pavé numérique (avec `000` pour les espèces). Changer de période
+en cours de frappe **emporte la saisie** dans l'adresse. Erreur : 422 avec la
+saisie ; validation refusée : la saisie reste en brouillon, retour avec le message.
+
+**Fiche de point imprimable** (`/admin/points/{id}/fiche`, A4 autonome) : période,
+récapitulatif produits (avec les tranches de prix), totaux, espèces remises, écart
+et justification, signatures gérante / vendeur. Brouillon ou annulé : « sans
+valeur ».
+
+Couverture : `PointCalculatorTest` et `PeriodeArreteTest` (unitaires, dont période
+d'un jour, changement de prix, plusieurs dotations et retours),
+`ArreteServiceTest`, `PointEcranTest`, `tests/js/point_calculs.test.js`.
+
+### Dettes des vendeurs (`/admin/vendeurs/{id}`)
+
+Ce qu'on fait quand le vendeur ne remet pas tout. Entités `DetteVendeur` (vendeur,
+`arrete` nullable, `montant`, `type` `ECART_CAISSE` | `AVANCE` | `AUTRE`, `statut`
+`OUVERTE` → `PARTIELLE` → `SOLDEE`, ou `ANNULEE`, `montantRembourse`, `commentaire`,
+`createdBy`, `createdAt`) et `RemboursementDette` (dette, montant, date,
+`encaissePar`, `moyen` = `ModeReglement` **sauf `CREDIT`**). Service
+`App\Service\DetteService`.
+
+> Le cahier des charges parlait de « tournée » : **la tournée n'existe plus**, c'est
+> l'**arrêté** qui constate le manquant. `DetteVendeur::$arrete` en tient lieu.
+
+**Jamais de création silencieuse.** Un point validé avec un écart négatif exige que
+la gérante choisisse le sort du manquant — `Arrete::$traitementEcart`
+(`TraitementEcart::DETTE` | `PERTE`) :
+
+- **rien n'est coché d'office**, à l'écran comme au serveur :
+  `Arrete::verifierValidable()` refuse un manquant sans choix (« Il manque X FCFA :
+  choisissez… ») ;
+- **DETTE** : la dette `ECART_CAISSE` est ouverte **dans la transaction de la
+  validation** (`ArreteService::valider()` étape 5 → `DetteService::ouvrirDepuisArrete()`),
+  pour `−écart`. L'écran l'annonce avant (« une dette sera ouverte au nom de… »),
+  le message de validation le redit, la fiche imprimée porte « qui reconnaît
+  devoir X FCFA » — c'est le papier que le vendeur signe ;
+- **PERTE** : aucune dette, **justification obligatoire quel que soit le seuil**.
+  La règle du seuil d'écart de l'étape précédente vaut toujours en plus, y compris
+  pour une dette ;
+- sans manquant (juste ou trop-perçu), le choix est **effacé** à la validation. Un
+  trop-perçu ne rembourse pas une dette.
+
+**Dettes manuelles** (fiche du vendeur) : `AVANCE` ou `AUTRE`, **objet
+obligatoire**. `ECART_CAISSE` n'est pas proposé et est refusé par le service : il
+ne naît que d'un point.
+
+**Remboursement** — un versement rembourse **les dettes les plus anciennes
+d'abord**, réparti sur autant de dettes qu'il faut (un `RemboursementDette` par
+dette touchée), **jamais au-delà du solde** : un trop-versé se rend, il ne
+s'inscrit pas en avoir. Dettes relues sous `SELECT … FOR UPDATE` : deux versements
+simultanés ne remboursent pas deux fois le même reste. Date future refusée.
+L'argent reçu d'un vendeur **ne passe pas par une session de caisse**, pas plus que
+les espèces remises au point.
+
+**Annulation d'un point** : la dette qu'il a ouverte passe `ANNULEE` (reste en
+base, sort du solde, audit `DETTE_ANNULEE` surligné). **Refusée si le vendeur a
+déjà commencé à la rembourser** — on ne défait pas un argent reçu, et il n'existe
+pas d'annulation de remboursement.
+
+**Alerte à la dotation** : paramètre `CleParametre::SEUIL_ALERTE_DETTE` (FCFA
+entiers, défaut 5 000, groupe « Revendeurs » de `/admin/parametres`, chiffres seuls
+— `ParametresBoutique::seuilAlerteDette()` le rend en centimes). Un vendeur dont le
+solde est **strictement au-delà** déclenche un bandeau rouge sur l'écran de
+dotation — rendu pour chaque vendeur concerné, montré selon le vendeur choisi
+(`dotation_controller.changerVendeur()`). **N'empêche rien.** Seuil 0 : dès le
+premier franc dû.
+
+**Fiche du vendeur** : solde dû (rouge au-delà du seuil), manquants et trop-perçus
+cumulés aux points, formulaires « Enregistrer un remboursement » et « Inscrire une
+avance », trois onglets paginés par `?onglet=` — dettes (dues d'abord), points et
+écarts, remboursements. La liste des vendeurs affiche le solde de chacun (une
+requête pour la page, `DetteVendeurRepository::soldes()`).
+
+Couverture : `DetteServiceTest`, `VendeurFicheTest`, `PointEcranTest`,
+`tests/js/point_calculs.test.js`.
+
+### Rapports des stands (`/admin/rapports-stands`)
+
+**Lecture seule** (`Permission::STAND_GERER`), aucune route d'écriture. Quatre
+rapports en onglets — **par stand** (confié, en attente de point, vendu, retourné,
+taux d'invendus, pertes et leur valeur de vente, CA, rémunération, net, écarts
+cumulés), **par vendeur** (CA généré, rémunération, écarts, dette actuelle),
+**caisse et stands** (CA caisse, CA stands, net stands, CA global, part des
+stands) et **top produits** par stand. Service `App\Service\Rapport\RapportStands`
+(SQL DBAL agrégé en base), filtre `FiltreRapport`, export `ExportRapportStands`.
+
+**Filtre commun** : plage `du` / `au` + `granularite` (`GranulariteRapport` :
+jour, semaine du lundi, mois) qui découpe les lignes de détail **et** l'axe du
+graphique (`graphique_rapport_controller.js`, Chart.js paresseux). Raccourcis
+aujourd'hui, 7 derniers jours, mois en cours, mois précédent. Plage invalide ou de
+plus de 366 jours : retombe sur le mois en cours **en le disant**. Sans filtre : le
+mois en cours.
+
+**Tout part des lignes de dotation, à la date de la dotation — jamais de
+l'arrêté.** À la validation d'un point, chaque `LigneDotation` reçoit sa part —
+`qteVendue`, `qteRetournee`, `qtePerdue`, `montantVendu`, `remuneration`
+(`App\Service\Point\RepartitionVentes`, pur, testé) :
+
+- vendu : celui du calcul, **plus anciennes dotations d'abord** ;
+- non-vendu de chaque ligne, **des plus récentes aux plus anciennes**, couvrant
+  d'abord les invendus puis les pertes ;
+- rémunération : la marge de la tranche (MARGE) ou la commission **totale** du point
+  répartie au prorata des montants, **au plus fort reste** — la somme des lignes
+  retombe au centime sur l'arrêté.
+
+Un point mensuel n'empêche donc pas un rapport journalier d'être juste. Une ligne
+**pas encore arrêtée** compte dans le confié et dans « en attente de point », nulle
+part ailleurs. L'**annulation** d'un point efface ces parts (`BonDotation::detacherArrete()`).
+Points validés avant l'existence des rapports : `php bin/console
+app:stands:figer-ventes` (rejouable sans danger).
+
+Deux exceptions assumées : les **écarts d'espèces** n'existent qu'au point, ils se
+lisent à la **fin de période** de l'arrêté ; la **dette** d'un vendeur est celle
+d'aujourd'hui.
+
+**Pas de double comptage** : une vente de stand ne crée **aucune** `Vente`. Le CA
+caisse se lit dans `vente` (validées), le CA stands dans `ligne_dotation` ; le CA
+global est leur somme. Le pilotage et la comptabilité ne lisent que `vente` : ils
+ignorent les stands. `RapportStandsTest::testLeCaGlobalNeCompteRienDeuxFois` le fige.
+
+**CSV** : un par rapport, `;` + BOM UTF-8, montants `1500,00`, mêmes données que la
+page ; **les filtres sont dans le nom** (`rapport-stands_2026-08-01_2026-08-31_semaine.csv`).
+Liens `data-turbo="false"`.
+
+**Suggestion de dotation** : second bouton de l'écran de dotation, à côté de
+« Reprendre la dotation d'hier ». Moyenne, par produit, du vendu du stand sur les
+**quatre derniers mêmes jours de semaine ayant un vendu connu** (point validé),
+arrondie à l'unité, un produit absent l'un de ces jours y comptant pour zéro
+(`RapportStands::suggestion()`). Calculée pour la date affichée à l'ouverture de
+l'écran ; inerte sans historique.
+
+Couverture : `RepartitionVentesTest`, `FiltreRapportTest`, `RapportStandsTest`.
+
+### Stock par emplacement (`StockManager`)
+
+Le stock n'est plus un nombre par produit mais **un nombre par produit et par
+emplacement** : le dépôt de la boutique, et demain les stands des revendeurs.
+
+| Entité | Rôle |
+|---|---|
+| `Emplacement` | `code` (identité, immuable), `libelle`, `type` (`TypeEmplacement` : `DEPOT` / `STAND`), `actif` |
+| `MouvementStock` | produit (article **ou** matière), emplacement, quantité signée en millièmes, `type`, `documentType` / `documentId`, `utilisateur`, `createdAt` |
+| `StockCourant` | quantité par emplacement × produit — unicité sur les deux couples, entité en **lecture seule** |
+
+Types (`TypeMouvementStock`) : `DOTATION`, `REAPPRO` (dépôt → stand), `RETOUR`
+(stand → dépôt), `PERTE`, `VENTE_CAISSE`, `VENTE_STAND`, `AJUSTEMENT` (inventaire,
+stock de départ, reprise de l'existant).
+
+**`App\Service\StockManager` est le seul point d'écriture** — mouvements, stock
+courant et champs historiques. `EcritureStockReserveeTest` relit `src/` et échoue
+si un `setStockActuel()`, un `new MouvementStock(` ou un `UPDATE stock_courant`
+apparaît ailleurs : le défaut est muet, le stock diverge de ses mouvements et
+personne ne s'en aperçoit avant l'inventaire.
+
+- `enregistrerMouvement()` / `enregistrerMouvements()` (lot, tout ou rien — une
+  vente qui touche cinq matières, une feuille d'inventaire) ;
+  `transferer(produit, source, destination, quantité, type)` écrit **deux**
+  mouvements dans une transaction, sens imposé par le type ; `transfererLot()`
+  pour plusieurs produits d'un bloc ; un type de transfert est refusé en mouvement
+  isolé. `contrepasser()` (annulation d'un document), `getStock()`,
+  `stocksArticles()` (lecture groupée), `recalculerStock()` (réparation).
+- **`suitLeStock(emplacement, produit)`** : un **dépôt ne suit pas un article non
+  suivi** (pain fabriqué). Un transfert n'écrit rien de ce côté-là : doter un stand
+  de baguettes le crédite sans débiter le dépôt.
+- **Déroulé** : verrou `SELECT … FOR UPDATE` sur les lignes `stock_courant`, **dans
+  un ordre fixe** (pas d'interblocage entre deux caisses) → contrôles → écritures.
+- **Refus du stock négatif** : tout mouvement **sortant** qui laisserait un stock
+  sous zéro lève `StockInsuffisantException` (une `\DomainException`), **sauf
+  `VENTE_CAISSE`** (`tolereStockNegatif()`). Une entrée sur un stock déjà négatif
+  passe : elle ne le *rend* pas négatif. Le refus tombe **avant** toute écriture
+  dans l'unité de travail — `wrapInTransaction()` fermerait l'EntityManager sur
+  exception, d'où la transaction DBAL tenue à la main : le contrôleur peut encore
+  réafficher son formulaire en 422.
+- **Emplacement désactivé** : plus aucun mouvement, sauf la caisse.
+- **Champs historiques** `Article::stockActuel` et `MatierePremiere::stockActuel`
+  **conservés et synchronisés** : ils valent le stock du **dépôt principal**
+  (`Emplacement::CODE_DEPOT_PRINCIPAL` = `DEPOT`), en base et sur l'objet. C'est ce
+  que lisent encore l'inventaire, les alertes de seuil et l'écran Stock.
+- **Reprise de l'existant** : au premier mouvement d'un produit sans ligne au dépôt
+  principal, la ligne reprend `stockActuel` et une écriture d'ouverture
+  (AJUSTEMENT, document `reprise`) comble l'écart avec les mouvements déjà écrits.
+  C'est le calcul de la migration, au fil de l'eau : la base de test, montée sans
+  migration, et les fixtures purgées restent cohérentes. `depotPrincipal()` crée
+  le dépôt s'il manque.
+- **Invariant** : stock courant = somme des mouvements du couple ; au dépôt
+  principal, `stockActuel` = stock courant. `StockManagerTest` le vérifie à chaque
+  test.
+
+**Migration `Version20260911090000`** : crée le dépôt, y rattache tous les
+mouvements, convertit les anciens types (`SORTIE_VENTE` et l'`ENTREE`
+d'annulation → `VENTE_CAISSE` ; `INVENTAIRE`, `SORTIE_PRODUCTION`, autres `ENTREE`
+→ `AJUSTEMENT`), écrit les écritures d'ouverture, remplit `stock_courant`.
+Éprouvée sur une base jetable garnie de cas réels (stock de départ sans mouvement,
+stock négatif, perte d'un article non suivi) : montée, descente, remontée.
+Réversible tant qu'aucun stand n'a servi.
+
+> ⚠ **Changements de comportement assumés** : une **perte** ou un **inventaire**
+> qui laisserait un stock négatif est désormais refusé (message sur la quantité,
+> 422). Une perte sur un article **non suivi** (pain fabriqué) ne crée plus de
+> mouvement — elle n'en touchait déjà pas le stock, et le mouvement faisait mentir
+> l'historique. Le **stock de départ** d'une matière est un mouvement : une matière
+> qui a un historique ne se supprime plus (message, au lieu d'une erreur SQL).
 
 ### Déstockage automatique (stock ↔ ventes)
 
@@ -1527,13 +1917,13 @@ Aucune écriture de stock n'a eu lieu, il n'y a rien à défaire.
   technique, chaque matière première est décrémentée de
   `quantité vendue × quantité fiche × 1/(1 − perte)` ; sinon, si l'article est
   **suivi en stock** (`Article.suiviStock`, ex. boissons), son stock est décrémenté
-  directement. Un `MouvementStock` **SORTIE_VENTE** (quantité signée) est créé par
-  décrément, avec `source = vente`.
-- À l'**annulation** : les mouvements **inverses** (ENTREE) sont générés et le stock
-  restauré.
+  directement. Un `MouvementStock` **VENTE_CAISSE** négatif par décrément, au
+  **dépôt principal**, document `vente`, auteur = caissier de la session — **en un
+  seul lot par vente** via `StockManager`.
+- À l'**annulation** : les sorties (`sortiesDeVente()`, VENTE_CAISSE **négatives**
+  seulement) sont inversées en VENTE_CAISSE positives, auteur = qui annule.
 - Le stock **peut devenir négatif** (une vente n'est jamais bloquée) mais **journalise
-  une alerte** (`logger->warning`). `Article` porte désormais `suiviStock`,
-  `stockActuel`, `stockMini`.
+  une alerte** (`logger->warning`, dans `StockManager`).
 
 ### Ticket de caisse et impression
 
@@ -1982,6 +2372,11 @@ compare l'implémentation à cette description et signale les écarts.
 | Inventaire (feuille, comptage, validation) | ✅ | `/admin/inventaires` |
 | Paramètres de l'établissement, logo compris | ✅ | `/admin/parametres` |
 | Import du catalogue en masse (nom, prix) | ✅ | `/admin/articles/importer` |
+| Stock par emplacement (dépôt, stands) | ✅ | `StockManager` |
+| Revendeurs : stands, vendeurs, bons de dotation, bon de sortie imprimable | ✅ | `/admin/dotations`, `/admin/stands`, `/admin/vendeurs` |
+| Point des stands : arrêté de période, retours, écart, fiche imprimable | ✅ | `/admin/points` |
+| Dettes des vendeurs : manquant imputé ou passé en perte, avances, remboursements, alerte à la dotation | ✅ | `/admin/vendeurs/{id}` |
+| Rapports des stands (par stand, par vendeur, caisse et stands, top produits, CSV) et suggestion de dotation | ✅ | `/admin/rapports-stands` |
 
 Tests : **487 tests PHPUnit** (`php bin/phpunit`) et **38 tests Node**
 (`node --test "tests/js/*.test.js"`).
@@ -2065,8 +2460,9 @@ Classés par importance.
   développement). La résolution des modules est vérifiée statiquement et les tests
   couvrent la logique, mais un passage manuel sur `/caisse` et `/pilotage` reste à
   faire avant la première démonstration client.
-- Le stock peut devenir négatif : c'est **volontaire** (ne jamais bloquer une vente),
-  mais journalisé en `warning`.
+- Le stock peut devenir négatif **par la caisse seule** : c'est **volontaire** (ne
+  jamais bloquer une vente), mais journalisé en `warning`. Tout autre mouvement
+  sortant est refusé par `StockManager`.
 
 ### Documentation
 

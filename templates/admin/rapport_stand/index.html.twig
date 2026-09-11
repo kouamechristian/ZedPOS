@@ -1,0 +1,65 @@
+{% extends 'admin/base.html.twig' %}
+{% import 'admin/_macros.html.twig' as fmt %}
+{% import 'admin/_icones.html.twig' as ui %}
+
+{# Rapports des stands, en lecture seule.
+
+   Tout part des lignes de dotation, à leur date : un point mensuel n'empêche pas un
+   rapport journalier d'être juste. Ce qui n'a pas encore été arrêté compte dans le
+   confié et dans « en attente de point », nulle part ailleurs — d'où cette colonne,
+   pour que personne ne lise un zéro vendu comme une journée ratée.
+
+   Le filtre est commun aux quatre rapports et les suit d'onglet en onglet ; le CSV
+   reprend exactement la page affichée. #}
+
+{% block page_title %}Rapports des stands{% endblock %}
+{% block page_sous_titre %}Du {{ filtre.du|date('d/m/Y') }} au {{ filtre.au|date('d/m/Y') }} · par {{ filtre.granularite.libelle|lower }}{% endblock %}
+
+{% block page_actions %}
+    <a href="{{ path('admin_rapport_stand_csv', filtre.parametres|merge({rapport: rapport})) }}" class="btn btn-secondaire" data-turbo="false">{{ ui.icone('telecharger') }} Exporter en CSV</a>
+{% endblock %}
+
+{% block admin_content %}
+{% if filtre.erreur %}
+    <div class="alerte alerte-ambre apparition mb-4" role="alert">{{ ui.icone('info') }}<p>{{ filtre.erreur }}</p></div>
+{% endif %}
+
+{# ---- Filtre commun ---- #}
+<section class="carte apparition mb-4">
+    <div class="carte-corps space-y-3">
+        <div class="onglets" role="group" aria-label="Raccourcis de période">
+            {% for cle, libelle in raccourcis %}
+                <a href="{{ path('admin_rapport_stand', {rapport: rapport, periode: cle, granularite: filtre.granularite.value}) }}" class="onglet"
+                   {% if raccourci == cle %}aria-current="page"{% endif %}>{{ libelle }}</a>
+            {% endfor %}
+        </div>
+        <form method="get" action="{{ path('admin_rapport_stand', {rapport: rapport}) }}" class="flex flex-wrap items-end gap-3" data-controller="soumission-auto">
+            <label class="block">
+                <span class="etiquette">Du</span>
+                <input type="date" name="du" value="{{ filtre.du|date('Y-m-d') }}" class="champ" data-action="soumission-auto#soumettre">
+            </label>
+            <label class="block">
+                <span class="etiquette">Au</span>
+                <input type="date" name="au" value="{{ filtre.au|date('Y-m-d') }}" class="champ" data-action="soumission-auto#soumettre">
+            </label>
+            <label class="block">
+                <span class="etiquette">Regrouper par</span>
+                <select name="granularite" class="champ" data-action="soumission-auto#soumettre">
+                    {% for granularite in granularites %}
+                        <option value="{{ granularite.value }}" {% if granularite == filtre.granularite %}selected{% endif %}>{{ granularite.libelle }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <button class="btn btn-primaire">{{ ui.icone('filtre') }} Afficher</button>
+        </form>
+    </div>
+</section>
+
+<nav class="onglets mb-4" aria-label="Rapports">
+    {% for cle, libelle in rapports %}
+        <a href="{{ path('admin_rapport_stand', filtre.parametres|merge({rapport: cle})) }}" class="onglet" {% if rapport == cle %}aria-current="page"{% endif %}>{{ libelle }}</a>
+    {% endfor %}
+</nav>
+
+{{ include('admin/rapport_stand/_' ~ rapport ~ '.html.twig') }}
+{% endblock %}

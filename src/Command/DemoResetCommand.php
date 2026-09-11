@@ -3,7 +3,6 @@
 namespace App\Command;
 
 use App\Entity\Article;
-use App\Entity\MouvementStock;
 use App\Entity\SessionCaisse;
 use App\Entity\Utilisateur;
 use App\Entity\Vente;
@@ -17,6 +16,7 @@ use App\Service\EncaissementService;
 use App\Service\NotificateurDirigeante;
 use App\Service\RapportCaisseService;
 use App\Service\SessionCaisseService;
+use App\Service\StockManager;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -70,6 +70,7 @@ class DemoResetCommand extends Command
         private readonly RapportCaisseService $rapports,
         private readonly EncaissementService $encaissement,
         private readonly NotificateurDirigeante $notificateur,
+        private readonly StockManager $stock,
     ) {
         parent::__construct();
     }
@@ -315,26 +316,28 @@ class DemoResetCommand extends Command
     private function reapprovisionner(): int
     {
         $horodatage = new \DateTimeImmutable('today 05:30');
+        $depot = $this->stock->depotPrincipal();
         $nombre = 0;
 
         foreach ($this->matieres->findAll() as $matiere) {
             $seuil = $matiere->getStockMini();
             $cible = $seuil > 0 ? $seuil * self::FACTEUR_REAPPRO : 50000;
-            $delta = $cible - $matiere->getStockActuel();
+            $delta = $cible - $this->stock->getStock($depot, $matiere);
 
             if (0 === $delta) {
                 continue;
             }
 
-            $matiere->setStockActuel($cible);
-
-            $mouvement = new MouvementStock(TypeMouvementStock::INVENTAIRE, $delta);
-            $mouvement
-                ->setMatierePremiere($matiere)
-                ->setMotif('Régularisation d\'inventaire (préparation de la démonstration)')
-                ->setSource('inventaire', null);
+            // Le delta amène le stock pile à la cible, positive : jamais refusé.
+            $mouvement = $this->stock->enregistrerMouvement(
+                $matiere,
+                $depot,
+                $delta,
+                TypeMouvementStock::AJUSTEMENT,
+                'inventaire',
+                motif: 'Régularisation d\'inventaire (préparation de la démonstration)',
+            );
             (new \ReflectionProperty($mouvement, 'createdAt'))->setValue($mouvement, $horodatage);
-            $this->em->persist($mouvement);
 
             ++$nombre;
         }

@@ -38,6 +38,21 @@ enum ActionAudit: string
     // d'un autre : ici personne n'a rien redistribué.
     case SECRET_MODIFIE = 'SECRET_MODIFIE';
 
+    // Stands et revendeurs. Pas de double validation dans ce module : ces entrées
+    // sont la seule sécurité, d'où les montants avant/après sur chacune.
+    case DOTATION_VALIDEE = 'DOTATION_VALIDEE';
+    case DOTATION_ANNULEE = 'DOTATION_ANNULEE';
+    case ARRETE_VALIDE = 'ARRETE_VALIDE';
+    case ARRETE_ANNULE = 'ARRETE_ANNULE';
+    // Un point validé avec écart produit deux entrées, comme une clôture de caisse :
+    // on filtre les écarts seuls.
+    case ECART_POINT = 'ECART_POINT';
+    // Dettes des vendeurs : ouverture (manquant imputé au point, avance, autre),
+    // remboursement, annulation avec le point qui l'avait ouverte.
+    case DETTE_CREEE = 'DETTE_CREEE';
+    case DETTE_REMBOURSEE = 'DETTE_REMBOURSEE';
+    case DETTE_ANNULEE = 'DETTE_ANNULEE';
+
     public function libelle(): string
     {
         return match ($this) {
@@ -56,6 +71,14 @@ enum ActionAudit: string
             self::UTILISATEUR_ACTIVE => 'Activation d\'utilisateur',
             self::UTILISATEUR_DESACTIVE => 'Désactivation d\'utilisateur',
             self::SECRET_MODIFIE => 'Changement de mot de passe ou de code PIN',
+            self::DOTATION_VALIDEE => 'Validation de dotation',
+            self::DOTATION_ANNULEE => 'Annulation de dotation',
+            self::ARRETE_VALIDE => 'Validation d\'un point de stand',
+            self::ARRETE_ANNULE => 'Annulation d\'un point de stand',
+            self::ECART_POINT => 'Écart d\'espèces au point',
+            self::DETTE_CREEE => 'Dette de vendeur ouverte',
+            self::DETTE_REMBOURSEE => 'Remboursement de dette de vendeur',
+            self::DETTE_ANNULEE => 'Annulation de dette de vendeur',
         };
     }
 
@@ -74,6 +97,14 @@ enum ActionAudit: string
             // Un rôle changé ou un identifiant réinitialisé redistribue un accès :
             // c'est exactement ce qu'on vient relire dans un journal d'audit.
             self::UTILISATEUR_MODIFIE,
+            // Une dotation annulée remet de la marchandise au dépôt sur la seule
+            // parole de la gérante.
+            self::DOTATION_ANNULEE,
+            // Défaire un point rouvre ce qu'un vendeur a déjà payé.
+            self::ARRETE_ANNULE,
+            self::ECART_POINT,
+            // Effacer ce qu'un vendeur doit, même par le biais d'un point annulé.
+            self::DETTE_ANNULEE,
         ], true);
     }
 
@@ -88,6 +119,9 @@ enum ActionAudit: string
             self::UTILISATEUR_CREE, self::UTILISATEUR_MODIFIE,
             self::UTILISATEUR_ACTIVE, self::UTILISATEUR_DESACTIVE,
             self::SECRET_MODIFIE => 'Comptes',
+            self::DOTATION_VALIDEE, self::DOTATION_ANNULEE,
+            self::ARRETE_VALIDE, self::ARRETE_ANNULE, self::ECART_POINT,
+            self::DETTE_CREEE, self::DETTE_REMBOURSEE, self::DETTE_ANNULEE => 'Stands et revendeurs',
         };
     }
 }

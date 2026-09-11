@@ -2,39 +2,40 @@
 
 namespace App\EventListener;
 
-use App\Entity\Article;
-use App\Entity\MatierePremiere;
-use App\Entity\MouvementStock;
 use App\Entity\Vente;
 use App\Enum\StatutVente;
 use App\Enum\TypeMouvementStock;
 use App\Repository\MouvementStockRepository;
+use App\Service\DemandeMouvementStock;
+use App\Service\StockManager;
 use Doctrine\Bundle\DoctrineBundle\Attribute\AsDoctrineListener;
 use Doctrine\ORM\Event\PostFlushEventArgs;
 use Doctrine\ORM\Event\PostPersistEventArgs;
 use Doctrine\ORM\Event\PreUpdateEventArgs;
 use Doctrine\ORM\Events;
-use Psr\Log\LoggerInterface;
 
 /**
- * Déstockage automatique lié aux ventes.
+ * Déstockage automatique lié aux ventes caisse, au dépôt principal.
  *
  * - À la création d'une vente : pour chaque ligne, si l'article a une fiche
  *   technique on décrémente chaque matière première de
  *   (quantité vendue × quantité de la fiche × coefficient de perte) ; sinon, si
  *   l'article est suivi en stock (boissons), on décrémente son stock directement.
- *   Un MouvementStock SORTIE_VENTE est créé pour chaque décrément.
- * - À l'annulation : les mouvements inverses sont générés.
+ * - À l'annulation : les sorties sont inversées.
  *
- * Le stock peut devenir négatif (on ne bloque jamais une vente) mais déclenche
- * une alerte (journalisée). Comme l'id de la vente n'existe qu'après l'INSERT, le
- * travail est collecté en postPersist/preUpdate puis exécuté en postFlush.
+ * Tout passe par {@see StockManager}, en **un lot par vente** : une vente qui
+ * touche cinq matières est déstockée d'un bloc. Les mouvements sont de type
+ * VENTE_CAISSE, le seul qui tolère un stock négatif — on ne bloque jamais une
+ * vente. Comme l'id de la vente n'existe qu'après l'INSERT, le travail est
+ * collecté en postPersist/preUpdate puis exécuté en postFlush.
  */
 #[AsDoctrineListener(Events::postPersist)]
 #[AsDoctrineListener(Events::preUpdate)]
 #[AsDoctrineListener(Events::postFlush)]
 class DestockageVenteListener
 {
+    public const DOCUMENT = 'vente';
+
     /** @var Vente[] */
     private array $aDestocker = [];
     /** @var Vente[] */
@@ -43,7 +44,7 @@ class DestockageVenteListener
 
     public function __construct(
         private readonly MouvementStockRepository $mouvements,
-        private readonly LoggerInterface $logger,
+        private readonly StockManager $stock,
     ) {
     }
 
@@ -76,6 +77,7 @@ class DestockageVenteListener
 
     public function postFlush(PostFlushEventArgs $args): void
     {
+        // StockManager flushe à son tour : la garde évite de retraiter en boucle.
         if ($this->enCours || ([] === $this->aDestocker && [] === $this->aRestocker)) {
             return;
         }
@@ -87,21 +89,23 @@ class DestockageVenteListener
         $this->aRestocker = [];
 
         try {
-            $em = $args->getObjectManager();
             foreach ($destocker as $vente) {
-                $this->destocker($vente, $em);
+                $this->destocker($vente);
             }
             foreach ($restocker as $vente) {
-                $this->restocker($vente, $em);
+                $this->restocker($vente);
             }
-            $em->flush();
         } finally {
             $this->enCours = false;
         }
     }
 
-    private function destocker(Vente $vente, \Doctrine\ORM\EntityManagerInterface $em): void
+    private function destocker(Vente $vente): void
     {
+        $depot = $this->stock->depotPrincipal();
+        $motif = 'Sortie vente '.$vente->getNumero();
+        $demandes = [];
+
         foreach ($vente->getLignes() as $ligne) {
             $article = $ligne->getArticle();
             $venduMillimes = $ligne->getQuantite();
@@ -110,77 +114,42 @@ class DestockageVenteListener
             if (null !== $fiche) {
                 foreach ($fiche->getLignes() as $composant) {
                     $consommation = $this->consommation($venduMillimes, $composant->getQuantite(), $composant->getPourcentagePerte());
-                    $this->appliquer($em, $vente, $composant->getMatierePremiere(), null, -$consommation, TypeMouvementStock::SORTIE_VENTE, 'Sortie vente '.$vente->getNumero());
+                    if (0 !== $consommation) {
+                        $demandes[] = new DemandeMouvementStock($composant->getMatierePremiere(), $depot, -$consommation, TypeMouvementStock::VENTE_CAISSE, self::DOCUMENT, $vente->getId(), $motif);
+                    }
                 }
             } elseif ($article->isSuiviStock()) {
-                $this->appliquer($em, $vente, null, $article, -$venduMillimes, TypeMouvementStock::SORTIE_VENTE, 'Sortie vente '.$vente->getNumero());
+                $demandes[] = new DemandeMouvementStock($article, $depot, -$venduMillimes, TypeMouvementStock::VENTE_CAISSE, self::DOCUMENT, $vente->getId(), $motif);
             }
         }
+
+        // L'auteur est le caissier de la session, et non l'utilisateur connecté :
+        // les fixtures et la synchronisation n'en ont pas toujours un.
+        $this->stock->enregistrerMouvements($demandes, $vente->getSessionCaisse()->getUtilisateur());
     }
 
-    private function restocker(Vente $vente, \Doctrine\ORM\EntityManagerInterface $em): void
+    /**
+     * Inverse les sorties de la vente, emplacement par emplacement. L'auteur est
+     * l'utilisateur connecté : celui qui annule.
+     */
+    private function restocker(Vente $vente): void
     {
-        $sorties = $this->mouvements->findBy([
-            'sourceType' => 'vente',
-            'sourceId' => $vente->getId(),
-            'type' => TypeMouvementStock::SORTIE_VENTE,
-        ]);
+        $motif = 'Annulation vente '.$vente->getNumero();
+        $demandes = [];
 
-        foreach ($sorties as $sortie) {
-            $inverse = -$sortie->getQuantite();
-            $this->appliquer(
-                $em,
-                $vente,
-                $sortie->getMatierePremiere(),
-                $sortie->getArticle(),
-                $inverse,
-                TypeMouvementStock::ENTREE,
-                'Annulation vente '.$vente->getNumero(),
+        foreach ($this->mouvements->sortiesDeVente((int) $vente->getId()) as $sortie) {
+            $demandes[] = new DemandeMouvementStock(
+                $sortie->getProduit(),
+                $sortie->getEmplacement(),
+                -$sortie->getQuantite(),
+                TypeMouvementStock::VENTE_CAISSE,
+                self::DOCUMENT,
+                $vente->getId(),
+                $motif,
             );
         }
-    }
 
-    private function appliquer(
-        \Doctrine\ORM\EntityManagerInterface $em,
-        Vente $vente,
-        ?MatierePremiere $matiere,
-        ?Article $article,
-        int $quantiteSignee,
-        TypeMouvementStock $type,
-        string $motif,
-    ): void {
-        $mouvement = new MouvementStock($type, $quantiteSignee);
-        $mouvement->setMotif($motif)->setSource('vente', $vente->getId());
-
-        if (null !== $matiere) {
-            $mouvement->setMatierePremiere($matiere);
-            $nouveau = $matiere->getStockActuel() + $quantiteSignee;
-            $matiere->setStockActuel($nouveau);
-            $this->alerter($nouveau, $matiere->getStockMini(), $matiere->getNom(), $vente);
-        } elseif (null !== $article) {
-            $mouvement->setArticle($article);
-            $nouveau = $article->getStockActuel() + $quantiteSignee;
-            $article->setStockActuel($nouveau);
-            $this->alerter($nouveau, $article->getStockMini(), $article->getNom(), $vente);
-        }
-
-        $em->persist($mouvement);
-    }
-
-    private function alerter(int $stock, int $stockMini, string $nom, Vente $vente): void
-    {
-        if ($stock < 0) {
-            $this->logger->warning('Stock négatif sur « {article} » ({stock} millièmes) après la vente {vente}.', [
-                'article' => $nom,
-                'stock' => $stock,
-                'vente' => $vente->getNumero(),
-            ]);
-        } elseif ($stock < $stockMini) {
-            $this->logger->notice('Stock de « {article} » sous le seuil d\'alerte ({stock} millièmes).', [
-                'article' => $nom,
-                'stock' => $stock,
-            ]);
-        }
+        $this->stock->enregistrerMouvements($demandes);
     }
 
     /**

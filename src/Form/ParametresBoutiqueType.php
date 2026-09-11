@@ -46,14 +46,21 @@ class ParametresBoutiqueType extends AbstractType
                 continue;
             }
 
+            $contraintes = [];
+            if (CleParametre::RAISON_SOCIALE === $cle) {
+                $contraintes[] = new Assert\NotBlank(message: 'La raison sociale est imprimée sur chaque ticket : elle est obligatoire.');
+            }
+            if ($cle->estMontant()) {
+                $contraintes[] = new Assert\NotBlank(message: 'Saisissez un montant, même 0.');
+                $contraintes[] = new Assert\Regex(pattern: '/^\d{1,9}$/', message: 'Un montant en francs entiers, chiffres seuls.');
+            }
+
             $builder->add(self::champ($cle), $cle->estLong() ? TextareaType::class : TextType::class, [
                 'label' => $cle->libelle(),
                 'help' => $cle->aide(),
-                'required' => CleParametre::RAISON_SOCIALE === $cle,
-                'attr' => $cle->estLong() ? ['rows' => 2] : [],
-                'constraints' => CleParametre::RAISON_SOCIALE === $cle
-                    ? [new Assert\NotBlank(message: 'La raison sociale est imprimée sur chaque ticket : elle est obligatoire.')]
-                    : [],
+                'required' => CleParametre::RAISON_SOCIALE === $cle || $cle->estMontant(),
+                'attr' => $cle->estLong() ? ['rows' => 2] : ($cle->estMontant() ? ['inputmode' => 'numeric'] : []),
+                'constraints' => $contraintes,
             ]);
         }
 

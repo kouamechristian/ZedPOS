@@ -28,6 +28,16 @@ class Article
     #[ORM\Column]
     private int $prixVenteTtc;
 
+    /**
+     * Prix de cession TTC au vendeur d'un stand, en centimes : ce qu'il doit à la
+     * boutique pour chaque unité vendue. Copié sur le bon de dotation à sa
+     * validation. **Même règle que le prix de vente** : fixé par la dirigeante
+     * seule (`Permission::ARTICLE_MODIFIER_PRIX`). Zéro = non fixé, et un bon qui
+     * en contient ne se valide pas.
+     */
+    #[ORM\Column(options: ['default' => 0])]
+    private int $prixCession = 0;
+
     /** Unité de vente (ex. « pièce », « kg », « portion »). */
     #[ORM\Column(length: 20)]
     private string $unite;
@@ -68,7 +78,13 @@ class Article
     #[ORM\Column(options: ['default' => false])]
     private bool $suiviStock = false;
 
-    /** Stock courant, en millièmes d'unité (pour les articles suivis en stock). */
+    /**
+     * Stock au **dépôt principal**, en millièmes d'unité (articles suivis en stock).
+     *
+     * Champ historique, conservé le temps de la bascule vers le stock par
+     * emplacement : la référence est `StockCourant`, et ce champ n'en est que la
+     * copie, tenue par `StockManager`. Ne pas l'écrire ailleurs.
+     */
     #[ORM\Column(type: Types::BIGINT, options: ['default' => 0])]
     private int $stockActuel = 0;
 
@@ -121,6 +137,18 @@ class Article
     public function setPrixVenteTtc(int $prixVenteTtc): self
     {
         $this->prixVenteTtc = $prixVenteTtc;
+
+        return $this;
+    }
+
+    public function getPrixCession(): int
+    {
+        return $this->prixCession;
+    }
+
+    public function setPrixCession(int $prixCession): self
+    {
+        $this->prixCession = $prixCession;
 
         return $this;
     }

@@ -76,15 +76,26 @@ class ArticleType extends AbstractType
             return;
         }
 
-        $builder->add('prixVenteTtc', IntegerType::class, [
-            'label' => 'Prix de vente TTC (FCFA)',
-        ]);
+        $builder
+            ->add('prixVenteTtc', IntegerType::class, [
+                'label' => 'Prix de vente TTC (FCFA)',
+            ])
+            // Même règle que le prix de vente : c'est ce que le vendeur d'un stand
+            // doit à la boutique par unité vendue.
+            ->add('prixCession', IntegerType::class, [
+                'label' => 'Prix de cession aux stands (FCFA)',
+                'required' => false,
+                'help' => 'Ce que le vendeur doit par unité vendue. Vide : l\'article ne peut pas être doté.',
+                'constraints' => [new Assert\PositiveOrZero(message: 'Le prix de cession ne peut pas être négatif.')],
+            ]);
 
-        // Le prix est stocké en centimes de FCFA ; l'utilisateur saisit des FCFA.
-        $builder->get('prixVenteTtc')->addModelTransformer(new CallbackTransformer(
-            static fn (?int $centimes): ?int => null === $centimes ? null : intdiv($centimes, 100),
-            static fn (?int $fcfa): int => (int) $fcfa * 100,
-        ));
+        // Les prix sont stockés en centimes de FCFA ; l'utilisateur saisit des FCFA.
+        foreach (['prixVenteTtc', 'prixCession'] as $champ) {
+            $builder->get($champ)->addModelTransformer(new CallbackTransformer(
+                static fn (?int $centimes): ?int => null === $centimes ? null : intdiv($centimes, 100),
+                static fn (?int $fcfa): int => (int) $fcfa * 100,
+            ));
+        }
     }
 
     public function configureOptions(OptionsResolver $resolver): void

@@ -1,0 +1,35 @@
+{% extends 'admin/base.html.twig' %}
+{% import 'admin/_icones.html.twig' as ui %}
+
+{% block page_title %}Nouvelle dotation{% endblock %}
+{% block page_sous_titre %}Pour quel stand ? Un appui suffit.{% endblock %}
+
+{% block page_actions %}
+    <a href="{{ path('admin_dotation_index') }}" class="btn btn-fantome">{{ ui.icone('retour') }} Dotations</a>
+{% endblock %}
+
+{% block admin_content %}
+{% if stands is empty %}
+    <div class="carte apparition p-8 text-center">
+        <p class="text-stone-600">Aucun stand actif.</p>
+        <a href="{{ path('admin_stand_new') }}" class="btn btn-primaire mt-4">{{ ui.icone('plus') }} Créer un stand</a>
+    </div>
+{% else %}
+    {# Tuiles larges : c'est le premier geste du matin, il se fait sans viser. #}
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {% for stand in stands %}
+            <a href="{{ path('admin_dotation_new', {stand: stand.id}) }}"
+               class="carte carte-interactive apparition flex min-h-28 flex-col justify-between p-5" style="--i: {{ loop.index0 }}">
+                <div>
+                    <div class="text-lg font-bold text-stone-900">{{ stand.libelle }}</div>
+                    <div class="text-xs font-medium uppercase tracking-wide text-stone-500">{{ stand.code }}</div>
+                </div>
+                <div class="mt-3 flex items-center justify-between gap-2 text-sm text-stone-600">
+                    <span class="flex items-center gap-1.5">{{ ui.icone('utilisateur', 'h-4 w-4') }} {{ stand.vendeurHabituel ? stand.vendeurHabituel.nom : 'Pas de vendeur habituel' }}</span>
+                    <span class="badge badge-neutre">{{ stand.periodicitePoint.libelle }}</span>
+                </div>
+            </a>
+        {% endfor %}
+    </div>
+{% endif %}
+{% endblock %}

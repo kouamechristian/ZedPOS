@@ -25,6 +25,7 @@ namespace App\Security;
  * | Gérer les comptes            | non      | oui    | oui        | non       |
  * | Agir sur un compte dirigeante| non      | **non**| oui        | non       |
  * | Attribuer le rôle dirigeante | non      | **non**| oui        | non       |
+ * | Gérer stands et dotations    | non      | oui    | oui        | non       |
  *
  * (L) = lecture seule : le comptable ne se voit accorder aucune permission d'écriture.
  */
@@ -89,6 +90,27 @@ final class Permission
      * {@see \App\Enum\RoleUtilisateur::attribuablesPar()}.
      */
     public const UTILISATEUR_GERER = 'UTILISATEUR_GERER';
+
+    // --- Stands et revendeurs -------------------------------------------------
+
+    /**
+     * Gérer le module des revendeurs : stands, vendeurs, bons de dotation
+     * (saisie, validation, annulation, impression).
+     *
+     * **La gérante**, et elle seule parmi les rôles de terrain — aucun rôle
+     * n'a été créé pour ce module. La dirigeante y accède par héritage de
+     * ROLE_GERANT. Ni le caissier, ni le comptable. Les vendeurs n'ont pas de
+     * compte : ce sont des entités métier.
+     */
+    public const STAND_GERER = 'STAND_GERER';
+
+    /**
+     * Fixer le mode de rémunération et le taux de commission d'un stand.
+     * **Dirigeante seule**, comme un prix : c'est ce que la boutique encaisse. La
+     * gérante voit ces réglages sans pouvoir les changer ; le seuil d'écart, lui,
+     * reste à sa main.
+     */
+    public const REMUNERATION_FIXER = 'REMUNERATION_FIXER';
 
     private function __construct()
     {

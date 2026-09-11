@@ -1,0 +1,93 @@
+{% extends 'admin/base.html.twig' %}
+{% import 'admin/_macros.html.twig' as fmt %}
+{% import 'admin/_icones.html.twig' as ui %}
+
+{% block page_title %}Bon {{ bon.numero }}{% endblock %}
+{% block page_sous_titre %}{{ bon.stand.libelle }} · {{ bon.vendeur.nom }} · {{ bon.dateDotation|date('d/m/Y') }}{% endblock %}
+
+{% block page_actions %}
+    <a href="{{ path('admin_dotation_index') }}" class="btn btn-fantome">{{ ui.icone('retour') }} Dotations</a>
+    <a href="{{ path('admin_dotation_impression', {id: bon.id}) }}" class="btn btn-secondaire" target="_blank" data-turbo="false">{{ ui.icone('imprimer') }} Imprimer le bon</a>
+    {% if bon.estBrouillon %}
+        <a href="{{ path('admin_dotation_edit', {id: bon.id}) }}" class="btn btn-secondaire">{{ ui.icone('modifier') }} Modifier</a>
+    {% endif %}
+{% endblock %}
+
+{% block admin_content %}
+{% set marge = bon.stand.modeRemuneration.value == 'MARGE' %}
+<div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+    <div class="tableau-conteneur apparition">
+        <div class="defilement-x">
+        <table class="tableau">
+            <thead>
+                <tr>
+                    <th>Produit</th>
+                    <th class="num">Quantité</th>
+                    <th class="num">Prix de vente</th>
+                    {% if marge %}<th class="num">Prix de cession</th>{% endif %}
+                    <th class="num">{{ marge ? 'Dû' : 'Valeur' }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ligne in bon.lignes %}
+                    <tr>
+                        <td class="cellule-principale">{{ ligne.produit.nom }}</td>
+                        <td class="num tabular-nums">{{ fmt.unites(ligne.quantite) }}</td>
+                        {# Brouillon : prix courants, en gris — ils ne seront figés qu'à la validation. #}
+                        <td class="num tabular-nums {{ ligne.prixVenteUnitaire is null ? 'text-stone-400' }}">{{ fmt.fcfa(ligne.prixVenteUnitaire ?? ligne.produit.prixVenteTtc) }}</td>
+                        {% if marge %}<td class="num tabular-nums {{ ligne.prixCessionUnitaire is null ? 'text-stone-400' }}">{{ fmt.fcfa(ligne.prixCessionUnitaire ?? ligne.produit.prixCession) }}</td>{% endif %}
+                        <td class="num tabular-nums">{{ fmt.fcfa(marge ? ligne.montantCession : ligne.montantVente) }}</td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="5" class="cellule-vide">Bon vide.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+
+    <aside class="flex flex-col gap-4">
+        <div class="carte apparition" style="--i: 1">
+            <div class="carte-corps space-y-2 text-sm">
+                <div class="flex items-center justify-between"><span class="text-stone-500">Statut</span>{{ include('admin/dotation/_statut.html.twig', {bon: bon}) }}</div>
+                <div class="flex justify-between"><span class="text-stone-500">Valeur de vente</span><strong class="tabular-nums">{{ fmt.fcfa(bon.totalVente) }}</strong></div>
+                <div class="flex justify-between"><span class="text-stone-500">Net si tout est vendu</span><strong class="text-lg tabular-nums">{{ fmt.fcfa(bon.netSiToutVendu) }}</strong></div>
+                <p class="aide">{{ marge ? 'Rémunération à la marge (prix de cession).' : 'Commission de ' ~ (bon.stand.tauxCommission / 100)|number_format(bon.stand.tauxCommission % 100 ? 2 : 0, ',', ' ') ~ ' % sur les ventes.' }} Le point fixe ce qui est réellement dû.</p>
+                <div class="flex justify-between"><span class="text-stone-500">Saisi par</span><span>{{ bon.createdBy.nom }}</span></div>
+                {% if bon.valideAt %}<div class="flex justify-between"><span class="text-stone-500">Validé le</span><span>{{ bon.valideAt|date('d/m/Y H:i') }}</span></div>{% endif %}
+                {% if bon.annuleAt %}<div class="flex justify-between"><span class="text-stone-500">Annulé le</span><span>{{ bon.annuleAt|date('d/m/Y H:i') }}</span></div>{% endif %}
+                {% if bon.motifAnnulation %}<p class="rounded-lg bg-red-50 px-3 py-2 text-red-800">{{ bon.motifAnnulation }}</p>{% endif %}
+                {% if bon.estBrouillon %}<p class="aide">Prix en gris : prix courants, figés à la validation.</p>{% endif %}
+            </div>
+        </div>
+
+        {% if bon.estBrouillon %}
+            <form method="post" action="{{ path('admin_dotation_valider', {id: bon.id}) }}" class="apparition" style="--i: 2">
+                <input type="hidden" name="_token" value="{{ csrf_token('dotation_' ~ bon.id) }}">
+                <button class="btn btn-primaire btn-lg w-full">{{ ui.icone('valide') }} Valider la dotation</button>
+            </form>
+        {% endif %}
+
+        {% if not bon.estAnnule and not (bon.arrete and bon.arrete.estValide) %}
+            {# Annuler n'est jamais un seul appui : le motif est exigé pour un bon validé,
+               et il part au journal d'audit avec les montants. #}
+            <form method="post" action="{{ path('admin_dotation_annuler', {id: bon.id}) }}" class="carte apparition" style="--i: 3">
+                <div class="carte-corps space-y-3">
+                    <input type="hidden" name="_token" value="{{ csrf_token('dotation_' ~ bon.id) }}">
+                    <label class="block">
+                        <span class="etiquette">Motif d'annulation{% if bon.estValide %} (obligatoire){% endif %}</span>
+                        <input type="text" name="motif" class="champ" maxlength="255" {% if bon.estValide %}required{% endif %}
+                               placeholder="{{ bon.estValide ? 'Erreur de saisie, vendeur absent…' : 'Facultatif pour un brouillon' }}">
+                    </label>
+                    {% if bon.estValide %}
+                        <p class="aide">Les produits reviennent au dépôt. Refusé si le stand en a déjà vendu une partie.</p>
+                    {% endif %}
+                    <button class="btn btn-danger w-full">{{ ui.icone('supprimer') }} Annuler ce bon</button>
+                </div>
+            </form>
+        {% elseif bon.arrete and bon.arrete.estValide %}
+            <div class="alerte alerte-bleu">{{ ui.icone('info') }}<p>Rattaché à un arrêté validé : ce bon ne s'annule plus.</p></div>
+        {% endif %}
+    </aside>
+</div>
+{% endblock %}

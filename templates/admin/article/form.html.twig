@@ -19,12 +19,20 @@
             {# Champ absent du formulaire si l'utilisateur n'est pas habilité au prix. #}
             {% if form.prixVenteTtc is defined %}
                 {{ form_row(form.prixVenteTtc) }}
+                {{ form_row(form.prixCession) }}
             {% else %}
                 <div class="ligne-champ">
                     <span class="etiquette">Prix de vente TTC</span>
                     <p class="rounded-xl border border-dashed border-stone-300 bg-stone-50 px-3 py-2 text-sm text-stone-600">
                         {{ article is defined ? (article.prixVenteTtc / 100)|number_format(0, ',', ' ') ~ ' FCFA' : '—' }}
                         <span class="mt-0.5 block text-xs text-stone-500">Seule la dirigeante peut fixer un prix de vente.</span>
+                    </p>
+                </div>
+                <div class="ligne-champ">
+                    <span class="etiquette">Prix de cession aux stands</span>
+                    <p class="rounded-xl border border-dashed border-stone-300 bg-stone-50 px-3 py-2 text-sm text-stone-600">
+                        {{ article is defined and article.prixCession > 0 ? (article.prixCession / 100)|number_format(0, ',', ' ') ~ ' FCFA' : 'Non fixé' }}
+                        <span class="mt-0.5 block text-xs text-stone-500">Seule la dirigeante peut le fixer.</span>
                     </p>
                 </div>
             {% endif %}

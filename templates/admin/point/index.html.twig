@@ -1,0 +1,60 @@
+{% extends 'admin/base.html.twig' %}
+{% import 'admin/_macros.html.twig' as fmt %}
+{% import 'admin/_icones.html.twig' as ui %}
+{% import '_pagination.html.twig' as pagination %}
+{% import 'admin/_recherche.html.twig' as recherche %}
+
+{% block page_title %}Points des stands{% endblock %}
+{% block page_sous_titre %}Chaque période arrêtée avec un vendeur : ce qui était dû, ce qui a été remis.{% endblock %}
+
+{% block page_actions %}
+    <a href="{{ path('admin_point_new') }}" class="btn btn-primaire btn-lg">{{ ui.icone('plus') }} Faire le point</a>
+{% endblock %}
+
+{% block admin_content %}
+{{ recherche.barre('admin_point_index', 'Numéro, stand ou vendeur') }}
+<div class="tableau-conteneur apparition">
+    <div class="defilement-x">
+    <table class="tableau">
+        <thead>
+            <tr>
+                <th>Point</th>
+                <th>Période</th>
+                <th>Stand</th>
+                <th>Vendeur</th>
+                <th>Statut</th>
+                <th class="num">Net à remettre</th>
+                <th class="num">Écart</th>
+                <th class="num">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for arrete in arretes.items %}
+                <tr>
+                    <td><a href="{{ path('admin_point_show', {id: arrete.id}) }}" class="cellule-principale lien">{{ arrete.numero }}</a></td>
+                    <td class="cellule-douce tabular-nums">{{ arrete.dateDebut|date('d/m') }} → {{ arrete.dateFin|date('d/m/Y') }}</td>
+                    <td>{{ arrete.stand.libelle }}</td>
+                    <td>{{ arrete.vendeur.nom }}</td>
+                    <td>{{ include('admin/point/_statut.html.twig', {arrete: arrete}) }}</td>
+                    <td class="num tabular-nums">{{ fmt.fcfa(arrete.netARemettre) }}</td>
+                    <td class="num tabular-nums {{ arrete.ecart is not null and arrete.ecart < 0 ? 'text-red-700' : (arrete.ecart ? 'text-orange-700' : 'text-green-700') }}">
+                        {{ arrete.ecart is null ? '—' : fmt.fcfa(arrete.ecart) }}
+                    </td>
+                    <td>
+                        <div class="actions-ligne">
+                            {% if arrete.estBrouillon %}
+                                <a href="{{ path('admin_point_stand', {id: arrete.stand.id}) }}" class="btn btn-sm btn-secondaire">{{ ui.icone('modifier') }} Reprendre</a>
+                            {% endif %}
+                            <a href="{{ path('admin_point_fiche', {id: arrete.id}) }}" class="btn btn-sm btn-fantome btn-icone" title="Imprimer la fiche" aria-label="Imprimer la fiche" target="_blank" data-turbo="false">{{ ui.icone('imprimer') }}</a>
+                        </div>
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="8" class="cellule-vide">Aucun point.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{{ pagination.barre(arretes, 'admin_point_index') }}
+{% endblock %}

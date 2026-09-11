@@ -2,8 +2,16 @@
 
 namespace App\Service;
 
+use App\Entity\Arrete;
 use App\Entity\Article;
+use App\Entity\BonDotation;
+use App\Entity\BonRetour;
+use App\Entity\DetteVendeur;
+use App\Entity\RemboursementDette;
+use App\Entity\Vendeur;
+use App\Service\Point\ResultatPoint;
 use App\Entity\JournalAudit;
+use App\Entity\LigneDotation;
 use App\Entity\MatierePremiere;
 use App\Entity\Perte;
 use App\Entity\SessionCaisse;
@@ -118,15 +126,206 @@ class AuditLogger
 
     // ------------------------------------------------------- Catalogue / stock
 
-    public function prixModifie(Article $article, int $ancienPrix, int $nouveauPrix): JournalAudit
+    /**
+     * @param string $champ `prixVenteTtc` ou `prixCession` : les deux prix d'un
+     *                      article obéissent à la même règle et laissent la même trace
+     */
+    public function prixModifie(Article $article, int $ancienPrix, int $nouveauPrix, string $champ = 'prixVenteTtc'): JournalAudit
     {
         return $this->enregistrer(
             ActionAudit::PRIX_MODIFIE,
             'Article',
             $article->getId(),
-            ['prixVenteTtc' => $ancienPrix],
-            ['prixVenteTtc' => $nouveauPrix, 'nom' => $article->getNom()],
+            [$champ => $ancienPrix],
+            [$champ => $nouveauPrix, 'nom' => $article->getNom()],
         );
+    }
+
+    // ------------------------------------------------------ Stands / dotations
+
+    /**
+     * Validation d'un bon de dotation. Pas de double validation dans ce module :
+     * cette entrée est la seule sécurité, elle porte donc l'état complet —
+     * quantités, prix figés, montants — avant et après.
+     *
+     * L'auteur est passé explicitement : c'est lui qui a validé, pas nécessairement
+     * « l'utilisateur de la session » — une commande ou un traitement n'en a pas.
+     *
+     * @param array<string, mixed> $avant {@see self::etatDotation()} relevé avant
+     */
+    public function dotationValidee(BonDotation $bon, array $avant, ?Utilisateur $auteur = null): JournalAudit
+    {
+        return $this->enregistrer(ActionAudit::DOTATION_VALIDEE, 'BonDotation', $bon->getId(), $avant, $this->etatDotation($bon), $auteur);
+    }
+
+    /** @param array<string, mixed> $avant {@see self::etatDotation()} relevé avant */
+    public function dotationAnnulee(BonDotation $bon, array $avant, ?Utilisateur $auteur = null): JournalAudit
+    {
+        return $this->enregistrer(ActionAudit::DOTATION_ANNULEE, 'BonDotation', $bon->getId(), $avant, $this->etatDotation($bon), $auteur);
+    }
+
+    /** @param array<string, mixed> $avant {@see self::etatArrete()} relevé avant */
+    public function arreteValide(Arrete $arrete, array $avant, ?ResultatPoint $resultat, ?Utilisateur $auteur = null): JournalAudit
+    {
+        $entree = $this->enregistrer(ActionAudit::ARRETE_VALIDE, 'Arrete', $arrete->getId(), $avant, $this->etatArrete($arrete, $resultat), $auteur);
+
+        if (null !== $arrete->getEcart() && 0 !== $arrete->getEcart()) {
+            $this->enregistrer(
+                ActionAudit::ECART_POINT,
+                'Arrete',
+                $arrete->getId(),
+                ['netARemettre' => $arrete->getNetARemettre()],
+                [
+                    'numero' => $arrete->getNumero(),
+                    'stand' => $arrete->getStand()->getCode(),
+                    'vendeur' => $arrete->getVendeur()->getNom(),
+                    'montantRemis' => $arrete->getMontantRemis(),
+                    'ecart' => $arrete->getEcart(),
+                    'commentaireEcart' => $arrete->getCommentaireEcart(),
+                    'traitementEcart' => $arrete->getTraitementEcart()?->value,
+                ],
+                $auteur,
+            );
+        }
+
+        return $entree;
+    }
+
+    /**
+     * Ouverture d'une dette — manquant imputé au point, avance ou autre. Il n'y a
+     * pas d'« avant » : la dette n'existait pas.
+     */
+    public function detteCreee(DetteVendeur $dette, ?Utilisateur $auteur = null): JournalAudit
+    {
+        return $this->enregistrer(ActionAudit::DETTE_CREEE, 'DetteVendeur', $dette->getId(), null, $this->etatDette($dette), $auteur);
+    }
+
+    /**
+     * Un versement du vendeur, avec sa répartition sur les dettes touchées (les plus
+     * anciennes d'abord) et le solde avant / après.
+     *
+     * @param list<RemboursementDette> $remboursements
+     */
+    public function detteRemboursee(Vendeur $vendeur, array $remboursements, int $soldeAvant, int $soldeApres, ?Utilisateur $auteur = null): JournalAudit
+    {
+        $premier = $remboursements[0] ?? throw new \LogicException('Un remboursement sans ligne ne se trace pas.');
+
+        return $this->enregistrer(
+            ActionAudit::DETTE_REMBOURSEE,
+            'Vendeur',
+            $vendeur->getId(),
+            ['solde' => $soldeAvant],
+            [
+                'vendeur' => $vendeur->getNom(),
+                'solde' => $soldeApres,
+                'montant' => array_sum(array_map(static fn (RemboursementDette $r): int => $r->getMontant(), $remboursements)),
+                'moyen' => $premier->getMoyen()->value,
+                'date' => $premier->getDate()->format('Y-m-d'),
+                'repartition' => array_map(static fn (RemboursementDette $r): array => [
+                    'dette' => $r->getDette()->getId(),
+                    'montant' => $r->getMontant(),
+                    'reste' => $r->getDette()->reste(),
+                    'statut' => $r->getDette()->getStatut()->value,
+                ], $remboursements),
+            ],
+            $auteur,
+        );
+    }
+
+    /** @param array<string, mixed> $avant {@see self::etatDette()} relevé avant */
+    public function detteAnnulee(DetteVendeur $dette, array $avant, ?Utilisateur $auteur = null): JournalAudit
+    {
+        return $this->enregistrer(ActionAudit::DETTE_ANNULEE, 'DetteVendeur', $dette->getId(), $avant, $this->etatDette($dette), $auteur);
+    }
+
+    /** @return array<string, mixed> montants en centimes */
+    public function etatDette(DetteVendeur $dette): array
+    {
+        return [
+            'vendeur' => $dette->getVendeur()->getNom(),
+            'type' => $dette->getType()->value,
+            'statut' => $dette->getStatut()->value,
+            'montant' => $dette->getMontant(),
+            'montantRembourse' => $dette->getMontantRembourse(),
+            'arrete' => $dette->getArrete()?->getNumero(),
+            'commentaire' => $dette->getCommentaire(),
+        ];
+    }
+
+    /** @param array<string, mixed> $avant {@see self::etatArrete()} relevé avant */
+    public function arreteAnnule(Arrete $arrete, array $avant, ?Utilisateur $auteur = null): JournalAudit
+    {
+        return $this->enregistrer(ActionAudit::ARRETE_ANNULE, 'Arrete', $arrete->getId(), $avant, $this->etatArrete($arrete), $auteur);
+    }
+
+    /**
+     * Photographie d'un arrêté : période, montants, et, si le calcul est fourni, le
+     * détail par produit. Montants en centimes, quantités en millièmes.
+     *
+     * @return array<string, mixed>
+     */
+    public function etatArrete(Arrete $arrete, ?ResultatPoint $resultat = null): array
+    {
+        $etat = [
+            'numero' => $arrete->getNumero(),
+            'statut' => $arrete->getStatut()->value,
+            'stand' => $arrete->getStand()->getCode(),
+            'vendeur' => $arrete->getVendeur()->getNom(),
+            'dateDebut' => $arrete->getDateDebut()->format('Y-m-d'),
+            'dateFin' => $arrete->getDateFin()->format('Y-m-d'),
+            'granularite' => $arrete->getGranularite()->value,
+            'modeRemuneration' => $arrete->getModeRemuneration()->value,
+            'tauxCommission' => $arrete->getTauxCommission(),
+            'montantAttendu' => $arrete->getMontantAttendu(),
+            'remunerationVendeur' => $arrete->getRemunerationVendeur(),
+            'netARemettre' => $arrete->getNetARemettre(),
+            'montantRemis' => $arrete->getMontantRemis(),
+            'ecart' => $arrete->getEcart(),
+            'commentaireEcart' => $arrete->getCommentaireEcart(),
+            'traitementEcart' => $arrete->getTraitementEcart()?->value,
+            'motifAnnulation' => $arrete->getMotifAnnulation(),
+            'bonsDotation' => array_map(static fn (BonDotation $b): string => $b->getNumero(), $arrete->getBonsDotation()->toArray()),
+            'bonsRetour' => array_map(static fn (BonRetour $b): string => $b->getNumero(), $arrete->getBonsRetour()->toArray()),
+        ];
+
+        if (null !== $resultat) {
+            $etat['produits'] = array_map(static fn ($ligne): array => [
+                'produit' => $ligne->produit,
+                'confiee' => $ligne->qteConfiee,
+                'retournee' => $ligne->qteRetournee,
+                'perdue' => $ligne->qtePerdue,
+                'vendue' => $ligne->qteVendue,
+                'montantAttendu' => $ligne->montantAttendu,
+            ], $resultat->lignes);
+        }
+
+        return $etat;
+    }
+
+    /**
+     * Photographie d'un bon pour le journal. Montants en centimes ; pour un
+     * brouillon, estimés sur les prix courants et les prix unitaires restent nuls.
+     *
+     * @return array<string, mixed>
+     */
+    public function etatDotation(BonDotation $bon): array
+    {
+        return [
+            'numero' => $bon->getNumero(),
+            'statut' => $bon->getStatut()->value,
+            'stand' => $bon->getStand()->getCode(),
+            'vendeur' => $bon->getVendeur()->getNom(),
+            'dateDotation' => $bon->getDateDotation()->format('Y-m-d'),
+            'totalVente' => $bon->totalVente(),
+            'totalCession' => $bon->totalCession(),
+            'lignes' => array_map(static fn (LigneDotation $ligne): array => [
+                'produit' => $ligne->getProduit()->getNom(),
+                'quantite' => $ligne->getQuantite(),
+                'prixVenteUnitaire' => $ligne->getPrixVenteUnitaire(),
+                'prixCessionUnitaire' => $ligne->getPrixCessionUnitaire(),
+            ], $bon->getLignes()->toArray()),
+            'motifAnnulation' => $bon->getMotifAnnulation(),
+        ];
     }
 
     public function perteSaisie(Perte $perte, ?string $commentaire = null): JournalAudit

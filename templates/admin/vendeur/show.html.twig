@@ -1,0 +1,190 @@
+{% extends 'admin/base.html.twig' %}
+{% form_theme form_remboursement 'admin/_form_theme.html.twig' %}
+{% form_theme form_dette 'admin/_form_theme.html.twig' %}
+{% import 'admin/_macros.html.twig' as fmt %}
+{% import 'admin/_icones.html.twig' as ui %}
+{% import '_pagination.html.twig' as pagination %}
+
+{# Fiche d'un vendeur : ce qu'il doit, d'où ça vient, ce qu'il a rendu.
+
+   Le solde en tête, les deux gestes à côté (un versement, une avance), puis trois
+   onglets paginés — dettes, points et leurs écarts, remboursements. Les onglets sont
+   des liens (`?onglet=`) : chacun garde sa pagination, et un lien envoyé pointe sur
+   le bon. #}
+
+{% block page_title %}{{ vendeur.nom }}{% endblock %}
+{% block page_sous_titre %}Vendeur{% if vendeur.telephone %} · {{ vendeur.telephone }}{% endif %}{% if not vendeur.actif %} · désactivé{% endif %}{% endblock %}
+
+{% block page_actions %}
+    <a href="{{ path('admin_vendeur_index') }}" class="btn btn-fantome">{{ ui.icone('retour') }} Vendeurs</a>
+    <a href="{{ path('admin_vendeur_edit', {id: vendeur.id}) }}" class="btn btn-secondaire">{{ ui.icone('modifier') }} Modifier</a>
+{% endblock %}
+
+{% block admin_content %}
+{% set au_dela = solde > seuil_dette %}
+<section class="mb-5 grid gap-4 sm:grid-cols-3">
+    <article class="kpi apparition" data-solde-dette>
+        <div class="kpi-tete">
+            <span class="kpi-libelle">Solde de dette</span>
+            <span class="kpi-icone {{ solde > 0 ? (au_dela ? 'kpi-icone-rouge' : '') : 'kpi-icone-vert' }}">{{ ui.icone(solde > 0 ? 'pertes' : 'valide') }}</span>
+        </div>
+        <div class="kpi-valeur {{ au_dela ? 'text-red-700' : '' }}">{{ fmt.fcfa(solde) }}</div>
+        <div class="kpi-note">{{ solde == 0 ? 'ne doit rien' : (au_dela ? 'au-delà du seuil d\'alerte (' ~ fmt.fcfa(seuil_dette) ~ ')' : 'sous le seuil d\'alerte') }}</div>
+    </article>
+    <article class="kpi apparition" style="--i: 1">
+        <div class="kpi-tete">
+            <span class="kpi-libelle">Manquants cumulés aux points</span>
+            <span class="kpi-icone">{{ ui.icone('ventes') }}</span>
+        </div>
+        <div class="kpi-valeur">{{ fmt.fcfa(-cumul.manquants) }}</div>
+        <div class="kpi-note">sur {{ cumul.points }} point{{ cumul.points > 1 ? 's' : '' }} validé{{ cumul.points > 1 ? 's' : '' }}</div>
+    </article>
+    <article class="kpi apparition" style="--i: 2">
+        <div class="kpi-tete">
+            <span class="kpi-libelle">Trop-perçus cumulés</span>
+            <span class="kpi-icone">{{ ui.icone('info') }}</span>
+        </div>
+        <div class="kpi-valeur">{{ fmt.fcfa(cumul.tropPercus) }}</div>
+        <div class="kpi-note">un trop-perçu ne rembourse pas une dette</div>
+    </article>
+</section>
+
+<div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+    <div class="min-w-0">
+        <nav class="onglets mb-3" aria-label="Historique du vendeur">
+            {% for cle, libelle in {dettes: 'Dettes', points: 'Points et écarts', remboursements: 'Remboursements'} %}
+                <a href="{{ path('admin_vendeur_show', {id: vendeur.id, onglet: cle}) }}" class="onglet" {% if onglet == cle %}aria-current="page"{% endif %}>{{ libelle }}</a>
+            {% endfor %}
+        </nav>
+
+        <div class="tableau-conteneur apparition">
+            <div class="defilement-x">
+            <table class="tableau">
+                {% if onglet == 'points' %}
+                    <thead>
+                        <tr>
+                            <th>Point</th>
+                            <th>Stand</th>
+                            <th>Période</th>
+                            <th class="num">Net à remettre</th>
+                            <th class="num">Remis</th>
+                            <th class="num">Écart</th>
+                            <th>Manquant</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for arrete in liste.items %}
+                            <tr>
+                                <td class="cellule-principale"><a href="{{ path('admin_point_show', {id: arrete.id}) }}" class="lien">{{ arrete.numero }}</a></td>
+                                <td>{{ arrete.stand.libelle }}</td>
+                                <td class="cellule-douce tabular-nums">{{ arrete.dateDebut|date('d/m') }} → {{ arrete.dateFin|date('d/m/Y') }}</td>
+                                <td class="num tabular-nums">{{ fmt.fcfa(arrete.netARemettre) }}</td>
+                                <td class="num tabular-nums">{{ fmt.fcfa(arrete.montantRemis ?? 0) }}</td>
+                                <td class="num font-semibold tabular-nums {{ arrete.ecart < 0 ? 'text-red-700' : (arrete.ecart > 0 ? 'text-orange-700' : 'text-green-700') }}">{{ fmt.fcfa(arrete.ecart ?? 0) }}</td>
+                                <td>{% if arrete.traitementEcart and arrete.ecart < 0 %}<span class="badge {{ arrete.traitementEcart.value == 'DETTE' ? 'badge-ambre' : 'badge-neutre' }}">{{ arrete.traitementEcart.libelle }}</span>{% endif %}</td>
+                            </tr>
+                        {% else %}
+                            <tr><td colspan="7" class="cellule-vide">Aucun point validé.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                {% elseif onglet == 'remboursements' %}
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th class="num">Montant</th>
+                            <th>Moyen</th>
+                            <th>Sur la dette</th>
+                            <th>Encaissé par</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for remboursement in liste.items %}
+                            <tr>
+                                <td class="tabular-nums">{{ remboursement.date|date('d/m/Y') }}</td>
+                                <td class="num font-semibold tabular-nums">{{ fmt.fcfa(remboursement.montant) }}</td>
+                                <td>{{ remboursement.moyen.libelle }}</td>
+                                <td class="cellule-douce">{{ remboursement.dette.type.libelle }} du {{ remboursement.dette.createdAt|date('d/m/Y') }}</td>
+                                <td class="cellule-douce">{{ remboursement.encaissePar.nom }}</td>
+                            </tr>
+                        {% else %}
+                            <tr><td colspan="5" class="cellule-vide">Aucun remboursement.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                {% else %}
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Origine</th>
+                            <th class="num">Montant</th>
+                            <th class="num">Remboursé</th>
+                            <th class="num">Reste</th>
+                            <th>Statut</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for dette in liste.items %}
+                            <tr>
+                                <td class="tabular-nums">{{ dette.createdAt|date('d/m/Y') }}</td>
+                                <td>
+                                    {% if dette.arrete %}
+                                        {{ dette.type.libelle }} <a href="{{ path('admin_point_show', {id: dette.arrete.id}) }}" class="lien">{{ dette.arrete.numero }}</a>
+                                    {% else %}
+                                        {{ dette.type.libelle }}
+                                    {% endif %}
+                                    {% if dette.commentaire %}<span class="block text-xs text-stone-500">{{ dette.commentaire }}</span>{% endif %}
+                                </td>
+                                <td class="num tabular-nums">{{ fmt.fcfa(dette.montant) }}</td>
+                                <td class="num tabular-nums">{{ fmt.fcfa(dette.montantRembourse) }}</td>
+                                <td class="num font-semibold tabular-nums">{{ fmt.fcfa(dette.reste) }}</td>
+                                <td>
+                                    <span class="badge {{ {OUVERTE: 'badge-rouge', PARTIELLE: 'badge-ambre', SOLDEE: 'badge-vert', ANNULEE: 'badge-neutre'}[dette.statut.value] }}">{{ dette.statut.libelle }}</span>
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr><td colspan="6" class="cellule-vide">Aucune dette.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                {% endif %}
+            </table>
+            </div>
+        </div>
+        {{ pagination.barre(liste, 'admin_vendeur_show', {id: vendeur.id, onglet: onglet}) }}
+    </div>
+
+    <aside class="flex flex-col gap-4">
+        {# Un versement : les dettes les plus anciennes sont remboursées d'abord. #}
+        <section class="carte apparition" id="remboursement">
+            <div class="carte-entete"><h2 class="carte-titre">Enregistrer un remboursement</h2></div>
+            {{ form_start(form_remboursement) }}
+            <div class="carte-corps">
+                {% if solde == 0 %}
+                    <p class="aide mb-3">{{ vendeur.nom }} ne doit rien pour l'instant.</p>
+                {% endif %}
+                {{ form_row(form_remboursement.montant) }}
+                {{ form_row(form_remboursement.moyen) }}
+                {{ form_row(form_remboursement.date) }}
+                <p class="aide">Réparti sur les dettes les plus anciennes d'abord, jamais au-delà du solde.</p>
+            </div>
+            <div class="carte-pied">
+                <button class="btn btn-primaire" {% if solde == 0 %}disabled{% endif %}>{{ ui.icone('valide') }} Encaisser le versement</button>
+            </div>
+            {{ form_end(form_remboursement) }}
+        </section>
+
+        <section class="carte apparition" style="--i: 1" id="avance">
+            <div class="carte-entete"><h2 class="carte-titre">Inscrire une avance ou une autre dette</h2></div>
+            {{ form_start(form_dette) }}
+            <div class="carte-corps">
+                {{ form_row(form_dette.type) }}
+                {{ form_row(form_dette.montant) }}
+                {{ form_row(form_dette.commentaire) }}
+                <p class="aide">Un manquant au point ne se saisit pas ici : il naît de la validation du point.</p>
+            </div>
+            <div class="carte-pied">
+                <button class="btn btn-secondaire">{{ ui.icone('plus') }} Inscrire la dette</button>
+            </div>
+            {{ form_end(form_dette) }}
+        </section>
+    </aside>
+</div>
+{% endblock %}

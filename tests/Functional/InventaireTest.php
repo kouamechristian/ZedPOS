@@ -12,6 +12,8 @@ use App\Enum\ActionAudit;
 use App\Enum\TypeMouvementStock;
 use App\Repository\InventaireRepository;
 use App\Service\InventaireService;
+use App\Service\StockInsuffisantException;
+use App\Service\StockManager;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -40,7 +42,7 @@ class InventaireTest extends WebTestCase
 
         $connexion = $this->em->getConnection();
         $connexion->executeStatement('SET FOREIGN_KEY_CHECKS = 0');
-        foreach (['ligne_inventaire', 'inventaire', 'ligne_fiche_technique', 'fiche_technique', 'ligne_vente', 'reglement', 'vente', 'mouvement_caisse', 'session_caisse', 'mouvement_stock', 'perte', 'article', 'matiere_premiere', 'fournisseur', 'famille_produit', 'journal_audit', 'notification', 'utilisateur'] as $table) {
+        foreach (['ligne_inventaire', 'inventaire', 'ligne_fiche_technique', 'fiche_technique', 'ligne_vente', 'reglement', 'vente', 'mouvement_caisse', 'session_caisse', 'mouvement_stock', 'stock_courant', 'perte', 'article', 'matiere_premiere', 'fournisseur', 'famille_produit', 'journal_audit', 'notification', 'utilisateur'] as $table) {
             $connexion->executeStatement('DELETE FROM '.$table);
         }
         $connexion->executeStatement('SET FOREIGN_KEY_CHECKS = 1');
@@ -102,8 +104,10 @@ class InventaireTest extends WebTestCase
     /** @return list<MouvementStock> */
     private function mouvementsInventaire(): array
     {
+        // AJUSTEMENT rattaché à un inventaire : la reprise de l'existant est un
+        // AJUSTEMENT elle aussi, mais elle ne vient d'aucune feuille.
         return $this->em->getRepository(MouvementStock::class)
-            ->findBy(['type' => TypeMouvementStock::INVENTAIRE]);
+            ->findBy(['type' => TypeMouvementStock::AJUSTEMENT, 'documentType' => 'inventaire']);
     }
 
     // ------------------------------------------------------------ L'ouverture
@@ -162,7 +166,7 @@ class InventaireTest extends WebTestCase
         $mouvements = $this->mouvementsInventaire();
         $this->assertCount(1, $mouvements, 'Un mouvement, et un seul : la ligne en écart.');
         $this->assertSame(-2500, $mouvements[0]->getQuantite(), 'La quantité est signée.');
-        $this->assertSame('inventaire', $mouvements[0]->getSourceType());
+        $this->assertSame('inventaire', $mouvements[0]->getDocumentType());
     }
 
     /**
@@ -385,6 +389,7 @@ class InventaireTest extends WebTestCase
 
         $this->assertResponseIsSuccessful();
         $this->assertCount(0, $crawler->filter('#matiere_premiere_stockActuel'));
+        $this->assertCount(0, $crawler->filter('#matiere_premiere_stockInitial'));
         // Le seuil d'alerte, lui, reste un réglage et non un constat.
         $this->assertCount(1, $crawler->filter('#matiere_premiere_stockMini'));
     }
@@ -394,7 +399,77 @@ class InventaireTest extends WebTestCase
         $crawler = $this->client->request('GET', '/admin/stock/nouvelle');
 
         $this->assertResponseIsSuccessful();
-        $this->assertCount(1, $crawler->filter('#matiere_premiere_stockActuel'));
+        $this->assertCount(1, $crawler->filter('#matiere_premiere_stockInitial'));
+        $this->assertCount(0, $crawler->filter('#matiere_premiere_stockActuel'), 'Le champ n\'est plus lié à l\'entité.');
+    }
+
+    /**
+     * Le stock de départ est un mouvement comme un autre : il laisse une trace, et
+     * le stock par emplacement dit la même chose que le champ historique.
+     */
+    public function testLeStockDeDepartDevientUnMouvementAuDepot(): void
+    {
+        $crawler = $this->client->request('GET', '/admin/stock/nouvelle');
+        $this->client->submit($crawler->selectButton('Enregistrer')->form([
+            'matiere_premiere[nom]' => 'Beurre',
+            'matiere_premiere[uniteStock]' => 'kg',
+            'matiere_premiere[coutMoyenPondere]' => '3000',
+            'matiere_premiere[stockMini]' => '2',
+            'matiere_premiere[stockInitial]' => '12,5',
+        ]));
+        $this->assertResponseRedirects('/admin/stock');
+
+        $this->em->clear();
+        $beurre = $this->em->getRepository(MatierePremiere::class)->findOneBy(['nom' => 'Beurre']);
+        $this->assertSame(12500, $beurre->getStockActuel());
+
+        $stock = static::getContainer()->get(StockManager::class);
+        $this->assertSame(12500, $stock->getStock($stock->depotPrincipal(), $beurre));
+
+        $mouvement = $this->em->getRepository(MouvementStock::class)->findOneBy(['matierePremiere' => $beurre]);
+        $this->assertSame(TypeMouvementStock::AJUSTEMENT, $mouvement->getType());
+        $this->assertSame(12500, $mouvement->getQuantite());
+        $this->assertSame('creation', $mouvement->getDocumentType());
+        $this->assertSame($this->gerant->getId(), $mouvement->getUtilisateur()?->getId());
+
+        // L'historique ne se supprime pas : la matière non plus, avec un message
+        // plutôt qu'une erreur SQL.
+        $crawler = $this->client->request('GET', '/admin/stock');
+        $formulaire = $crawler->filter(\sprintf('form[action="/admin/stock/%d/supprimer"]', $beurre->getId()))->form();
+        $this->client->submit($formulaire);
+        $this->assertResponseRedirects('/admin/stock');
+        $this->client->followRedirect();
+        $this->assertSelectorTextContains('body', 'historique de mouvements de stock');
+        $this->assertNotNull($this->em->getRepository(MatierePremiere::class)->findOneBy(['nom' => 'Beurre']));
+    }
+
+    /**
+     * Des ventes entre le comptage et la validation peuvent faire tomber un écart
+     * sous zéro. La feuille entière est alors refusée — rien d'appliqué, et elle
+     * reste ouverte, en base comme à l'écran.
+     */
+    public function testUnEcartQuiRendraitLeStockNegatifRefuseToutLaFeuille(): void
+    {
+        $inventaire = $this->ouvrir();
+        $this->compter($inventaire, ['Farine' => 0, 'Sucre' => 45000]); // −100 kg, −5 kg
+
+        // 10 kg de farine vendus entre-temps : la caisse, elle, passe toujours.
+        $stock = static::getContainer()->get(StockManager::class);
+        $stock->enregistrerMouvement($this->farine, $stock->depotPrincipal(), -10000, TypeMouvementStock::VENTE_CAISSE, 'vente', 1);
+
+        try {
+            $this->service()->valider($inventaire, $this->gerant, 'Comptage mensuel');
+            $this->fail('90 kg − 100 kg : la validation aurait dû être refusée.');
+        } catch (StockInsuffisantException $e) {
+            $this->assertSame('Farine', $e->produit);
+        }
+
+        $this->assertTrue($inventaire->estEnCours(), 'La feuille reste ouverte en mémoire.');
+        $this->assertSame([], $this->mouvementsInventaire(), 'Aucun écart appliqué, pas même celui du sucre.');
+
+        $this->em->clear();
+        $this->assertTrue(static::getContainer()->get(InventaireRepository::class)->find($inventaire->getId())->estEnCours());
+        $this->assertSame(50000, $this->em->getRepository(MatierePremiere::class)->findOneBy(['nom' => 'Sucre'])->getStockActuel());
     }
 
     // ------------------------------------------------------------- Utilitaires

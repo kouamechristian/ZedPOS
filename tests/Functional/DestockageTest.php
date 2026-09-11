@@ -18,6 +18,7 @@ use App\Enum\ModeVente;
 use App\Enum\StatutVente;
 use App\Enum\TypeMouvementStock;
 use App\Repository\MouvementStockRepository;
+use App\Service\StockManager;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
@@ -39,7 +40,7 @@ class DestockageTest extends KernelTestCase
 
         $connexion = $this->em->getConnection();
         $connexion->executeStatement('SET FOREIGN_KEY_CHECKS = 0');
-        foreach (['ligne_fiche_technique', 'fiche_technique', 'ligne_vente', 'reglement', 'vente', 'mouvement_caisse', 'session_caisse', 'mouvement_stock', 'perte', 'article', 'matiere_premiere', 'fournisseur', 'famille_produit', 'journal_audit', 'utilisateur'] as $table) {
+        foreach (['ligne_fiche_technique', 'fiche_technique', 'ligne_vente', 'reglement', 'vente', 'mouvement_caisse', 'session_caisse', 'mouvement_stock', 'stock_courant', 'perte', 'article', 'matiere_premiere', 'fournisseur', 'famille_produit', 'journal_audit', 'utilisateur'] as $table) {
             $connexion->executeStatement('DELETE FROM '.$table);
         }
         $connexion->executeStatement('SET FOREIGN_KEY_CHECKS = 1');
@@ -104,13 +105,19 @@ class DestockageTest extends KernelTestCase
         // 10 × 0,01 L ÷ (1 − 0,5) = 0,2 L → 20 − 0,2 = 19,8 L
         $this->assertSame(19800, $this->huile->getStockActuel());
 
-        // Un MouvementStock SORTIE_VENTE par matière.
-        $sorties = $this->mouvements()->findBy(['type' => TypeMouvementStock::SORTIE_VENTE]);
+        // Un MouvementStock VENTE_CAISSE par matière, au dépôt principal.
+        $sorties = $this->mouvements()->findBy(['type' => TypeMouvementStock::VENTE_CAISSE]);
         $this->assertCount(3, $sorties);
         foreach ($sorties as $sortie) {
             $this->assertLessThan(0, $sortie->getQuantite(), 'Une sortie de stock doit être négative.');
-            $this->assertSame('vente', $sortie->getSourceType());
+            $this->assertSame('vente', $sortie->getDocumentType());
+            $this->assertTrue($sortie->getEmplacement()->estDepotPrincipal());
+            $this->assertSame($this->caissier->getId(), $sortie->getUtilisateur()?->getId(), 'L\'auteur est le caissier de la session.');
         }
+
+        // Le stock par emplacement dit la même chose que le champ historique.
+        $stock = static::getContainer()->get(StockManager::class);
+        $this->assertSame(90000, $stock->getStock($stock->depotPrincipal(), $this->pain));
     }
 
     public function testAnnulationRestaureLeStock(): void
@@ -126,7 +133,10 @@ class DestockageTest extends KernelTestCase
         $this->assertSame(50000, $this->poulet->getStockActuel());
         $this->assertSame(20000, $this->huile->getStockActuel());
 
-        $this->assertCount(3, $this->mouvements()->findBy(['type' => TypeMouvementStock::ENTREE]));
+        // Trois sorties, trois inverses : VENTE_CAISSE elles aussi, mais positives.
+        $ventes = $this->mouvements()->findBy(['type' => TypeMouvementStock::VENTE_CAISSE, 'documentId' => $vente->getId()]);
+        $this->assertCount(6, $ventes);
+        $this->assertCount(3, array_filter($ventes, static fn (MouvementStock $m): bool => $m->getQuantite() > 0));
         $this->assertSame(StatutVente::ANNULEE, $vente->getStatut());
     }
 
@@ -151,7 +161,7 @@ class DestockageTest extends KernelTestCase
         $this->vendre($eau, 3, 30000);
 
         $this->assertSame(7000, $eau->getStockActuel()); // 10 − 3 = 7 bouteilles
-        $sortie = $this->mouvements()->findOneBy(['article' => $eau, 'type' => TypeMouvementStock::SORTIE_VENTE]);
+        $sortie = $this->mouvements()->findOneBy(['article' => $eau, 'type' => TypeMouvementStock::VENTE_CAISSE]);
         $this->assertInstanceOf(MouvementStock::class, $sortie);
         $this->assertSame(-3000, $sortie->getQuantite());
     }

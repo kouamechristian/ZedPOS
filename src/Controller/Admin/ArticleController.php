@@ -211,8 +211,9 @@ class ArticleController extends AbstractController
     #[Route('/{id}/modifier', name: 'admin_article_edit', methods: ['GET', 'POST'])]
     public function edit(Request $request, Article $article, EntityManagerInterface $em, AuditLogger $audit): Response
     {
-        // Relevé avant liaison du formulaire : ensuite l'entité porte le nouveau prix.
+        // Relevés avant liaison du formulaire : ensuite l'entité porte les nouveaux prix.
         $ancienPrix = $article->getPrixVenteTtc();
+        $ancienPrixCession = $article->getPrixCession();
 
         $form = $this->createForm(ArticleType::class, $article, [
             'modifier_prix' => $this->isGranted(Permission::ARTICLE_MODIFIER_PRIX, $article),
@@ -228,6 +229,9 @@ class ArticleController extends AbstractController
 
             if ($article->getPrixVenteTtc() !== $ancienPrix) {
                 $audit->prixModifie($article, $ancienPrix, $article->getPrixVenteTtc());
+            }
+            if ($article->getPrixCession() !== $ancienPrixCession) {
+                $audit->prixModifie($article, $ancienPrixCession, $article->getPrixCession(), 'prixCession');
             }
 
             $this->addFlash('success', 'Article mis à jour.');

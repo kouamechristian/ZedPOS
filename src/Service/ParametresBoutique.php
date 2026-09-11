@@ -110,6 +110,20 @@ class ParametresBoutique
     }
 
     /**
+     * Seuil d'alerte de dette d'un vendeur, **en centimes**. Une valeur illisible
+     * (saisie en base à la main) retombe sur le défaut du catalogue.
+     */
+    public function seuilAlerteDette(): int
+    {
+        $valeur = $this->valeur(CleParametre::SEUIL_ALERTE_DETTE);
+        if (!ctype_digit($valeur) || \strlen($valeur) > 9) {
+            $valeur = CleParametre::SEUIL_ALERTE_DETTE->valeurParDefaut();
+        }
+
+        return (int) $valeur * 100;
+    }
+
+    /**
      * Chemin public du logo, ou `null` s'il n'y en a pas.
      *
      * La base ne garde qu'un nom de fichier ; l'URL se compose dans

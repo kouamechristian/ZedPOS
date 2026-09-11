@@ -9,16 +9,22 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
 /**
- * Mouvement de stock d'une matière première ou d'un article.
+ * Mouvement de stock d'un produit (article **ou** matière) dans un emplacement.
  *
- * La quantité est signée (positive pour une entrée, négative pour une sortie),
- * exprimée en millièmes d'unité. La source du mouvement est référencée de façon
- * polymorphe via {@see $sourceType} / {@see $sourceId} (ex. « vente » + id).
+ * **Créé uniquement par `StockManager`**, qui met à jour `StockCourant` dans la
+ * même transaction : un mouvement écrit ailleurs ferait diverger le stock de
+ * son historique sans que rien ne le signale.
+ *
+ * Quantité signée (+ entrée, − sortie) en millièmes d'unité. Le document à
+ * l'origine du mouvement est référencé de façon polymorphe par
+ * {@see $documentType} / {@see $documentId} (« vente » + id, « perte » + id…).
+ * L'historique est immuable : aucun setter, hormis le rattachement tardif du
+ * document quand celui-ci n'a pas encore d'id au moment du mouvement.
  */
 #[ORM\Entity(repositoryClass: MouvementStockRepository::class)]
 #[ORM\Table(name: 'mouvement_stock')]
 #[ORM\Index(name: 'idx_mouvement_stock_created_at', columns: ['created_at'])]
-#[ORM\Index(name: 'idx_mouvement_stock_source', columns: ['source_type', 'source_id'])]
+#[ORM\Index(name: 'idx_mouvement_stock_document', columns: ['document_type', 'document_id'])]
 class MouvementStock
 {
     use HorodatageCreation;
@@ -27,6 +33,10 @@ class MouvementStock
     #[ORM\GeneratedValue]
     #[ORM\Column]
     private ?int $id = null;
+
+    #[ORM\ManyToOne(targetEntity: Emplacement::class)]
+    #[ORM\JoinColumn(nullable: false)]
+    private Emplacement $emplacement;
 
     #[ORM\ManyToOne(targetEntity: MatierePremiere::class)]
     #[ORM\JoinColumn(nullable: true)]
@@ -44,20 +54,43 @@ class MouvementStock
     private int $quantite;
 
     #[ORM\Column(length: 255, nullable: true)]
-    private ?string $motif = null;
+    private ?string $motif;
 
-    /** Type de la source polymorphe (ex. « vente », « perte », « inventaire »). */
+    /** Type du document d'origine (ex. « vente », « perte », « inventaire »). */
     #[ORM\Column(length: 50, nullable: true)]
-    private ?string $sourceType = null;
+    private ?string $documentType;
 
-    /** Identifiant de la source polymorphe. */
     #[ORM\Column(nullable: true)]
-    private ?int $sourceId = null;
+    private ?int $documentId;
 
-    public function __construct(TypeMouvementStock $type, int $quantite)
-    {
+    /** Auteur du geste. Nul en console, dans les fixtures et pour la reprise de l'existant. */
+    #[ORM\ManyToOne(targetEntity: Utilisateur::class)]
+    #[ORM\JoinColumn(nullable: true)]
+    private ?Utilisateur $utilisateur;
+
+    public function __construct(
+        Article|MatierePremiere $produit,
+        Emplacement $emplacement,
+        TypeMouvementStock $type,
+        int $quantite,
+        ?string $motif = null,
+        ?string $documentType = null,
+        ?int $documentId = null,
+        ?Utilisateur $utilisateur = null,
+    ) {
+        if ($produit instanceof Article) {
+            $this->article = $produit;
+        } else {
+            $this->matierePremiere = $produit;
+        }
+
+        $this->emplacement = $emplacement;
         $this->type = $type;
         $this->quantite = $quantite;
+        $this->motif = $motif;
+        $this->documentType = $documentType;
+        $this->documentId = $documentId;
+        $this->utilisateur = $utilisateur;
         $this->createdAt = new \DateTimeImmutable();
     }
 
@@ -66,28 +99,25 @@ class MouvementStock
         return $this->id;
     }
 
+    public function getEmplacement(): Emplacement
+    {
+        return $this->emplacement;
+    }
+
+    public function getProduit(): Article|MatierePremiere
+    {
+        return $this->article ?? $this->matierePremiere
+            ?? throw new \LogicException('Mouvement de stock sans produit.');
+    }
+
     public function getMatierePremiere(): ?MatierePremiere
     {
         return $this->matierePremiere;
     }
 
-    public function setMatierePremiere(?MatierePremiere $matierePremiere): self
-    {
-        $this->matierePremiere = $matierePremiere;
-
-        return $this;
-    }
-
     public function getArticle(): ?Article
     {
         return $this->article;
-    }
-
-    public function setArticle(?Article $article): self
-    {
-        $this->article = $article;
-
-        return $this;
     }
 
     public function getType(): TypeMouvementStock
@@ -97,7 +127,7 @@ class MouvementStock
 
     public function getQuantite(): int
     {
-        return $this->quantite;
+        return (int) $this->quantite;
     }
 
     public function getMotif(): ?string
@@ -105,30 +135,36 @@ class MouvementStock
         return $this->motif;
     }
 
-    public function setMotif(?string $motif): self
+    public function getDocumentType(): ?string
     {
-        $this->motif = $motif;
-
-        return $this;
+        return $this->documentType;
     }
 
-    public function getSourceType(): ?string
+    public function getDocumentId(): ?int
     {
-        return $this->sourceType;
+        return $this->documentId;
     }
 
-    public function getSourceId(): ?int
+    public function getUtilisateur(): ?Utilisateur
     {
-        return $this->sourceId;
+        return $this->utilisateur;
     }
 
     /**
-     * Définit la source polymorphe du mouvement (ex. « vente », 42).
+     * Rattache le document une fois qu'il existe. Une perte, par exemple, n'a
+     * d'id qu'après son INSERT, alors que son mouvement doit être accepté — ou
+     * refusé pour stock insuffisant — **avant** qu'elle ne soit enregistrée.
+     *
+     * Une seule fois : un mouvement ne change pas de justificatif.
      */
-    public function setSource(?string $sourceType, ?int $sourceId): self
+    public function rattacherDocument(string $documentType, int $documentId): self
     {
-        $this->sourceType = $sourceType;
-        $this->sourceId = $sourceId;
+        if (null !== $this->documentId) {
+            throw new \LogicException('Ce mouvement de stock est déjà rattaché à un document.');
+        }
+
+        $this->documentType = $documentType;
+        $this->documentId = $documentId;
 
         return $this;
     }

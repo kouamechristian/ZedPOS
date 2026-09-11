@@ -1,0 +1,278 @@
+{% extends 'admin/base.html.twig' %}
+{% import 'admin/_icones.html.twig' as ui %}
+{% import 'admin/_macros.html.twig' as fmt %}
+
+{# Le point d'un stand, sur une seule page tactile.
+
+   1. La période : le début est **imposé** (lendemain du dernier point validé), la
+      fin se choisit par trois raccourcis ou une date libre.
+   2. Le tableau : tout ce qui a été confié sur la période, prix figés. La gérante
+      ne tape que les invendus et les pertes.
+   3. Le bloc du bas, collé à l'écran : attendu, rémunération, net, espèces remises,
+      écart en couleur, sort d'un manquant (dette du vendeur ou perte, à choisir),
+      justification au-delà du seuil du stand ou pour une perte.
+
+   Calcul en direct : `point_controller.js`, sur les mêmes règles que le serveur. #}
+
+{% block page_title %}Point — {{ stand.libelle }}{% endblock %}
+{% block page_sous_titre %}{{ brouillon ? 'Brouillon ' ~ brouillon.numero ~ ' en cours' : 'Ce qui a été confié, ce qui revient, ce qui est dû.' }}{% endblock %}
+
+{% block page_actions %}
+    <a href="{{ path('admin_point_new') }}" class="btn btn-fantome">{{ ui.icone('retour') }} Changer de stand</a>
+{% endblock %}
+
+{% block admin_content %}
+{% if erreur %}
+    <div class="alerte alerte-rouge apparition mb-4" role="alert">{{ ui.icone('erreur') }}<p>{{ erreur }}</p></div>
+{% endif %}
+
+{% if debut is null %}
+    <div class="carte apparition p-8 text-center">
+        <p class="text-stone-600">Aucune dotation sur ce stand : il n'y a rien à arrêter.</p>
+        <a href="{{ path('admin_dotation_new', {stand: stand.id}) }}" class="btn btn-primaire mt-4">{{ ui.icone('plus') }} Doter ce stand</a>
+    </div>
+{% elseif fin is null %}
+    <div class="carte apparition p-8 text-center">
+        <p class="text-stone-700">Le stand est arrêté jusqu'au <strong>{{ dernier.dateFin|date('d/m/Y') }}</strong> ({{ dernier.numero }}).</p>
+        <p class="mt-1 text-sm text-stone-500">La prochaine période commencera le {{ debut|date('d/m/Y') }}.</p>
+    </div>
+{% else %}
+{% set libelles = {aujourdhui: 'Aujourd\'hui', semaine: 'Fin de semaine', mois: 'Fin de mois'} %}
+<div data-controller="point"
+     data-point-produits-value="{{ produits|json_encode }}"
+     data-point-mode-value="{{ stand.modeRemuneration.value }}"
+     data-point-taux-value="{{ stand.tauxCommission }}"
+     data-point-seuil-value="{{ stand.seuilEcartAlerte }}"
+     data-point-brouillons-value="{{ brouillons is empty ? 'false' : 'true' }}">
+
+    {# ---- 1. Période ---- #}
+    <div class="carte apparition mb-3">
+        <div class="carte-corps">
+            <div class="flex flex-wrap items-baseline justify-between gap-3">
+                <div>
+                    <div class="text-xs font-medium uppercase tracking-wide text-stone-500">Période à arrêter</div>
+                    <div class="text-2xl font-bold text-stone-900">du {{ debut|date('d/m') }} au {{ fin|date('d/m/Y') }}</div>
+                </div>
+                <span class="badge badge-neutre">{{ granularite.libelle }}</span>
+            </div>
+            <p class="aide mt-1">
+                Le début ne se choisit pas :
+                {% if dernier %}lendemain du point {{ dernier.numero }}, arrêté jusqu'au {{ dernier.dateFin|date('d/m/Y') }}.{% else %}première dotation du stand.{% endif %}
+            </p>
+
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+                {% for cle, libelle in libelles %}
+                    {% set date = raccourcis[cle] %}
+                    {% if date %}
+                        <a href="{{ path('admin_point_stand', {id: stand.id, fin: date|date('Y-m-d')}) }}"
+                           data-action="point#changerPeriode"
+                           class="btn btn-lg {{ date == fin ? 'btn-primaire' : 'btn-secondaire' }}"
+                           {% if date == fin %}aria-current="true"{% endif %}>
+                            <span class="text-left leading-tight">{{ libelle }}<span class="block text-[11px] font-normal opacity-80">{{ date|date('d/m') }}</span></span>
+                        </a>
+                    {% else %}
+                        <span class="btn btn-lg btn-secondaire cursor-not-allowed opacity-40" aria-disabled="true" title="Pas encore arrivé">{{ libelle }}</span>
+                    {% endif %}
+                {% endfor %}
+                <form method="get" action="{{ path('admin_point_stand', {id: stand.id}) }}" data-action="submit->point#changerPeriode" class="flex items-center gap-2">
+                    <input type="date" name="fin" value="{{ fin|date('Y-m-d') }}" min="{{ debut|date('Y-m-d') }}" max="{{ aujourdhui|date('Y-m-d') }}" class="champ h-12" aria-label="Fin de période libre">
+                    <button class="btn btn-lg btn-fantome">Autre date</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    {% if brouillons is not empty %}
+        <div class="alerte alerte-ambre apparition mb-3" role="alert">
+            {{ ui.icone('info') }}
+            <div>
+                <p class="font-semibold">Dotations en brouillon sur la période : validez-les ou annulez-les avant d'arrêter le point.</p>
+                <ul class="mt-1 flex flex-wrap gap-2">
+                    {% for bon in brouillons %}
+                        <li><a href="{{ path('admin_dotation_show', {id: bon.id}) }}" class="lien font-medium">{{ bon.numero }} du {{ bon.dateDotation|date('d/m') }}</a></li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    {% endif %}
+
+    <form method="post" action="{{ path('admin_point_stand', {id: stand.id}) }}" data-point-target="formulaire">
+        <input type="hidden" name="_token" value="{{ csrf_token(jeton) }}">
+        <input type="hidden" name="fin" value="{{ fin|date('Y-m-d') }}">
+
+        <div class="carte apparition mb-3">
+            <div class="carte-corps">
+                <label class="block max-w-md">
+                    <span class="etiquette">Vendeur qui fait le point</span>
+                    <select name="vendeur" class="champ h-12 text-base" required data-point-target="vendeur" data-action="point#recalculer">
+                        <option value="">— Choisir —</option>
+                        {% for vendeur in vendeurs %}
+                            <option value="{{ vendeur.id }}" {% if vendeur.id == valeurs.vendeur %}selected{% endif %}>{{ vendeur.nom }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+            </div>
+        </div>
+
+        <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_17rem]">
+            {# ---- 2 et 3. Produits confiés, saisie des retours, calcul par ligne ---- #}
+            <div class="tableau-conteneur apparition min-w-0">
+                <div class="defilement-x">
+                <table class="tableau">
+                    <thead>
+                        <tr>
+                            <th>Produit</th>
+                            <th class="num">Confié</th>
+                            <th class="num">Invendus</th>
+                            <th class="num">Pertes</th>
+                            <th>Motif</th>
+                            <th class="num">Vendu</th>
+                            <th class="num">Prix</th>
+                            <th class="num">Montant</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ligne in base.lignes %}
+                            {% set saisie = valeurs.retours[ligne.produitId] ?? {} %}
+                            <tr data-point-target="ligne" class="data-[erreur]:bg-red-50">
+                                <td class="cellule-principale">{{ ligne.produit }}</td>
+                                <td class="num tabular-nums">
+                                    {{ fmt.unites(ligne.qteConfiee) }}
+                                    {% if ligne.qteRetournee > 0 or ligne.qtePerdue > 0 %}
+                                        <span class="block text-[11px] text-stone-500">dont {{ fmt.unites(ligne.qteRetournee + ligne.qtePerdue) }} déjà revenus</span>
+                                    {% endif %}
+                                </td>
+                                {% for champ, titre in {invendu: 'Invendus', perdu: 'Pertes'} %}
+                                    <td class="num">
+                                        <input type="text" inputmode="none" autocomplete="off"
+                                               name="retours[{{ ligne.produitId }}][{{ champ }}]"
+                                               value="{{ saisie[champ] ?? '' }}"
+                                               data-point-target="cellule" data-produit="{{ ligne.produitId }}" data-champ="{{ champ }}"
+                                               data-libelle="{{ titre }} — {{ ligne.produit }}"
+                                               data-action="focus->point#activer click->point#activer input->point#saisir"
+                                               placeholder="0"
+                                               class="h-12 w-20 rounded-xl border-2 border-stone-200 bg-white text-center text-lg font-bold tabular-nums text-stone-900 data-[active]:border-amber-600 data-[active]:ring-4 data-[active]:ring-amber-500/25">
+                                    </td>
+                                {% endfor %}
+                                <td>
+                                    <select name="retours[{{ ligne.produitId }}][motif]" class="champ h-12 w-28 text-sm" aria-label="Motif des pertes — {{ ligne.produit }}">
+                                        {% for motif in motifs_perte %}
+                                            <option value="{{ motif.value }}" {% if (saisie.motif ?? 'CASSE') == motif.value %}selected{% endif %}>{{ motif.libelle }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </td>
+                                <td class="num font-semibold tabular-nums" data-point-target="vendue">{{ fmt.unites(ligne.qteVendue) }}</td>
+                                <td class="num cellule-douce tabular-nums">
+                                    {% if ligne.prixUnique is not null %}
+                                        {{ fmt.fcfa(ligne.prixUnique) }}
+                                    {% else %}
+                                        {% for tranche in ligne.tranches %}<span class="block text-xs">{{ fmt.unites(tranche.quantiteConfiee) }} × {{ fmt.fcfa(tranche.prixVente) }}</span>{% endfor %}
+                                    {% endif %}
+                                </td>
+                                <td class="num font-semibold tabular-nums" data-point-target="montant">{{ fmt.fcfa(ligne.montantAttendu) }}</td>
+                            </tr>
+                        {% else %}
+                            <tr><td colspan="8" class="cellule-vide">Aucune dotation validée sur la période.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                </div>
+            </div>
+
+            {# ---- Pavé numérique, collant ---- #}
+            <div class="carte self-start lg:sticky lg:top-20">
+                <div class="carte-corps">
+                    <div class="text-xs font-medium uppercase tracking-wide text-stone-500">Case active</div>
+                    <div data-point-target="actif" class="min-h-6 truncate text-sm font-semibold text-stone-900">Touchez une case</div>
+                    <div class="mt-3 grid grid-cols-3 gap-2" role="group" aria-label="Clavier numérique">
+                        {% for touche in ['1', '2', '3', '4', '5', '6', '7', '8', '9', '000', '0', 'retour'] %}
+                            {% if touche == 'retour' %}
+                                <button type="button" data-action="point#reculer" aria-label="Effacer le dernier chiffre"
+                                        class="h-14 touch-manipulation rounded-xl border border-stone-300 bg-stone-200 text-2xl font-bold text-stone-700 hover:bg-stone-300 active:bg-stone-400">⌫</button>
+                            {% else %}
+                                <button type="button" data-action="point#appuyer" data-chiffre="{{ touche }}"
+                                        class="h-14 touch-manipulation rounded-xl border border-stone-200 bg-stone-50 {{ touche == '000' ? 'text-lg' : 'text-2xl' }} font-bold tabular-nums text-stone-900 hover:bg-stone-100 active:bg-amber-100">{{ touche }}</button>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                    <button type="button" data-action="point#effacer"
+                            class="mt-2 h-11 w-full touch-manipulation rounded-xl border border-stone-300 bg-white text-sm font-semibold text-stone-600 hover:bg-stone-100">Effacer la case</button>
+                </div>
+            </div>
+        </div>
+
+        {# ---- 4, 5 et 6. Totaux, espèces remises, écart : fixés en bas d'écran ---- #}
+        <div class="sticky bottom-3 z-10 mt-4 rounded-2xl border border-stone-200 bg-white/95 p-3 shadow-lg backdrop-blur">
+            <div class="grid gap-3 md:grid-cols-[repeat(3,minmax(0,1fr))_minmax(0,1.2fr)]">
+                <div>
+                    <div class="text-xs text-stone-500">Montant attendu</div>
+                    <div class="text-lg font-bold tabular-nums" data-point-target="totalAttendu">{{ fmt.fcfa(base.montantAttendu) }}</div>
+                </div>
+                <div>
+                    <div class="text-xs text-stone-500">
+                        Rémunération ·
+                        {% if stand.modeRemuneration.value == 'COMMISSION' %}commission {{ (stand.tauxCommission / 100)|number_format(stand.tauxCommission % 100 ? 2 : 0, ',', ' ') }} %{% else %}marge{% endif %}
+                    </div>
+                    <div class="text-lg font-bold tabular-nums" data-point-target="totalRemuneration">{{ fmt.fcfa(base.remuneration) }}</div>
+                </div>
+                <div>
+                    <div class="text-xs text-stone-500">Net à remettre</div>
+                    <div class="text-2xl font-black tabular-nums text-stone-900" data-point-target="totalNet">{{ fmt.fcfa(base.netARemettre) }}</div>
+                </div>
+                <div class="flex flex-wrap items-end gap-2">
+                    <label class="block">
+                        <span class="text-xs text-stone-500">Espèces remises (FCFA)</span>
+                        <input type="text" inputmode="none" autocomplete="off" name="remis" value="{{ valeurs.remis }}"
+                               data-point-target="cellule" data-champ="remis" data-libelle="Espèces remises"
+                               data-action="focus->point#activer click->point#activer input->point#saisir"
+                               placeholder="0"
+                               class="block h-12 w-36 rounded-xl border-2 border-stone-300 bg-white px-3 text-right text-xl font-bold tabular-nums data-[active]:border-amber-600 data-[active]:ring-4 data-[active]:ring-amber-500/25">
+                    </label>
+                    <div data-point-target="blocEcart" data-etat="vide"
+                         class="min-w-40 flex-1 rounded-xl border-2 border-stone-200 px-3 py-2 text-sm font-bold data-[etat=juste]:border-green-600 data-[etat=juste]:bg-green-50 data-[etat=juste]:text-green-800 data-[etat=manquant]:border-red-600 data-[etat=manquant]:bg-red-50 data-[etat=manquant]:text-red-800 data-[etat=trop]:border-orange-500 data-[etat=trop]:bg-orange-50 data-[etat=trop]:text-orange-800">
+                        <span class="block text-[11px] font-medium uppercase tracking-wide opacity-70">Écart</span>
+                        <span data-point-target="ecart" class="tabular-nums">{{ brouillon and brouillon.ecart is not null ? fmt.fcfa(brouillon.ecart) : 'Saisissez les espèces remises' }}</span>
+                    </div>
+                </div>
+            </div>
+
+            {# Manquant : la gérante choisit son sort, **rien n'est coché d'office**. Une
+               dette ne naît jamais sans ce geste, une perte jamais sans justification. #}
+            <fieldset data-point-target="traitement" class="mt-3" {% if not (brouillon and brouillon.ecart is not null and brouillon.ecart < 0) %}hidden{% endif %}>
+                <legend class="etiquette">Il manque <span data-point-target="manquant" class="tabular-nums">{{ brouillon and brouillon.ecart is not null and brouillon.ecart < 0 ? fmt.fcfa(-brouillon.ecart) : '' }}</span> : que faire de ce manquant ?</legend>
+                <div class="grid gap-2 sm:grid-cols-2">
+                    {% for traitement in traitements %}
+                        <label class="flex min-h-14 cursor-pointer items-start gap-3 rounded-xl border-2 border-stone-200 bg-white px-3 py-2 has-[:checked]:border-amber-600 has-[:checked]:bg-amber-50">
+                            <input type="radio" name="traitement" value="{{ traitement.value }}" class="mt-1 h-5 w-5 accent-amber-700"
+                                   data-action="point#choisirTraitement" {% if valeurs.traitement == traitement.value %}checked{% endif %}>
+                            <span class="text-sm">
+                                {% if traitement.value == 'DETTE' %}
+                                    <strong class="block text-stone-900">Imputer en dette du vendeur</strong>
+                                    <span class="text-stone-600">Une dette sera ouverte au nom de <strong data-point-target="nomVendeur">{{ (vendeurs|filter(v => v.id == valeurs.vendeur)|first).nom ?? 'du vendeur' }}</strong>, à rembourser.</span>
+                                {% else %}
+                                    <strong class="block text-stone-900">Passer en perte</strong>
+                                    <span class="text-stone-600">La boutique absorbe le manquant. Justification obligatoire.</span>
+                                {% endif %}
+                            </span>
+                        </label>
+                    {% endfor %}
+                </div>
+            </fieldset>
+
+            <div data-point-target="justification" class="mt-3">
+                <label class="block">
+                    <span class="etiquette">Justification de l'écart <span class="font-normal text-stone-500">(obligatoire au-delà de {{ fmt.fcfa(stand.seuilEcartAlerte) }}, et pour une perte)</span></span>
+                    <textarea name="commentaire" rows="2" class="champ" data-point-target="commentaire" placeholder="Monnaie rendue à un client, billet refusé…">{{ valeurs.commentaire }}</textarea>
+                </label>
+            </div>
+
+            <div class="mt-3 flex flex-wrap items-center justify-end gap-3">
+                <p data-point-target="message" class="mr-auto min-h-5 text-sm font-medium text-amber-800" aria-live="polite"></p>
+                <button type="submit" name="action" value="brouillon" class="btn btn-secondaire btn-lg">Enregistrer le brouillon</button>
+                <button type="submit" name="action" value="valider" data-point-target="valider" class="btn btn-primaire btn-lg">{{ ui.icone('valide') }} Valider le point</button>
+            </div>
+        </div>
+    </form>
+</div>
+{% endif %}
+{% endblock %}

@@ -29,7 +29,7 @@ class PerteTest extends WebTestCase
 
         $connexion = $this->em->getConnection();
         $connexion->executeStatement('SET FOREIGN_KEY_CHECKS = 0');
-        foreach (['ligne_fiche_technique', 'fiche_technique', 'ligne_vente', 'reglement', 'vente', 'mouvement_caisse', 'session_caisse', 'mouvement_stock', 'perte', 'article', 'matiere_premiere', 'fournisseur', 'famille_produit', 'journal_audit', 'utilisateur'] as $table) {
+        foreach (['ligne_fiche_technique', 'fiche_technique', 'ligne_vente', 'reglement', 'vente', 'mouvement_caisse', 'session_caisse', 'mouvement_stock', 'stock_courant', 'perte', 'article', 'matiere_premiere', 'fournisseur', 'famille_produit', 'journal_audit', 'utilisateur'] as $table) {
             $connexion->executeStatement('DELETE FROM '.$table);
         }
         $connexion->executeStatement('SET FOREIGN_KEY_CHECKS = 1');
@@ -72,6 +72,44 @@ class PerteTest extends WebTestCase
 
         $farine = $this->em->getRepository(MatierePremiere::class)->find($this->farine->getId());
         $this->assertSame(98000, $farine->getStockActuel()); // 100 − 2 kg
+    }
+
+    /**
+     * Une perte au-delà du stock du dépôt est refusée : 422 avec le message sous la
+     * quantité, et rien d'enregistré — ni la perte, ni le mouvement.
+     */
+    public function testUnePerteAuDelaDuStockEstRefuseeSansRienEnregistrer(): void
+    {
+        $crawler = $this->client->request('GET', '/admin/pertes/saisie');
+        $form = $crawler->selectButton('Enregistrer la perte')->form();
+        $form['perte[matierePremiere]'] = (string) $this->farine->getId();
+        $form['perte[quantite]'] = '150';      // 150 kg pour 100 en stock
+        $form['perte[motif]'] = MotifPerte::CASSE->value;
+        $this->client->submit($form);
+
+        $this->assertResponseStatusCodeSame(422);
+        $this->assertSelectorTextContains('body', 'Stock insuffisant pour « Farine »');
+
+        $this->assertSame(0, static::getContainer()->get(PerteRepository::class)->count([]));
+        $this->assertNull(static::getContainer()->get(MouvementStockRepository::class)->findOneBy(['type' => TypeMouvementStock::PERTE]));
+        $this->em->clear();
+        $this->assertSame(100000, $this->em->getRepository(MatierePremiere::class)->find($this->farine->getId())->getStockActuel());
+    }
+
+    /**
+     * Un pain fabriqué n'a pas de stock : sa perte est valorisée, sans mouvement.
+     * Un mouvement sans stock en face ferait mentir la somme des mouvements.
+     */
+    public function testLaPerteDUnArticleNonSuiviNeCreePasDeMouvement(): void
+    {
+        $baguette = new Article('Baguette', 15000, 'pièce');
+        $this->em->persist($baguette);
+        $this->em->flush();
+
+        static::getContainer()->get(PerteService::class)->enregistrer(MotifPerte::INVENDU, null, $baguette, 5000);
+
+        $this->assertSame(1, static::getContainer()->get(PerteRepository::class)->count([]));
+        $this->assertNull(static::getContainer()->get(MouvementStockRepository::class)->findOneBy(['article' => $baguette]));
     }
 
     public function testSyntheseMensuelle(): void

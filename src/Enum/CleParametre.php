@@ -24,6 +24,8 @@ enum CleParametre: string
     case NCC = 'boutique.ncc';
     case RCCM = 'boutique.rccm';
     case PIED_TICKET = 'ticket.pied';
+    /** FCFA entiers. Au-delà, la dotation du vendeur affiche une alerte — sans rien bloquer. */
+    case SEUIL_ALERTE_DETTE = 'revendeurs.seuil_alerte_dette';
 
     public function libelle(): string
     {
@@ -38,6 +40,7 @@ enum CleParametre: string
             self::NCC => 'NCC',
             self::RCCM => 'RCCM',
             self::PIED_TICKET => 'Pied de ticket',
+            self::SEUIL_ALERTE_DETTE => 'Seuil d\'alerte de dette d\'un vendeur (FCFA)',
         };
     }
 
@@ -55,6 +58,7 @@ enum CleParametre: string
             self::NCC => 'Numéro de Compte Contribuable. Laissez vide si vous n\'en avez pas encore.',
             self::RCCM => 'Registre du Commerce et du Crédit Mobilier. Facultatif.',
             self::PIED_TICKET => 'Phrase de fin de ticket (remerciement, horaires…).',
+            self::SEUIL_ALERTE_DETTE => 'Au-delà de ce que doit un vendeur, une alerte s\'affiche quand on le dote. 0 : dès le premier franc dû. N\'empêche rien.',
         };
     }
 
@@ -71,7 +75,14 @@ enum CleParametre: string
             self::NCC => '',
             self::RCCM => '',
             self::PIED_TICKET => 'Merci de votre visite et à bientôt !',
+            self::SEUIL_ALERTE_DETTE => '5000',
         };
+    }
+
+    /** Montant en francs entiers : le formulaire n'accepte que des chiffres. */
+    public function estMontant(): bool
+    {
+        return self::SEUIL_ALERTE_DETTE === $this;
     }
 
     /** Champ multiligne dans le formulaire d'administration. */
@@ -101,6 +112,7 @@ enum CleParametre: string
             self::TELEPHONE, self::EMAIL => 'Identité de l\'établissement',
             self::NCC, self::RCCM => 'Mentions légales',
             self::PIED_TICKET => 'Ticket de caisse',
+            self::SEUIL_ALERTE_DETTE => 'Revendeurs',
         };
     }
 }

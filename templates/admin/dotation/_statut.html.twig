@@ -1,0 +1,7 @@
+{% if bon.estValide %}
+    <span class="badge badge-vert badge-point">Validé</span>
+{% elseif bon.estAnnule %}
+    <span class="badge badge-rouge badge-point">Annulé</span>
+{% else %}
+    <span class="badge badge-ambre badge-point">Brouillon</span>
+{% endif %}

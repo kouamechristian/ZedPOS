@@ -23,6 +23,12 @@
         { label: 'Production',      route: 'admin_production',    match: ['admin_production'],                  icone: 'production' },
         { label: 'Pertes',          route: 'admin_pertes',        match: ['admin_perte'],                       icone: 'pertes' },
     ]},
+    { titre: 'Revendeurs', entrees: [
+        { label: 'Dotations',       route: 'admin_dotation_index', match: ['admin_dotation'],                   icone: 'fournisseurs' },
+        { label: 'Points',          route: 'admin_point_index',    match: ['admin_point'],                      icone: 'clotures' },
+        { label: 'Rapports',        route: 'admin_rapport_stand',  match: ['admin_rapport_stand'],              icone: 'pilotage' },
+        { label: 'Stands',          route: 'admin_stand_index',    match: ['admin_stand', 'admin_vendeur'],      icone: 'accueil' },
+    ]},
     { titre: 'Administration', entrees: [
         { label: 'Comptabilité',    route: 'app_comptabilite',    match: ['app_comptabilite'],                  icone: 'comptabilite' },
         { label: 'Utilisateurs',    route: 'admin_utilisateurs',  match: ['admin_utilisateur'],                 icone: 'utilisateurs' },

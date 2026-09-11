@@ -33,6 +33,23 @@ class ArticleRepository extends ServiceEntityRepository
     }
 
     /**
+     * Articles proposés sur un bon de dotation : les actifs, famille chargée, dans
+     * l'ordre de la caisse — la gérante retrouve ses produits là où elle les voit
+     * au comptoir.
+     *
+     * @return list<Article>
+     */
+    public function pourDotation(): array
+    {
+        return $this->createQueryBuilder('a')
+            ->leftJoin('a.familleProduit', 'f')->addSelect('f')
+            ->andWhere('a.actif = true')
+            ->orderBy('f.position', 'ASC')->addOrderBy('a.positionCaisse', 'ASC')->addOrderBy('a.nom', 'ASC')
+            ->getQuery()
+            ->getResult();
+    }
+
+    /**
      * Tous les noms du catalogue, actifs ou non.
      *
      * Sert à l'import en masse ({@see \App\Service\ImportArticles}) pour écarter

@@ -1,0 +1,130 @@
+{# Rapport par stand ou par vendeur : même grille, le groupe seul change.
+   Variables : donnees, nature ('stand' | 'vendeur'), titre, dette (booléen). #}
+{% import 'admin/_macros.html.twig' as fmt %}
+
+{% set total = donnees.total %}
+<section class="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    {% for carte in [
+        {libelle: 'CA des stands', valeur: fmt.fcfa(total.ca), note: 'valeur de vente écoulée'},
+        {libelle: 'Net pour la boutique', valeur: fmt.fcfa(total.net), note: 'rémunération ' ~ fmt.fcfa(total.remuneration) ~ ' déduite'},
+        {libelle: 'Taux d\'invendus', valeur: total.tauxInvendus is null ? '—' : fmt.pourcent(total.tauxInvendus), note: fmt.unites(total.retournee) ~ ' retournés'},
+        {libelle: 'Écarts d\'espèces', valeur: fmt.fcfa(total.ecart), note: 'manquants ' ~ fmt.fcfa(-total.manquants) ~ ' · trop-perçus ' ~ fmt.fcfa(total.tropPercus)},
+    ] %}
+        <article class="kpi apparition" style="--i: {{ loop.index }}">
+            <div class="kpi-tete"><span class="kpi-libelle">{{ carte.libelle }}</span></div>
+            <div class="kpi-valeur">{{ carte.valeur }}</div>
+            <div class="kpi-note">{{ carte.note }}</div>
+        </article>
+    {% endfor %}
+</section>
+
+{% if total.enAttente > 0 %}
+    <div class="alerte alerte-bleu apparition mb-4">
+        <p>{{ fmt.unites(total.enAttente) }} unité(s) confiée(s) sur la période attendent encore leur point : elles comptent dans le confié, pas encore dans le vendu ni dans le CA.</p>
+    </div>
+{% endif %}
+
+{% if donnees.groupes is not empty %}
+    <section class="carte apparition mb-4">
+        <div class="carte-entete"><h2 class="carte-titre">CA par {{ filtre.granularite.libelle|lower }}</h2></div>
+        <div class="carte-corps">
+            <div class="relative h-64"
+                 data-controller="graphique-rapport"
+                 data-graphique-rapport-libelles-value="{{ donnees.libelles|json_encode }}"
+                 data-graphique-rapport-series-value="{{ donnees.series|json_encode }}"
+                 data-graphique-rapport-empile-value="true">
+                <canvas data-graphique-rapport-target="canvas" role="img" aria-label="Chiffre d'affaires par {{ nature }} et par {{ filtre.granularite.libelle|lower }}"></canvas>
+            </div>
+        </div>
+    </section>
+{% endif %}
+
+{% set colonnes %}
+    <th class="num">Confié</th>
+    <th class="num">En attente</th>
+    <th class="num">Vendu</th>
+    <th class="num">Retourné</th>
+    <th class="num">Invendus</th>
+    <th class="num">Pertes</th>
+    <th class="num">CA</th>
+    <th class="num">Rémunération</th>
+    <th class="num">Net</th>
+    <th class="num">Écarts</th>
+{% endset %}
+
+{% macro chiffres(c) %}
+    {% import 'admin/_macros.html.twig' as fmt %}
+    <td class="num tabular-nums">{{ fmt.unites(c.confiee) }}</td>
+    <td class="num tabular-nums cellule-douce">{{ c.enAttente > 0 ? fmt.unites(c.enAttente) : '—' }}</td>
+    <td class="num tabular-nums font-semibold">{{ fmt.unites(c.vendue) }}</td>
+    <td class="num tabular-nums">{{ fmt.unites(c.retournee) }}</td>
+    <td class="num tabular-nums">{{ c.tauxInvendus is null ? '—' : fmt.pourcent(c.tauxInvendus) }}</td>
+    <td class="num tabular-nums">{{ fmt.unites(c.perdue) }}{% if c.valeurPertes > 0 %}<span class="block text-[11px] text-stone-500">{{ fmt.fcfa(c.valeurPertes) }}</span>{% endif %}</td>
+    <td class="num tabular-nums font-semibold">{{ fmt.fcfa(c.ca) }}</td>
+    <td class="num tabular-nums">{{ fmt.fcfa(c.remuneration) }}</td>
+    <td class="num tabular-nums">{{ fmt.fcfa(c.net) }}</td>
+    <td class="num tabular-nums {{ c.ecart < 0 ? 'text-red-700' : (c.ecart > 0 ? 'text-orange-700' : '') }}">{{ c.points > 0 ? fmt.fcfa(c.ecart) : '—' }}</td>
+{% endmacro %}
+
+{# ---- Toute la période, par groupe ---- #}
+<div class="tableau-conteneur apparition mb-4">
+    <div class="defilement-x">
+    <table class="tableau" data-rapport="groupes">
+        <thead>
+            <tr>
+                <th>{{ titre }}</th>
+                {{ colonnes }}
+                {% if dette %}<th class="num">Dette actuelle</th>{% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for groupe in donnees.groupes %}
+                <tr>
+                    <td class="cellule-principale">
+                        {% if nature == 'vendeur' %}<a href="{{ path('admin_vendeur_show', {id: groupe.id}) }}" class="lien">{{ groupe.vendeur }}</a>{% else %}{{ groupe.stand }}{% endif %}
+                    </td>
+                    {{ _self.chiffres(groupe) }}
+                    {% if dette %}<td class="num tabular-nums {{ groupe.dette > 0 ? 'font-semibold text-red-700' : 'cellule-douce' }}">{{ groupe.dette > 0 ? fmt.fcfa(groupe.dette) : '—' }}</td>{% endif %}
+                </tr>
+            {% else %}
+                <tr><td colspan="{{ dette ? 12 : 11 }}" class="cellule-vide">Aucune dotation validée sur la période.</td></tr>
+            {% endfor %}
+        </tbody>
+        {% if donnees.groupes is not empty %}
+            <tfoot>
+                <tr class="font-semibold">
+                    <td>Total</td>
+                    {{ _self.chiffres(total) }}
+                    {% if dette %}<td class="num tabular-nums">{{ fmt.fcfa(total.dette) }}</td>{% endif %}
+                </tr>
+            </tfoot>
+        {% endif %}
+    </table>
+    </div>
+</div>
+
+{# ---- Détail par tranche ---- #}
+{% if donnees.detail is not empty %}
+    <div class="tableau-conteneur apparition">
+        <div class="defilement-x">
+        <table class="tableau" data-rapport="detail">
+            <thead>
+                <tr>
+                    <th>{{ filtre.granularite.libelle }}</th>
+                    <th>{{ titre }}</th>
+                    {{ colonnes }}
+                </tr>
+            </thead>
+            <tbody>
+                {% for ligne in donnees.detail %}
+                    <tr>
+                        <td class="tabular-nums">{{ ligne.tranche }}</td>
+                        <td class="cellule-principale">{{ ligne[nature] }}</td>
+                        {{ _self.chiffres(ligne) }}
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+{% endif %}

@@ -9,7 +9,6 @@ use App\Entity\LigneFicheTechnique;
 use App\Entity\LigneVente;
 use App\Entity\MatierePremiere;
 use App\Entity\MouvementCaisse;
-use App\Entity\MouvementStock;
 use App\Entity\Reglement;
 use App\Entity\SessionCaisse;
 use App\Entity\Utilisateur;
@@ -20,6 +19,7 @@ use App\Enum\ModeVente;
 use App\Enum\RoleUtilisateur;
 use App\Enum\TypeMouvementCaisse;
 use App\Enum\TypeMouvementStock;
+use App\Service\StockManager;
 use Doctrine\Bundle\FixturesBundle\Fixture;
 use Doctrine\Persistence\ObjectManager;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
@@ -49,8 +49,13 @@ class AppFixtures extends Fixture
 
     private int $numeroSeq = 0;
 
-    public function __construct(private readonly UserPasswordHasherInterface $hasher)
-    {
+    /** @var array<string, int> stock de départ des matières, en millièmes, par clé */
+    private array $stocksInitiaux = [];
+
+    public function __construct(
+        private readonly UserPasswordHasherInterface $hasher,
+        private readonly StockManager $stock,
+    ) {
     }
 
     public function load(ObjectManager $manager): void
@@ -64,6 +69,10 @@ class AppFixtures extends Fixture
         $caissierIds = $this->creerUtilisateurs($manager);
 
         $manager->flush();
+
+        // Les matières ont maintenant un id : leur stock de départ peut passer par
+        // StockManager, seul autorisé à écrire un stock.
+        $this->approvisionner($manager, $matieres);
 
         $pools = $this->construirePools($articles);
         $manager->clear();
@@ -214,27 +223,43 @@ class AppFixtures extends Fixture
             'eau_mp' => ['Eau minérale (bouteille)', 'pièce', 150, 600, 100],
         ];
 
-        $approvisionne = (new \DateTimeImmutable('today'))->modify('-30 days')->setTime(6, 0);
-
         $matieres = [];
         foreach ($definitions as $cle => [$nom, $unite, $coutFcfa, $stock, $mini]) {
             $matiere = new MatierePremiere($nom, $unite);
             $matiere
                 ->setCoutMoyenPondere($coutFcfa * 100)
-                ->setStockActuel($stock * 1000)
                 ->setStockMini($mini * 1000);
             $manager->persist($matiere);
             $matieres[$cle] = $matiere;
-
-            $mouvement = new MouvementStock(TypeMouvementStock::ENTREE, $stock * 1000);
-            $mouvement->setMatierePremiere($matiere)
-                ->setMotif('Approvisionnement initial')
-                ->setSource('inventaire', null);
-            $this->fixerDate($mouvement, 'createdAt', $approvisionne);
-            $manager->persist($mouvement);
+            $this->stocksInitiaux[$cle] = $stock * 1000;
         }
 
         return $matieres;
+    }
+
+    /**
+     * Approvisionnement initial, trente jours avant aujourd'hui, au dépôt principal.
+     *
+     * @param array<string, MatierePremiere> $matieres
+     */
+    private function approvisionner(ObjectManager $manager, array $matieres): void
+    {
+        $approvisionne = (new \DateTimeImmutable('today'))->modify('-30 days')->setTime(6, 0);
+        $depot = $this->stock->depotPrincipal();
+
+        foreach ($matieres as $cle => $matiere) {
+            $mouvement = $this->stock->enregistrerMouvement(
+                $matiere,
+                $depot,
+                $this->stocksInitiaux[$cle],
+                TypeMouvementStock::AJUSTEMENT,
+                'inventaire',
+                motif: 'Approvisionnement initial',
+            );
+            $this->fixerDate($mouvement, 'createdAt', $approvisionne);
+        }
+
+        $manager->flush();
     }
 
     /**

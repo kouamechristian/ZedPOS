@@ -4,15 +4,14 @@ namespace App\Service;
 
 use App\Entity\Article;
 use App\Entity\MatierePremiere;
-use App\Entity\MouvementStock;
 use App\Entity\Perte;
 use App\Enum\MotifPerte;
 use App\Enum\TypeMouvementStock;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
- * Enregistre une perte : crée la Perte valorisée automatiquement, un MouvementStock
- * de type PERTE, et décrémente le stock du support (matière ou article suivi).
+ * Enregistre une perte : crée la Perte valorisée automatiquement et, pour ce qui
+ * est suivi en stock, un MouvementStock PERTE au dépôt principal.
  */
 class PerteService
 {
@@ -20,9 +19,13 @@ class PerteService
         private readonly EntityManagerInterface $em,
         private readonly ValorisationService $valorisation,
         private readonly AuditLogger $audit,
+        private readonly StockManager $stock,
     ) {
     }
 
+    /**
+     * @throws StockInsuffisantException si la perte dépasse le stock du dépôt
+     */
     public function enregistrer(
         MotifPerte $motif,
         ?MatierePremiere $matiere,
@@ -39,27 +42,44 @@ class PerteService
 
         $valorisation = $this->valorisation->valoriser($matiere, $article, $quantiteMillimes);
 
-        $perte = new Perte($motif, $quantiteMillimes, $valorisation);
-        $perte->setMatierePremiere($matiere)->setArticle($article);
-        $this->em->persist($perte);
-        $this->em->flush(); // pour disposer de l'id (source du mouvement)
+        // Matière toujours ; article seulement s'il est suivi en stock. Un pain
+        // fabriqué n'a pas de stock à décrémenter : la perte est valorisée, sans
+        // mouvement — un mouvement sans stock en face ferait mentir l'historique.
+        $produit = $matiere ?? ($article->isSuiviStock() ? $article : null);
 
-        $mouvement = new MouvementStock(TypeMouvementStock::PERTE, -$quantiteMillimes);
-        $mouvement
-            ->setMatierePremiere($matiere)
-            ->setArticle($article)
-            ->setMotif($this->texteMotif($motif, $commentaire))
-            ->setSource('perte', $perte->getId());
-        $this->em->persist($mouvement);
+        $connexion = $this->em->getConnection();
+        $connexion->beginTransaction();
 
-        // Décrément du stock : matière toujours, article seulement s'il est suivi.
-        if (null !== $matiere) {
-            $matiere->setStockActuel($matiere->getStockActuel() - $quantiteMillimes);
-        } elseif (null !== $article && $article->isSuiviStock()) {
-            $article->setStockActuel($article->getStockActuel() - $quantiteMillimes);
+        try {
+            // Le mouvement d'abord : s'il est refusé pour stock insuffisant, la perte
+            // n'a pas encore été écrite et il n'y a rien à défaire.
+            $mouvement = null !== $produit
+                ? $this->stock->enregistrerMouvement(
+                    $produit,
+                    $this->stock->depotPrincipal(),
+                    -$quantiteMillimes,
+                    TypeMouvementStock::PERTE,
+                    motif: $this->texteMotif($motif, $commentaire),
+                )
+                : null;
+
+            $perte = new Perte($motif, $quantiteMillimes, $valorisation);
+            $perte->setMatierePremiere($matiere)->setArticle($article);
+            $this->em->persist($perte);
+            $this->em->flush();
+
+            $mouvement?->rattacherDocument('perte', (int) $perte->getId());
+            $this->em->flush();
+
+            $connexion->commit();
+        } catch (\Throwable $e) {
+            if ($connexion->isTransactionActive()) {
+                $connexion->rollBack();
+            }
+
+            throw $e;
         }
 
-        $this->em->flush();
         $this->audit->perteSaisie($perte, $commentaire);
 
         return $perte;

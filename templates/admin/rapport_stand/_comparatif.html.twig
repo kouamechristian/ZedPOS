@@ -1,0 +1,82 @@
+{# CA caisse et CA stands côte à côte.
+
+   Deux sources disjointes : la caisse lit `vente`, les stands lisent les lignes de
+   dotation — une vente de stand ne crée aucune `Vente`. Le CA global est leur
+   somme, sans rien compter deux fois. #}
+{% import 'admin/_macros.html.twig' as fmt %}
+
+{% set total = donnees.total %}
+<section class="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    {% for carte in [
+        {libelle: 'CA caisse', valeur: fmt.fcfa(total.caCaisse), note: total.tickets ~ ' ticket(s)'},
+        {libelle: 'CA stands', valeur: fmt.fcfa(total.caStands), note: 'net boutique ' ~ fmt.fcfa(total.netStands)},
+        {libelle: 'CA global', valeur: fmt.fcfa(total.caGlobal), note: 'caisse + stands'},
+        {libelle: 'Part des stands', valeur: total.partStands is null ? '—' : fmt.pourcent(total.partStands), note: 'du CA global'},
+    ] %}
+        <article class="kpi apparition" style="--i: {{ loop.index }}">
+            <div class="kpi-tete"><span class="kpi-libelle">{{ carte.libelle }}</span></div>
+            <div class="kpi-valeur">{{ carte.valeur }}</div>
+            <div class="kpi-note">{{ carte.note }}</div>
+        </article>
+    {% endfor %}
+</section>
+
+<section class="carte apparition mb-4">
+    <div class="carte-entete"><h2 class="carte-titre">Caisse et stands, par {{ filtre.granularite.libelle|lower }}</h2></div>
+    <div class="carte-corps">
+        <div class="relative h-64"
+             data-controller="graphique-rapport"
+             data-graphique-rapport-libelles-value="{{ donnees.libelles|json_encode }}"
+             data-graphique-rapport-series-value="{{ [
+                 {libelle: 'Caisse', valeurs: donnees.lignes|map(l => l.caCaisse // 100)},
+                 {libelle: 'Stands', valeurs: donnees.lignes|map(l => l.caStands // 100)},
+             ]|json_encode }}">
+            <canvas data-graphique-rapport-target="canvas" role="img" aria-label="CA caisse et CA stands par {{ filtre.granularite.libelle|lower }}"></canvas>
+        </div>
+    </div>
+</section>
+
+<div class="tableau-conteneur apparition">
+    <div class="defilement-x">
+    <table class="tableau" data-rapport="comparatif">
+        <thead>
+            <tr>
+                <th>{{ filtre.granularite.libelle }}</th>
+                <th class="num">CA caisse</th>
+                <th class="num">Tickets</th>
+                <th class="num">CA stands</th>
+                <th class="num">Net stands</th>
+                <th class="num">CA global</th>
+                <th class="num">Part des stands</th>
+                <th class="num">En attente de point</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ligne in donnees.lignes %}
+                <tr>
+                    <td class="tabular-nums">{{ ligne.tranche }}</td>
+                    <td class="num tabular-nums">{{ fmt.fcfa(ligne.caCaisse) }}</td>
+                    <td class="num tabular-nums cellule-douce">{{ ligne.tickets }}</td>
+                    <td class="num tabular-nums">{{ fmt.fcfa(ligne.caStands) }}</td>
+                    <td class="num tabular-nums cellule-douce">{{ fmt.fcfa(ligne.netStands) }}</td>
+                    <td class="num tabular-nums font-semibold">{{ fmt.fcfa(ligne.caGlobal) }}</td>
+                    <td class="num tabular-nums">{{ ligne.partStands is null ? '—' : fmt.pourcent(ligne.partStands) }}</td>
+                    <td class="num tabular-nums cellule-douce">{{ ligne.enAttente > 0 ? fmt.unites(ligne.enAttente) : '—' }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="font-semibold">
+                <td>Total</td>
+                <td class="num tabular-nums">{{ fmt.fcfa(total.caCaisse) }}</td>
+                <td class="num tabular-nums">{{ total.tickets }}</td>
+                <td class="num tabular-nums">{{ fmt.fcfa(total.caStands) }}</td>
+                <td class="num tabular-nums">{{ fmt.fcfa(total.netStands) }}</td>
+                <td class="num tabular-nums">{{ fmt.fcfa(total.caGlobal) }}</td>
+                <td class="num tabular-nums">{{ total.partStands is null ? '—' : fmt.pourcent(total.partStands) }}</td>
+                <td class="num tabular-nums">{{ total.enAttente > 0 ? fmt.unites(total.enAttente) : '—' }}</td>
+            </tr>
+        </tfoot>
+    </table>
+    </div>
+</div>
