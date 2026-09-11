@@ -133,6 +133,52 @@ class SessionCaisseTest extends WebTestCase
         $this->assertResponseStatusCodeSame(409);
     }
 
+    // ------------------------------------------------------------ Pavé tactile
+
+    /**
+     * Les trois montants du cycle de caisse se tapent au pavé, comme le montant
+     * reçu de `/caisse`. `inputmode="none"` : le clavier du système recouvrirait
+     * le pavé et le bouton de validation sur la tablette.
+     */
+    public function testLesMontantsDuCycleDeCaisseSeTapentAuPave(): void
+    {
+        $crawler = $this->client->request('GET', '/caisse/session/ouverture');
+        $this->assertPave($crawler, 'ouverture_caisse[fondCaisse]');
+
+        $this->service()->ouvrir($this->caissier, 3000000);
+
+        $crawler = $this->client->request('GET', '/caisse/session/depense');
+        $this->assertPave($crawler, 'mouvement_caisse[montant]');
+
+        $crawler = $this->client->request('GET', '/caisse/session/cloture');
+        $this->assertPave($crawler, 'cloture_caisse[montantCompte]');
+    }
+
+    private function assertPave(\Symfony\Component\DomCrawler\Crawler $crawler, string $nom): void
+    {
+        $this->assertResponseIsSuccessful();
+
+        $pave = $crawler->filter('[data-controller="pave-montant"]');
+        $this->assertCount(1, $pave, $nom.' : un pavé par écran.');
+
+        $champ = $pave->filter(\sprintf('input[name="%s"]', $nom));
+        $this->assertCount(1, $champ, $nom.' : le champ est piloté par le pavé.');
+        $this->assertSame('none', $champ->attr('inputmode'));
+        $this->assertSame('champ', $champ->attr('data-pave-montant-target'));
+
+        // Dans l'ordre d'affichage, et non triées : `sort()` tient « 0 » et « 000 »
+        // pour égaux. L'ordre fige du même coup la disposition téléphone du pavé
+        // de `/caisse`.
+        $touches = $pave->filter('button[data-chiffre]')->each(static fn ($b) => $b->attr('data-chiffre'));
+        $this->assertSame(['1', '2', '3', '4', '5', '6', '000', '7', '8', '9', '0'], $touches);
+
+        // Aucune touche ne soumet le formulaire : un appui sur « 5 » ne doit pas
+        // ouvrir la caisse ni clôturer la journée.
+        $pave->filter('button')->each(function ($bouton) use ($nom): void {
+            $this->assertSame('button', $bouton->attr('type'), $nom.' : « '.trim($bouton->text()).' » soumettrait le formulaire.');
+        });
+    }
+
     // ------------------------------------------------------- Dépenses de caisse
 
     public function testSaisieDUneDepenseDeCaisse(): void

@@ -45,7 +45,7 @@
         </p>
 
         {{ form_start(form) }}
-            {{ form_row(form.montantCompte) }}
+            {% include 'caisse/_pave_montant.html.twig' with {champ: form.montantCompte} only %}
             {{ form_row(form.commentaire) }}
 
             <button class="w-full rounded-xl bg-red-600 text-white text-lg font-bold py-4 hover:bg-red-500">

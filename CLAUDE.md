@@ -1165,6 +1165,16 @@ Service central : `App\Service\SessionCaisseService` ; agrégation des chiffres 
   l'**écart = compté − théorique**. **Commentaire obligatoire si l'écart ≠ 0**
   (règle portée par `SessionCaisse::cloturer()`, non contournable par le formulaire).
   Les espèces encaissées sont **nettes du rendu de monnaie**.
+- **Pavé numérique tactile** sur les trois montants saisis (fond d'ouverture,
+  dépense, compté au Z) : `caisse/_pave_montant.html.twig` +
+  `pave_montant_controller.js`, **même disposition** que le pavé du montant reçu
+  de `/caisse` (1-2-3 en haut, ⌫, 000). Le champ reste un `IntegerType` en
+  **chiffres seuls** — le serveur ne lit rien de nouveau ; la lecture « 20 000
+  FCFA » est affichée à côté, parce qu'au Z 20000 et 200000 se confondent d'un
+  coup d'œil. `inputmode="none"` : le clavier du système recouvrirait le pavé et
+  le bouton de validation. Toutes les touches sont `type="button"` — un appui sur
+  « 5 » ne doit pas clôturer la journée.
+  `SessionCaisseTest::testLesMontantsDuCycleDeCaisseSeTapentAuPave` le fige.
 - **Rapport Z** `/caisse/session/z/{id}` (58 mm) et `/admin/clotures/{id}` (gérant) :
   CA total, HT/TVA, nombre de tickets, panier moyen, ventilation **par mode de
   règlement** (somme = CA) et **par famille**, remises accordées, annulations,

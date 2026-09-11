@@ -1,0 +1,47 @@
+{# Montant en FCFA suivi d'un pavé numérique tactile — écrans du cycle de caisse
+   (ouverture, dépense, clôture). Contrôleur : `pave_montant_controller.js`.
+
+   Paramètre : `champ`, le FormView d'un `IntegerType` exprimé en FCFA entiers.
+
+   Même disposition que le pavé du montant reçu de `/caisse` (1-2-3 en haut,
+   ⌫, 000) : la caissière n'a pas deux claviers à apprendre.
+
+   `inputmode="none"` : le pavé est dessiné juste en dessous, et le clavier du
+   système recouvrirait sur la tablette le pavé et le bouton de validation. Un
+   clavier physique branché sur le poste continue de fonctionner.
+
+   Les attributs du formulaire (`autofocus`, `min`) sont fusionnés, pas remplacés. #}
+<div class="mb-5" data-controller="pave-montant">
+    {{ form_label(champ) }}
+    {{ form_widget(champ, {attr: champ.vars.attr|merge({
+        inputmode: 'none',
+        autocomplete: 'off',
+        'data-pave-montant-target': 'champ',
+        'data-action': 'input->pave-montant#saisir',
+    })}) }}
+
+    <div class="mt-1.5 flex min-h-8 items-center justify-between gap-3">
+        {# Lecture en milliers : au Z, 20000 et 200000 se confondent d'un coup d'œil. #}
+        <span data-pave-montant-target="lecture" aria-live="polite"
+              class="text-base font-bold tabular-nums text-stone-700"></span>
+        <button type="button" data-action="pave-montant#effacer"
+                class="shrink-0 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm font-semibold text-stone-600 hover:bg-stone-100 active:bg-stone-200">
+            Effacer
+        </button>
+    </div>
+
+    {{ form_errors(champ) }}
+
+    <div class="mt-2 grid grid-cols-4 gap-2" role="group" aria-label="Clavier numérique — {{ champ.vars.label }}">
+        {% for touche in ['1', '2', '3', 'retour', '4', '5', '6', '000', '7', '8', '9', '0'] %}
+            {% if touche == 'retour' %}
+                <button type="button" data-action="pave-montant#reculer"
+                        aria-label="Effacer le dernier chiffre"
+                        class="h-14 touch-manipulation rounded-xl border border-stone-300 bg-stone-200 text-2xl font-bold text-stone-700 hover:bg-stone-300 active:bg-stone-400">⌫</button>
+            {% else %}
+                <button type="button" data-action="pave-montant#appuyer" data-chiffre="{{ touche }}"
+                        class="h-14 touch-manipulation rounded-xl border border-stone-200 bg-stone-50 {{ touche == '000' ? 'text-xl' : 'text-2xl' }} font-bold tabular-nums text-stone-900 hover:bg-stone-100 active:bg-amber-100">{{ touche }}</button>
+            {% endif %}
+        {% endfor %}
+    </div>
+</div>
