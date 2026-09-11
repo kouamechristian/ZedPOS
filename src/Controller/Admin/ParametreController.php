@@ -60,13 +60,15 @@ class ParametreController extends AbstractController
         }
 
         // Groupes affichés dans l'ordre du catalogue, sans les coder en dur ici.
-        $groupes = [];
+        // Transmis sous le nom `sections` : `groupes` est déjà pris par la barre
+        // latérale d'admin/base.html.twig, qui écraserait cette variable.
+        $sections = [];
         foreach (self::clesSaisies() as $cle) {
-            $groupes[$cle->groupe()][] = ParametresBoutiqueType::champ($cle);
+            $sections[$cle->groupe()][] = ParametresBoutiqueType::champ($cle);
         }
 
         return $this->rendreFormulaire('admin/parametres.html.twig', $form, [
-            'groupes' => $groupes,
+            'sections' => $sections,
             'logo' => $parametres->cheminLogo(),
         ]);
     }

@@ -16,7 +16,7 @@
     <nav class="hidden lg:block" aria-label="Sections des paramètres">
         <ul class="sticky top-24 space-y-1 text-sm">
             <li><a href="#section-logo" class="flex items-center gap-2 rounded-lg px-3 py-2 text-stone-600 transition hover:bg-white hover:text-stone-900">{{ ui.icone('document', 'h-4 w-4') }} Logo</a></li>
-            {% for titre, champs in groupes %}
+            {% for titre, champs in sections %}
                 <li><a href="#section-{{ loop.index }}" class="flex items-center gap-2 rounded-lg px-3 py-2 text-stone-600 transition hover:bg-white hover:text-stone-900">{{ ui.icone('chevron', 'h-4 w-4') }} {{ titre }}</a></li>
             {% endfor %}
         </ul>
@@ -53,7 +53,7 @@
         </section>
 
         {# Les groupes viennent du catalogue CleParametre : rien n'est codé en dur ici. #}
-        {% for titre, champs in groupes %}
+        {% for titre, champs in sections %}
             <section id="section-{{ loop.index }}" class="carte apparition scroll-mt-24" style="--i: {{ loop.index }}">
                 <div class="carte-entete"><h2 class="carte-titre">{{ titre }}</h2></div>
                 <div class="carte-corps grid grid-cols-1 gap-x-5 sm:grid-cols-2">
