@@ -9,8 +9,8 @@ use App\Enum\ModeReglement;
  * Traduit une vente en charge utile pour la route `/print` de l'agent matériel
  * local (voir `assets/js/pos-agent.js`).
  *
- * Le format attendu par l'agent est volontairement plat — `header[]`, `lines[]`,
- * `total`, `paid`, `change`, `footer[]`, `openDrawer` — et il n'est pas celui du
+ * Le format attendu par l'agent est volontairement plat — `logo`, `header[]`,
+ * `lines[]`, `total`, `paid`, `change`, `footer[]`, `openDrawer` — et il n'est pas celui du
  * ticket 58 mm rendu en HTML. Ce service est le seul point de traduction entre
  * les deux : il part du {@see TicketData} produit par {@see TicketBuilder}, donc
  * de la même source que la page imprimable et que la sortie ESC/POS. Ce que
@@ -24,8 +24,10 @@ use App\Enum\ModeReglement;
  */
 class TicketMateriel
 {
-    public function __construct(private readonly TicketBuilder $builder)
-    {
+    public function __construct(
+        private readonly TicketBuilder $builder,
+        private readonly LogoThermique $logo,
+    ) {
     }
 
     /**
@@ -41,6 +43,11 @@ class TicketMateriel
         $ticket = $this->builder->construire($vente);
 
         return [
+            // Imprimé **avant** l'en-tête, comme sur le ticket HTML. Toujours
+            // présent, `null` sans logo : l'agent n'a pas à tester l'existence
+            // de la clé. Format : `data:image/png;base64,…`, PNG noir et blanc de
+            // 384 points de large, logo déjà centré — voir LogoThermique.
+            'logo' => $this->logo->pourImpression(),
             'header' => $this->entete($ticket),
             'lines' => $this->lignes($ticket),
             'total' => $this->fcfa($ticket->totalTtc),

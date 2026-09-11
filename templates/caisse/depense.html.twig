@@ -5,7 +5,7 @@
 {% block page_title %}Dépenses de caisse{% endblock %}
 
 {% block entete_actions %}
-    <a href="{{ path('app_caisse') }}" class="rounded-lg bg-stone-700 px-3 py-2 font-medium hover:bg-stone-600">← Caisse</a>
+    <a href="{{ path('app_caisse') }}" class="rounded-lg bg-white border border-gray-300 px-3 py-2 font-medium text-gray-700 hover:bg-gray-100">← Caisse</a>
 {% endblock %}
 
 {% block caisse_content %}
@@ -24,7 +24,7 @@
             {{ form_row(form.montant) }}
             {{ form_row(form.commentaire) }}
 
-            <button class="w-full rounded-xl bg-stone-900 text-white text-lg font-bold py-4 hover:bg-stone-700">
+            <button class="w-full rounded-xl bg-amber-700 text-white text-lg font-bold py-4 hover:bg-amber-800">
                 Enregistrer
             </button>
         {{ form_end(form) }}

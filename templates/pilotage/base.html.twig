@@ -2,14 +2,15 @@
 
    **Mobile-first, puis large.** La dirigeante consulte cet écran depuis son
    téléphone à Abidjan : la mise en page de base reste donc une colonne unique,
-   avec des chiffres lisibles à bout de bras. À partir de `lg`, le cadre s'élargit
-   pour occuper l'écran d'un ordinateur au lieu de laisser deux bandes vides —
-   l'ordre de lecture, lui, ne change pas : ce qui vient en premier sur téléphone
-   reste en haut à gauche sur grand écran.
+   avec des chiffres lisibles à bout de bras, et les onglets descendent **en bas
+   de l'écran**, là où tombe le pouce. À partir de `md`, ils remontent sous
+   l'en-tête ; à partir de `lg`, le cadre s'élargit pour occuper l'écran d'un
+   ordinateur — l'ordre de lecture, lui, ne change pas.
 
    La largeur passe par un bloc : une page qui gagnerait à rester étroite (une
    liste, une fiche) peut la redéfinir sans toucher au cadre. #}
 {% extends 'base.html.twig' %}
+{% import 'admin/_icones.html.twig' as ui %}
 
 {# Le nom vient de /admin/parametres, jamais du gabarit. #}
 {% block title %}{% block page_title %}Pilotage{% endblock %} — {{ nom_boutique() }}{% endblock %}
@@ -17,69 +18,75 @@
 {% block pilotage_largeur %}max-w-3xl lg:max-w-7xl{% endblock %}
 
 {% block body %}
-<div class="min-h-screen bg-amber-50 text-stone-800 pb-16">
-    {# En-tête collant : sur téléphone on fait défiler beaucoup.
-       Dégradé chaud plutôt qu'un aplat : c'est l'écran montré au client. #}
-    <header class="sticky top-0 z-20 bg-gradient-to-br from-stone-900 via-stone-900 to-amber-950 text-white shadow-lg shadow-amber-900/10">
-        <div class="{{ block('pilotage_largeur') }} mx-auto px-4 py-3 flex items-center justify-between gap-3">
-            <div class="flex items-center gap-2.5 min-w-0">
-                {# Logo saisi dans /admin/parametres, sinon la pastille « Z ». Fond
-                   blanc : le logo est posé sur un dégradé sombre, et une image à
-                   fond transparent y disparaîtrait.
+{% set courante = app.request.attributes.get('_route') %}
+{% set onglets = [
+    { label: 'Aujourd\'hui',  court: 'Jour',     route: 'app_pilotage',     match: ['app_pilotage'],   icone: 'jour' },
+    { label: 'Tickets',       court: 'Tickets',  route: 'pilotage_ventes',  match: ['pilotage_vente'], icone: 'ventes' },
+    { label: 'Audit',         court: 'Audit',    route: 'pilotage_audit',   match: ['pilotage_audit'], icone: 'audit' },
+    { label: 'Comptabilité',  court: 'Compta',   route: 'app_comptabilite', match: [],                 icone: 'comptabilite' },
+    { label: 'Back-office',   court: 'Gestion',  route: 'admin_dashboard',  match: [],                 icone: 'backoffice' },
+] %}
 
-                   Nommée `logo_entete` pour la même raison que dans le back-office :
-                   la variable vit dans le bloc qui rend les pages filles. #}
-                {% set logo_entete = logo_boutique() %}
-                {% if logo_entete %}
-                    <img src="{{ logo_entete }}" alt="" class="h-9 w-9 shrink-0 rounded-lg bg-white object-contain" onerror="this.remove()">
-                {% else %}
-                    <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-amber-500 text-stone-900 text-sm font-black">Z</span>
-                {% endif %}
-                {# Tronqué et non passé à la ligne, contrairement au back-office :
-                   l'en-tête est collant et partagé avec le bouton « Quitter » sur un
-                   téléphone — un nom qui s'étale sur deux lignes repousserait les
-                   onglets et volerait de la hauteur aux chiffres à chaque défilement. #}
-                <div class="min-w-0 leading-tight">
-                    <div class="titre font-bold truncate">{{ nom_boutique() }}</div>
-                    <div class="text-xs text-amber-200/80 truncate">{{ block('page_title') }}</div>
+<div class="espace-gestion min-h-screen pb-24 md:pb-8">
+    {# En-tête collant et translucide : sur téléphone on fait défiler beaucoup, et
+       le nom de la boutique reste à portée d'œil. #}
+    <header class="entete-flottante">
+        <div class="{{ block('pilotage_largeur') }} mx-auto px-4 sm:px-6">
+            <div class="flex h-16 items-center justify-between gap-3">
+                <div class="flex min-w-0 items-center gap-3">
+                    {# Logo saisi dans /admin/parametres, sinon la pastille « Z ».
+
+                       Nommée `logo_entete` pour la même raison que dans le back-office :
+                       la variable vit dans le bloc qui rend les pages filles. #}
+                    {% set logo_entete = logo_boutique() %}
+                    {% if logo_entete %}
+                        <img src="{{ logo_entete }}" alt="" class="marque-logo" onerror="this.remove()">
+                    {% else %}
+                        <span class="marque-pastille">Z</span>
+                    {% endif %}
+                    {# Tronqué et non passé à la ligne, contrairement au back-office :
+                       l'en-tête est collant et partagé avec « Quitter » sur un
+                       téléphone — un nom sur deux lignes volerait de la hauteur aux
+                       chiffres à chaque défilement. #}
+                    <div class="min-w-0 leading-tight">
+                        <div class="truncate text-[15px] font-bold tracking-tight text-stone-900">{{ nom_boutique() }}</div>
+                        <div class="truncate text-xs font-medium text-amber-700">Pilotage · {{ block('page_title') }}</div>
+                    </div>
                 </div>
-            </div>
-            <a href="{{ path('app_logout') }}"
-               class="shrink-0 rounded-lg bg-white/10 px-3 py-2 text-sm font-medium hover:bg-white/20">Quitter</a>
-        </div>
-
-        <nav class="{{ block('pilotage_largeur') }} mx-auto px-4 pb-2.5 flex gap-1.5 overflow-x-auto text-sm"
-             data-turbo-prefetch="true">
-            {% set courante = app.request.attributes.get('_route') %}
-            {% set onglets = [
-                { label: 'Aujourd\'hui', route: 'app_pilotage' },
-                { label: 'Tickets',      route: 'pilotage_ventes' },
-                { label: 'Audit',        route: 'pilotage_audit' },
-                { label: 'Comptabilité', route: 'app_comptabilite' },
-                { label: 'Back-office',  route: 'admin_dashboard' },
-            ] %}
-            {% for onglet in onglets %}
-                <a href="{{ path(onglet.route) }}"
-                   class="shrink-0 rounded-full px-3.5 py-1.5 font-semibold transition
-                          {{ courante == onglet.route
-                             ? 'bg-amber-500 text-stone-900'
-                             : 'bg-white/10 text-amber-100 hover:bg-white/20' }}">
-                    {{ onglet.label }}
+                <a href="{{ path('app_logout') }}" class="btn btn-secondaire btn-sm shrink-0">
+                    {{ ui.icone('deconnexion') }}<span class="max-sm:hidden">Quitter</span>
                 </a>
-            {% endfor %}
-        </nav>
+            </div>
+
+            <nav class="hidden pb-3 md:block" data-turbo-prefetch="true" aria-label="Espaces de pilotage">
+                <div class="onglets">
+                    {% for onglet in onglets %}
+                        {% set actif = onglet.match|filter(prefixe => courante starts with prefixe)|length > 0 %}
+                        <a href="{{ path(onglet.route) }}" class="onglet inline-flex items-center gap-1.5"
+                           {% if actif %}aria-current="page"{% endif %}>
+                            {{ ui.icone(onglet.icone, 'h-4 w-4') }} {{ onglet.label }}
+                        </a>
+                    {% endfor %}
+                </div>
+            </nav>
+        </div>
     </header>
 
-    <main class="{{ block('pilotage_largeur') }} mx-auto px-4 py-5">
-        {% for type, messages in app.flashes(['success', 'error']) %}
-            {% for message in messages %}
-                <div class="mb-4 rounded-xl px-4 py-3 text-sm {{ type == 'success' ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-red-50 border border-red-200 text-red-800' }}">
-                    {{ message }}
-                </div>
-            {% endfor %}
-        {% endfor %}
-
+    <main class="contenu {{ block('pilotage_largeur') }}">
         {% block pilotage_content %}{% endblock %}
     </main>
+
+    {# Téléphone : les mêmes onglets, en bas d'écran. #}
+    <nav class="onglets-bas" aria-label="Espaces de pilotage (mobile)">
+        {% for onglet in onglets %}
+            {% set actif = onglet.match|filter(prefixe => courante starts with prefixe)|length > 0 %}
+            <a href="{{ path(onglet.route) }}" class="onglet-bas" {% if actif %}aria-current="page"{% endif %}>
+                {{ ui.icone(onglet.icone) }}
+                <span>{{ onglet.court }}</span>
+            </a>
+        {% endfor %}
+    </nav>
+
+    {{ include('admin/_toasts.html.twig') }}
 </div>
 {% endblock %}

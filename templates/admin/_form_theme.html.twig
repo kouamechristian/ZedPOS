@@ -1,8 +1,13 @@
-{# Thème de formulaire Tailwind, sobre, pour le back-office. #}
+{# Thème de formulaire des espaces de gestion.
+
+   Il ne pose que des classes du système de composants (`champ`, `etiquette`,
+   `aide`, `interrupteur`…) : l'allure d'un champ se règle dans app.css, une fois,
+   et non dans chacun des formulaires. `use` de form_div_layout pour pouvoir
+   appeler `parent()`. #}
 {% use 'form_div_layout.html.twig' %}
 
 {%- block form_row -%}
-    <div class="mb-4">
+    <div class="ligne-champ">
         {{- form_label(form) -}}
         {{- form_widget(form) -}}
         {{- form_errors(form) -}}
@@ -11,51 +16,76 @@
     </div>
 {%- endblock -%}
 
+{#- Case à cocher : la glissière d'abord, le libellé à côté — et non au-dessus,
+    où il paraîtrait titrer le champ suivant. -#}
+{%- block checkbox_row -%}
+    <div class="ligne-champ">
+        <div class="ligne-interrupteur">
+            {{- form_widget(form) -}}
+            {{- form_label(form) -}}
+        </div>
+        {{- form_errors(form) -}}
+        {{- form_help(form) -}}
+    </div>
+{%- endblock -%}
+
 {%- block form_label -%}
-    {%- if label is not same as(false) -%}
-        {%- set label_attr = label_attr|merge({class: (label_attr.class|default('') ~ ' block text-sm font-medium text-stone-700 mb-1')|trim}) -%}
+    {%- if label is not same as(false) and 'checkbox' not in block_prefixes -%}
+        {%- set label_attr = label_attr|merge({class: (label_attr.class|default('') ~ ' etiquette')|trim}) -%}
     {%- endif -%}
     {{- parent() -}}
 {%- endblock -%}
 
 {%- block form_widget_simple -%}
-    {%- set attr = attr|merge({class: (attr.class|default('') ~ ' w-full rounded-lg border border-stone-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-400')|trim}) -%}
+    {%- set attr = attr|merge({class: (attr.class|default('') ~ ' champ')|trim}) -%}
     {{- parent() -}}
 {%- endblock -%}
 
 {%- block textarea_widget -%}
-    {%- set attr = attr|merge({class: (attr.class|default('') ~ ' w-full rounded-lg border border-stone-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-400')|trim}) -%}
+    {%- set attr = attr|merge({class: (attr.class|default('') ~ ' champ')|trim}) -%}
     {{- parent() -}}
 {%- endblock -%}
 
 {%- block choice_widget_collapsed -%}
-    {%- set attr = attr|merge({class: (attr.class|default('') ~ ' w-full rounded-lg border border-stone-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-stone-400')|trim}) -%}
+    {%- set attr = attr|merge({class: (attr.class|default('') ~ ' champ')|trim}) -%}
     {{- parent() -}}
 {%- endblock -%}
 
 {%- block checkbox_widget -%}
-    {%- set attr = attr|merge({class: (attr.class|default('') ~ ' h-4 w-4 rounded border-stone-300 text-stone-800 focus:ring-stone-400')|trim}) -%}
+    {%- set attr = attr|merge({class: (attr.class|default('') ~ ' interrupteur')|trim}) -%}
     {{- parent() -}}
 {%- endblock -%}
 
 {%- block color_widget -%}
-    {%- set attr = attr|merge({class: (attr.class|default('') ~ ' h-10 w-16 rounded border border-stone-300 cursor-pointer')|trim}) -%}
+    {%- set attr = attr|merge({class: (attr.class|default('') ~ ' champ')|trim}) -%}
     {{- parent() -}}
 {%- endblock -%}
 
 {%- block form_help -%}
     {%- if help is not empty -%}
-        {%- set help_attr = help_attr|merge({class: (help_attr.class|default('') ~ ' mt-1 text-xs text-stone-500')|trim}) -%}
+        {%- set help_attr = help_attr|merge({class: (help_attr.class|default('') ~ ' aide')|trim}) -%}
         {{- parent() -}}
     {%- endif -%}
 {%- endblock -%}
 
 {%- block form_errors -%}
     {%- if errors|length > 0 -%}
-        <ul class="mt-1 text-sm text-red-600 list-disc list-inside">
-            {%- for error in errors -%}
-                <li>{{ error.message }}</li>
-            {%- endfor -%}
-        </ul>
+        {%- if compound -%}
+            {#- Erreur portée par le formulaire entier : elle ne se rattache à aucun
+                champ, elle se lit donc en tête, en bandeau. -#}
+            <div class="alerte alerte-rouge mb-4" role="alert">
+                <ul class="space-y-0.5">
+                    {%- for error in errors -%}
+                        <li>{{ error.message }}</li>
+                    {%- endfor -%}
+                </ul>
+            </div>
+        {%- else -%}
+            <ul class="erreurs-champ">
+                {%- for error in errors -%}
+                    <li>{{ error.message }}</li>
+                {%- endfor -%}
+            </ul>
+        {%- endif -%}
     {%- endif -%}
 {%- endblock -%}

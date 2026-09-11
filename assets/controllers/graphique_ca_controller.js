@@ -20,29 +20,43 @@ export default class extends Controller {
     static values = { libelles: Array, valeurs: Array };
 
     connect() {
+        const reduit = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
         this.graphique = new Chart(this.canvasTarget, {
             type: 'line',
             data: {
                 labels: this.libellesValue,
                 datasets: [{
                     data: this.valeursValue,
-                    borderColor: '#b45309',
-                    backgroundColor: 'rgba(180, 83, 9, .10)',
-                    borderWidth: 2,
+                    borderColor: '#d97706',
+                    // Dégradé sous la courbe, calculé à la taille réelle du graphique :
+                    // l'ambre s'efface vers le bas au lieu de peser en aplat.
+                    backgroundColor: (contexte) => this.degrade(contexte),
+                    borderWidth: 2.5,
                     fill: true,
-                    tension: 0.3,
+                    tension: 0.4,
                     pointRadius: 0,
-                    pointHoverRadius: 5,
+                    pointHoverRadius: 6,
+                    pointHoverBackgroundColor: '#fff',
+                    pointHoverBorderColor: '#b45309',
+                    pointHoverBorderWidth: 3,
                     pointHitRadius: 20,
                 }],
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                animation: reduit ? false : { duration: 900, easing: 'easeOutQuart' },
                 interaction: { mode: 'index', intersect: false },
                 plugins: {
                     legend: { display: false },
                     tooltip: {
+                        backgroundColor: '#1c1917',
+                        titleColor: '#fcd34d',
+                        bodyColor: '#fafaf9',
+                        padding: 10,
+                        cornerRadius: 10,
+                        displayColors: false,
                         callbacks: {
                             label: (contexte) => `${this.fcfa(contexte.parsed.y)} FCFA`,
                         },
@@ -51,7 +65,9 @@ export default class extends Controller {
                 scales: {
                     x: {
                         grid: { display: false },
+                        border: { display: false },
                         ticks: {
+                            color: '#a8a29e',
                             // Sur un écran de téléphone, un libellé sur cinq suffit.
                             maxRotation: 0,
                             autoSkip: false,
@@ -61,11 +77,26 @@ export default class extends Controller {
                     y: {
                         beginAtZero: true,
                         border: { display: false },
-                        ticks: { callback: (valeur) => this.compact(valeur) },
+                        grid: { color: 'rgba(120, 113, 108, .12)' },
+                        ticks: { color: '#a8a29e', callback: (valeur) => this.compact(valeur) },
                     },
                 },
             },
         });
+    }
+
+    degrade({ chart }) {
+        const { ctx, chartArea } = chart;
+        if (!chartArea) {
+            // Premier passage, avant la mise en page : Chart.js rappellera.
+            return 'rgba(245, 158, 11, .12)';
+        }
+
+        const degrade = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+        degrade.addColorStop(0, 'rgba(245, 158, 11, .35)');
+        degrade.addColorStop(1, 'rgba(245, 158, 11, 0)');
+
+        return degrade;
     }
 
     disconnect() {

@@ -57,6 +57,24 @@ abstract class StockageImages
     }
 
     /**
+     * Chemin **sur le disque** d'une image, ou `null` si elle n'existe pas (nom
+     * vide, fichier disparu). Pour qui doit lire l'image elle-même, et non la
+     * désigner dans une page.
+     */
+    public function fichier(?string $image): ?string
+    {
+        if (null === $image || '' === $image) {
+            return null;
+        }
+
+        // `basename` : un nom venu de la base ne doit pas pouvoir remonter
+        // l'arborescence — même précaution que dans `supprimer()`.
+        $chemin = $this->repertoire.'/'.basename($image);
+
+        return is_file($chemin) ? $chemin : null;
+    }
+
+    /**
      * Enregistre une image téléversée et renvoie son nom de fichier.
      *
      * @throws \RuntimeException si le format n'est pas exploitable
@@ -112,7 +130,17 @@ abstract class StockageImages
             default => false,
         };
 
-        return $image ?: throw new \RuntimeException('Cette image n\'a pas pu être lue.');
+        if (false === $image) {
+            throw new \RuntimeException('Cette image n\'a pas pu être lue.');
+        }
+
+        // Une image assez petite pour ne pas être réduite est réécrite telle
+        // qu'elle a été lue : sans cette ligne, GD abandonne la couche alpha à
+        // l'écriture et un logo PNG transparent ressort sur un fond **noir**. La
+        // précaution ne valait jusqu'ici que pour les images réduites.
+        imagesavealpha($image, true);
+
+        return $image;
     }
 
     /**

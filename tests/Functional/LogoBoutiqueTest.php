@@ -7,12 +7,14 @@ use App\Entity\FamilleProduit;
 use App\Entity\Utilisateur;
 use App\Enum\CleParametre;
 use App\Service\LogoBoutique;
+use App\Service\LogoThermique;
 use App\Service\ParametresBoutique;
 use App\Service\SessionCaisseService;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\DomCrawler\Crawler;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\Uid\Uuid;
 
@@ -445,6 +447,204 @@ class LogoBoutiqueTest extends WebTestCase
 
         $this->assertCount(0, $crawler->filter('header img, aside img'));
         $this->assertStringContainsString('Z', $crawler->filter('header, aside')->text());
+    }
+
+    // ------------------------------------------- Le logo sur la tête thermique
+
+    /**
+     * L'agent matériel imprime le ticket automatique : sans logo dans sa charge
+     * utile, il n'en imprimait aucun. Il le reçoit désormais prêt à pousser —
+     * toute la largeur de la tête, dessin recadré, centré, noir et blanc pur.
+     */
+    public function testLeTicketMaterielPorteLeLogoPretPourLaTeteThermique(): void
+    {
+        $nom = $this->logoDessine([255, 255, 255], [60, 30, 10]);
+
+        $uuid = $this->encaisser();
+        $this->client->request('GET', '/caisse/ticket/'.$uuid.'/materiel');
+        $this->assertResponseIsSuccessful();
+        $logo = json_decode($this->client->getResponse()->getContent(), true)['ticket']['logo'];
+
+        $this->assertIsString($logo);
+        $this->assertStringStartsWith('data:image/png;base64,', $logo);
+
+        $image = $this->decoder($logo);
+        $this->assertSame(384, imagesx($image), 'Toute la largeur imprimable de la tête : l\'agent n\'a rien à redimensionner.');
+        $this->assertSame(128, imagesy($image), 'Même hauteur maximale que le logo du ticket HTML (16 mm).');
+        $this->assertDessinCentre($image);
+
+        $this->logos()->supprimer($nom);
+    }
+
+    /**
+     * Le papier est blanc, quel que soit le fond du fichier téléversé :
+     *
+     * - **fond coloré** — le cas réel d'un logo carré sur fond orange, que la
+     *   première version tramait en grisaille au point de noyer le dessin ;
+     * - **fond transparent** — la tête ne connaît pas la transparence, et laissée
+     *   telle quelle elle sortirait en aplat noir ;
+     * - **fond sombre** — un logo clair sur fond noir ferait sinon imprimer un
+     *   pavé noir plein à chaque vente.
+     *
+     * Le dessin de 100 × 50 est posé sur une toile de 400 × 150 : si le fond
+     * passait à l'impression, le recadrage prendrait toute la toile et le dessin
+     * ne tomberait plus sur les colonnes attendues.
+     *
+     * @param array{int, int, int}|null $fond   null = transparent
+     * @param array{int, int, int}      $dessin
+     */
+    #[DataProvider('fondsDeLogo')]
+    public function testLeFondDuLogoSortToujoursBlanc(?array $fond, array $dessin): void
+    {
+        $nom = $this->logoDessine($fond, $dessin);
+
+        $logo = static::getContainer()->get(LogoThermique::class)->pourImpression();
+        $this->assertNotNull($logo);
+
+        $image = $this->decoder($logo);
+        $this->assertSame(128, imagesy($image), 'Recadré sur le dessin, puis ramené à 16 mm de haut.');
+        $this->assertDessinCentre($image);
+
+        $this->logos()->supprimer($nom);
+    }
+
+    /** @return iterable<string, array{array{int, int, int}|null, array{int, int, int}}> */
+    public static function fondsDeLogo(): iterable
+    {
+        yield 'fond orange, dessin brun' => [[254, 189, 89], [60, 30, 10]];
+        yield 'fond transparent, dessin noir' => [null, [0, 0, 0]];
+        yield 'fond sombre, dessin blanc' => [[15, 20, 26], [255, 255, 255]];
+    }
+
+    public function testSansLogoLeTicketMaterielNeTransporteRien(): void
+    {
+        $uuid = $this->encaisser();
+        $this->client->request('GET', '/caisse/ticket/'.$uuid.'/materiel');
+
+        $ticket = json_decode($this->client->getResponse()->getContent(), true)['ticket'];
+        $this->assertArrayHasKey('logo', $ticket, 'La clé est toujours là : l\'agent n\'a pas à tester son existence.');
+        $this->assertNull($ticket['logo']);
+    }
+
+    /** Une image uniforme ne laisserait sur le papier qu'une bande vide : pas de logo. */
+    public function testUnLogoUniformeNImprimeRien(): void
+    {
+        $nom = $this->logoDessine([255, 255, 255], [255, 255, 255]);
+
+        $this->assertNull(static::getContainer()->get(LogoThermique::class)->pourImpression());
+
+        $this->logos()->supprimer($nom);
+    }
+
+    /**
+     * Téléverse et retient un logo d'essai : un rectangle de 100 × 50 au centre
+     * d'une toile de 400 × 150.
+     *
+     * @param array{int, int, int}|null $fond   null = transparent
+     * @param array{int, int, int}      $dessin
+     */
+    private function logoDessine(?array $fond, array $dessin): string
+    {
+        $image = imagecreatetruecolor(400, 150);
+        imagealphablending($image, false);
+        imagesavealpha($image, true);
+        imagefill($image, 0, 0, null === $fond
+            ? imagecolorallocatealpha($image, 0, 0, 0, 127)
+            : imagecolorallocate($image, ...$fond));
+        imagefilledrectangle($image, 150, 50, 249, 99, imagecolorallocate($image, ...$dessin));
+
+        $chemin = sys_get_temp_dir().'/zedpos-logo-'.bin2hex(random_bytes(4)).'.png';
+        imagepng($image, $chemin);
+        $this->temporaires[] = $chemin;
+
+        $nom = $this->logos()->enregistrer(new UploadedFile($chemin, 'logo.png', 'image/png', null, true));
+        $this->parametres()->definirLogo($nom);
+
+        return $nom;
+    }
+
+    private function decoder(string $logo): \GdImage
+    {
+        $image = imagecreatefromstring((string) base64_decode(substr($logo, \strlen('data:image/png;base64,')), true));
+        $this->assertNotFalse($image, 'Le logo doit être un PNG lisible.');
+
+        return $image;
+    }
+
+    /**
+     * Le rectangle de 100 × 50, agrandi à 256 × 128, doit occuper les colonnes
+     * 64 à 319 des 384 — et l'image ne doit contenir que du noir et du blanc.
+     * Un point de tolérance : le rééchantillonnage peut adoucir un bord.
+     */
+    private function assertDessinCentre(\GdImage $image): void
+    {
+        $gauche = \PHP_INT_MAX;
+        $droite = -1;
+        $teintes = [];
+        for ($y = 0; $y < imagesy($image); ++$y) {
+            for ($x = 0; $x < imagesx($image); ++$x) {
+                $rgb = imagecolorsforindex($image, imagecolorat($image, $x, $y));
+                $teintes[$rgb['red'].','.$rgb['green'].','.$rgb['blue']] = true;
+                if (0 === $rgb['red'] + $rgb['green'] + $rgb['blue']) {
+                    $gauche = min($gauche, $x);
+                    $droite = max($droite, $x);
+                }
+            }
+        }
+
+        $this->assertSame([], array_values(array_diff(array_keys($teintes), ['0,0,0', '255,255,255'])), 'Noir ou blanc, rien entre les deux.');
+        $this->assertEqualsWithDelta(64, $gauche, 1, 'Le dessin est centré dans la largeur de la tête.');
+        $this->assertEqualsWithDelta(319, $droite, 1, 'Le fond n\'est pas imprimé : seul le dessin l\'est.');
+    }
+
+    // ----------------------------------------------- L'identité reprise en caisse
+
+    /**
+     * La caissière travaille sous l'enseigne de la boutique, pas sous le nom du
+     * logiciel : même règle que les écrans de gestion, enseigne comprise.
+     */
+    public function testLaCaisseAfficheLeLogoEtLeNomDeLEtablissement(): void
+    {
+        $this->parametres()->enregistrer([
+            CleParametre::RAISON_SOCIALE->value => 'ETS KOUAME SARL',
+            CleParametre::ENSEIGNE->value => 'DELICES DU CAMPUS',
+        ]);
+        $nom = $this->logos()->enregistrer($this->televersement());
+        $this->parametres()->definirLogo($nom);
+
+        $crawler = $this->ouvrirLaCaisse();
+
+        $identite = $crawler->filter('aside.flanc');
+        $this->assertStringContainsString('DELICES DU CAMPUS', $identite->text());
+        $this->assertStringNotContainsString('ETS KOUAME SARL', $identite->text());
+        $this->assertStringNotContainsString('ZedPOS', $identite->text(), 'Le nom du logiciel n\'a rien à faire dans l\'en-tête de la caisse.');
+        $this->assertSame('/uploads/boutique/'.$nom, $identite->filter('img')->first()->attr('src'));
+
+        // Repli tablette : le panneau latéral disparaît, l'identité passe dans la barre du haut.
+        $this->assertStringContainsString('DELICES DU CAMPUS', $crawler->filter('header')->text());
+        $this->assertStringContainsString('DELICES DU CAMPUS', $crawler->filter('title')->text());
+
+        $this->logos()->supprimer($nom);
+    }
+
+    public function testSansLogoLaCaisseGardeLaPastilleParDefaut(): void
+    {
+        $crawler = $this->ouvrirLaCaisse();
+
+        $identite = $crawler->filter('aside.flanc');
+        $this->assertCount(0, $identite->filter('img'));
+        $this->assertStringContainsString('Z', $identite->text());
+    }
+
+    private function ouvrirLaCaisse(): Crawler
+    {
+        static::getContainer()->get(SessionCaisseService::class)->ouvrir($this->caissier, 0);
+        $this->client->loginUser($this->caissier);
+
+        $crawler = $this->client->request('GET', '/caisse');
+        $this->assertResponseIsSuccessful();
+
+        return $crawler;
     }
 
     /** @return iterable<string, array{string, string}> */

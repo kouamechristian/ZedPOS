@@ -1,26 +1,29 @@
 {% extends 'admin/base.html.twig' %}
 {% import 'admin/_macros.html.twig' as fmt %}
+{% import 'admin/_icones.html.twig' as ui %}
 
 {% block page_title %}Inventaire n° {{ inventaire.id }}{% endblock %}
 
 {% block page_actions %}
+    <a href="{{ path('admin_inventaires') }}" class="btn btn-fantome">{{ ui.icone('retour') }} Inventaires</a>
     {# `data-turbo="false"` : la feuille imprimable s'ouvre dans un nouvel onglet,
        Turbo n'a pas à intercepter ce clic. #}
     <a href="{{ path('admin_inventaire_feuille', {id: inventaire.id}) }}" target="_blank" data-turbo="false"
-       class="rounded-lg border border-stone-300 px-3 py-2 text-sm font-medium hover:bg-stone-50">
-        Imprimer la feuille
+       class="btn btn-secondaire">
+        {{ ui.icone('imprimer') }} Imprimer la feuille
     </a>
 {% endblock %}
 
 {% block admin_content %}
 
 {% if erreur is defined %}
-    <div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{{ erreur }}</div>
+    <div class="alerte alerte-rouge apparition mb-5" role="alert">{{ ui.icone('erreur') }}<p>{{ erreur }}</p></div>
 {% endif %}
 
-<div class="mb-5 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl bg-white p-4 shadow-sm text-sm">
-    <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-medium
-                 {{ inventaire.estEnCours ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800' }}">
+{% set comptees = inventaire.lignesComptees|length %}
+{% set totalLignes = inventaire.lignes|length %}
+<div class="carte apparition mb-5 flex flex-wrap items-center gap-x-6 gap-y-3 p-4 text-sm">
+    <span class="badge badge-point {{ inventaire.estEnCours ? 'badge-ambre' : 'badge-vert' }}">
         {{ inventaire.statut.libelle }}
     </span>
     <span class="text-stone-600">Ouvert le {{ inventaire.createdAt|date('d/m/Y à H:i') }} par {{ inventaire.auteur.nom }}</span>
@@ -30,44 +33,44 @@
             {{ inventaire.validePar ? 'par ' ~ inventaire.validePar.nom }}
         </span>
     {% endif %}
-    <span class="ml-auto text-stone-500">
-        {{ inventaire.lignesComptees|length }} / {{ inventaire.lignes|length }} ligne(s) comptée(s)
-    </span>
+    <div class="flex min-w-56 flex-1 items-center gap-3 sm:ml-auto sm:flex-none">
+        <div class="jauge"><span style="width: {{ totalLignes > 0 ? comptees * 100 // totalLignes : 0 }}%"></span></div>
+        <span class="whitespace-nowrap text-stone-500">{{ comptees }} / {{ totalLignes }} ligne(s) comptée(s)</span>
+    </div>
 </div>
 
 {% if inventaire.commentaire %}
-    <div class="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        {{ inventaire.commentaire }}
-    </div>
+    <div class="alerte alerte-ambre mb-5">{{ ui.icone('info') }}<p>{{ inventaire.commentaire }}</p></div>
 {% endif %}
 
 <form method="post" action="{{ path(inventaire.estEnCours ? 'admin_inventaire_saisir' : 'admin_inventaire_show', {id: inventaire.id}) }}">
     <input type="hidden" name="_token" value="{{ csrf_token('inventaire_' ~ inventaire.id) }}">
 
-    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-        <table class="w-full text-sm">
-            <thead class="text-left text-stone-500 bg-stone-50">
+    <div class="tableau-conteneur apparition" style="--i: 1">
+        <div class="defilement-x">
+        <table class="tableau">
+            <thead>
                 <tr>
-                    <th class="px-5 py-3 font-medium">Produit / matière</th>
-                    <th class="px-5 py-3 font-medium">Unité</th>
-                    <th class="px-5 py-3 font-medium text-right">Théorique</th>
-                    <th class="px-5 py-3 font-medium text-right">Compté</th>
-                    <th class="px-5 py-3 font-medium text-right">Écart</th>
-                    <th class="px-5 py-3 font-medium text-right">Valorisé</th>
+                    <th>Produit / matière</th>
+                    <th>Unité</th>
+                    <th class="num">Théorique</th>
+                    <th class="num">Compté</th>
+                    <th class="num">Écart</th>
+                    <th class="num">Valorisé</th>
                 </tr>
             </thead>
             <tbody>
                 {% for ligne in inventaire.lignes %}
-                    <tr class="border-t border-stone-100">
-                        <td class="px-5 py-2.5 font-medium text-stone-800">
+                    <tr>
+                        <td class="cellule-principale">
                             {{ ligne.libelle }}
                             {% if ligne.article %}
-                                <span class="ml-1 rounded bg-stone-100 px-1.5 py-0.5 text-[11px] text-stone-500">article</span>
+                                <span class="badge badge-neutre ml-1">article</span>
                             {% endif %}
                         </td>
-                        <td class="px-5 py-2.5 text-stone-500">{{ ligne.unite }}</td>
-                        <td class="px-5 py-2.5 text-right tabular-nums text-stone-600">{{ fmt.unites(ligne.quantiteTheorique) }}</td>
-                        <td class="px-5 py-2.5 text-right">
+                        <td class="cellule-douce">{{ ligne.unite }}</td>
+                        <td class="num cellule-douce">{{ fmt.unites(ligne.quantiteTheorique) }}</td>
+                        <td class="num">
                             {% if inventaire.estEnCours %}
                                 {# Case vide = « pas comptée », et non zéro : c'est
                                    toute la différence entre une ligne qu'on n'a pas
@@ -75,13 +78,13 @@
                                 <input type="text" inputmode="decimal" autocomplete="off"
                                        name="comptee[{{ ligne.id }}]"
                                        value="{{ ligne.estComptee ? fmt.unites(ligne.quantiteComptee)|trim : '' }}"
-                                       class="w-28 rounded-lg border border-stone-300 px-2 py-1.5 text-right tabular-nums
-                                              focus:outline-none focus:ring-2 focus:ring-stone-400">
+                                       class="champ ml-auto h-9 w-28 text-right tabular-nums"
+                                       aria-label="Quantité comptée — {{ ligne.libelle }}">
                             {% else %}
                                 <span class="tabular-nums">{{ ligne.estComptee ? fmt.unites(ligne.quantiteComptee) : '—' }}</span>
                             {% endif %}
                         </td>
-                        <td class="px-5 py-2.5 text-right tabular-nums font-semibold">
+                        <td class="num font-semibold">
                             {% if not ligne.estComptee %}
                                 <span class="text-stone-300">—</span>
                             {% elseif ligne.ecart == 0 %}
@@ -92,7 +95,7 @@
                                 </span>
                             {% endif %}
                         </td>
-                        <td class="px-5 py-2.5 text-right tabular-nums text-stone-600">
+                        <td class="num cellule-douce">
                             {{ ligne.estComptee and ligne.ecart != 0 ? fmt.fcfa(ligne.ecartValorise) : '—' }}
                         </td>
                     </tr>
@@ -100,9 +103,9 @@
             </tbody>
             {% if not inventaire.estEnCours %}
                 <tfoot>
-                    <tr class="border-t-2 border-stone-200 bg-stone-50 font-semibold">
-                        <td class="px-5 py-3" colspan="5">Écart total valorisé</td>
-                        <td class="px-5 py-3 text-right tabular-nums">
+                    <tr>
+                        <td colspan="5">Écart total valorisé</td>
+                        <td class="num">
                             {% set total = inventaire.ecartValorise %}
                             <span class="{{ total == 0 ? 'text-green-600' : (total > 0 ? 'text-amber-600' : 'text-red-600') }}">
                                 {{ total > 0 ? '+' }}{{ fmt.fcfa(total) }}
@@ -112,28 +115,29 @@
                 </tfoot>
             {% endif %}
         </table>
+        </div>
     </div>
 
     {% if inventaire.estEnCours %}
-        <div class="mt-5 rounded-xl bg-white p-4 shadow-sm">
-            <label for="commentaire" class="block text-sm font-medium text-stone-700">
-                Commentaire
-                <span class="font-normal text-stone-500">— obligatoire dès qu'un écart est constaté</span>
-            </label>
-            <textarea id="commentaire" name="commentaire" rows="2"
-                      placeholder="Ce qui explique l'écart : casse non déclarée, erreur de réception, coupure de courant…"
-                      class="mt-2 w-full rounded-lg border border-stone-300 px-3 py-2 text-sm
-                             focus:outline-none focus:ring-2 focus:ring-stone-400"></textarea>
+        <div class="carte apparition mt-5" style="--i: 2">
+            <div class="carte-corps">
+                <label for="commentaire" class="etiquette">
+                    Commentaire
+                    <span class="font-normal text-stone-500">— obligatoire dès qu'un écart est constaté</span>
+                </label>
+                <textarea id="commentaire" name="commentaire" rows="2"
+                          placeholder="Ce qui explique l'écart : casse non déclarée, erreur de réception, coupure de courant…"
+                          class="champ"></textarea>
+            </div>
 
-            <div class="mt-4 flex flex-wrap items-center gap-3">
-                <button class="rounded-lg border border-stone-300 px-4 py-2 text-sm font-medium hover:bg-stone-50">
+            <div class="carte-pied">
+                <button class="btn btn-secondaire">
                     Enregistrer le comptage
                 </button>
                 {# Vert : c'est l'action qui engage, comme l'encaissement en caisse.
                    Elle écrit dans le stock et ne se défait pas. #}
-                <button formaction="{{ path('admin_inventaire_valider', {id: inventaire.id}) }}"
-                        class="rounded-lg bg-green-800 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700">
-                    Valider l'inventaire
+                <button formaction="{{ path('admin_inventaire_valider', {id: inventaire.id}) }}" class="btn btn-succes">
+                    {{ ui.icone('valide') }} Valider l'inventaire
                 </button>
                 <span class="text-xs text-stone-500">
                     La validation reporte les écarts au stock et ne peut pas être annulée.
@@ -146,8 +150,8 @@
 {% if inventaire.estEnCours %}
     <form method="post" action="{{ path('admin_inventaire_abandonner', {id: inventaire.id}) }}" class="mt-4">
         <input type="hidden" name="_token" value="{{ csrf_token('inventaire_' ~ inventaire.id) }}">
-        <button class="text-xs text-stone-400 underline hover:text-red-700">
-            Abandonner cette feuille (aucun stock ne sera modifié)
+        <button class="btn btn-sm btn-fantome text-stone-500 hover:text-red-700">
+            {{ ui.icone('supprimer') }} Abandonner cette feuille (aucun stock ne sera modifié)
         </button>
     </form>
 {% endif %}

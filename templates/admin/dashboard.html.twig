@@ -1,47 +1,112 @@
 {% extends 'admin/base.html.twig' %}
 {% import 'admin/_macros.html.twig' as fmt %}
+{% import 'admin/_icones.html.twig' as ui %}
 
 {% block page_title %}Tableau de bord{% endblock %}
+{% block page_sous_titre %}L'activité du jour et des trente derniers jours, en un coup d'œil.{% endblock %}
+
+{% block page_actions %}
+    <a href="{{ path('admin_ventes') }}" class="btn btn-secondaire">{{ ui.icone('ventes') }} Ventes</a>
+    <a href="{{ path('admin_article_new') }}" class="btn btn-primaire">{{ ui.icone('plus') }} Nouvel article</a>
+{% endblock %}
 
 {% block admin_content %}
-<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-    {% set cartes = [
-        { titre: "Chiffre d'affaires du jour", valeur: fmt.fcfa(ca_jour), sous: ventes_jour ~ ' vente(s)' },
-        { titre: 'CA 30 derniers jours', valeur: fmt.fcfa(ca_30j), sous: 'Panier moyen ' ~ fmt.fcfa(panier_moyen) },
-        { titre: 'Articles actifs', valeur: articles_actifs, sous: 'au catalogue' },
-        { titre: 'Alertes de stock', valeur: matieres_alerte, sous: 'matière(s) sous le seuil' },
-    ] %}
-    {% for carte in cartes %}
-        <div class="relative overflow-hidden bg-white rounded-2xl shadow-sm ring-1 ring-amber-100 p-5">
-            <span class="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-500 to-orange-400"></span>
-            <div class="text-xs uppercase tracking-wide text-stone-500">{{ carte.titre }}</div>
-            <div class="titre mt-2 text-3xl font-bold text-stone-900 tabular-nums">{{ carte.valeur }}</div>
-            <div class="mt-1 text-xs text-stone-400">{{ carte.sous }}</div>
-        </div>
-    {% endfor %}
-</div>
+{# ---- Indicateurs ----
+   `compteur` fait monter le chiffre à l'arrivée ; la valeur finale est déjà dans
+   la page, en FCFA entiers (`// 100` : division entière, aucun flottant). #}
+{% set indicateurs = [
+    { libelle: "Chiffre d'affaires du jour", cible: ca_jour // 100, valeur: (ca_jour / 100)|number_format(0, ',', ' '), unite: 'FCFA', note: ventes_jour ~ ' vente' ~ (ventes_jour > 1 ? 's' : '') ~ " aujourd'hui", icone: 'argent', ton: '' },
+    { libelle: 'Chiffre sur 30 jours', cible: ca_30j // 100, valeur: (ca_30j / 100)|number_format(0, ',', ' '), unite: 'FCFA', note: 'Panier moyen ' ~ fmt.fcfa(panier_moyen), icone: 'tendance', ton: '' },
+    { libelle: 'Articles actifs', cible: articles_actifs, valeur: articles_actifs, unite: '', note: 'au catalogue de la caisse', icone: 'articles', ton: '' },
+    { libelle: 'Alertes de stock', cible: matieres_alerte, valeur: matieres_alerte, unite: '', note: matieres_alerte > 0 ? 'matière(s) sous le seuil' : 'aucune matière sous le seuil', icone: matieres_alerte > 0 ? 'pertes' : 'valide', ton: matieres_alerte > 0 ? 'kpi-icone-rouge' : 'kpi-icone-vert' },
+] %}
 
-<div class="mt-6 bg-white rounded-xl shadow-sm">
-    <div class="px-5 py-4 border-b border-stone-100 font-semibold">Meilleures ventes (30 jours)</div>
-    <table class="w-full text-sm">
-        <thead class="text-left text-stone-500">
-            <tr class="border-b border-stone-100">
-                <th class="px-5 py-2 font-medium">Article</th>
-                <th class="px-5 py-2 font-medium text-right">Quantité vendue</th>
-                <th class="px-5 py-2 font-medium text-right">Chiffre d'affaires</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for ligne in top_articles %}
-                <tr class="border-b border-stone-50">
-                    <td class="px-5 py-2.5">{{ ligne.nom }}</td>
-                    <td class="px-5 py-2.5 text-right">{{ ligne.quantite|number_format(0, ',', ' ') }}</td>
-                    <td class="px-5 py-2.5 text-right font-medium">{{ fmt.fcfa(ligne.ca) }}</td>
-                </tr>
-            {% else %}
-                <tr><td colspan="3" class="px-5 py-4 text-stone-400">Aucune vente sur la période.</td></tr>
+<section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    {% for indicateur in indicateurs %}
+        <article class="kpi apparition" style="--i: {{ loop.index }}">
+            <div class="kpi-tete">
+                <span class="kpi-libelle">{{ indicateur.libelle }}</span>
+                <span class="kpi-icone {{ indicateur.ton }}">{{ ui.icone(indicateur.icone) }}</span>
+            </div>
+            <div class="kpi-valeur">
+                <span data-controller="compteur" data-compteur-cible-value="{{ indicateur.cible }}">{{ indicateur.valeur }}</span>
+                {% if indicateur.unite %}<span class="kpi-unite">{{ indicateur.unite }}</span>{% endif %}
+            </div>
+            <div class="kpi-note">{{ indicateur.note }}</div>
+        </article>
+    {% endfor %}
+</section>
+
+<div class="mt-5 grid gap-5 lg:grid-cols-3">
+
+    {# ---- Meilleures ventes : rang, barre proportionnelle, montant ---- #}
+    <section class="carte apparition lg:col-span-2" style="--i: 5">
+        <div class="carte-entete">
+            <h2 class="carte-titre">Meilleures ventes</h2>
+            <span class="carte-note">30 derniers jours</span>
+        </div>
+
+        {% if top_articles is empty %}
+            <p class="cellule-vide">Aucune vente sur la période.</p>
+        {% else %}
+            {% set meilleur = max(top_articles|map(ligne => ligne.ca)) %}
+            <table class="tableau">
+                <thead>
+                    <tr>
+                        <th class="w-10">#</th>
+                        <th>Article</th>
+                        <th class="num">Quantité vendue</th>
+                        <th class="num">Chiffre d'affaires</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ligne in top_articles %}
+                        <tr>
+                            <td>
+                                <span class="grid h-7 w-7 place-items-center rounded-lg text-xs font-bold tabular-nums
+                                             {{ loop.index <= 3 ? 'bg-amber-100 text-amber-800' : 'bg-stone-100 text-stone-500' }}">{{ loop.index }}</span>
+                            </td>
+                            <td class="min-w-48">
+                                <div class="cellule-principale">{{ ligne.nom }}</div>
+                                <div class="mt-1.5 flex items-center">
+                                    <div class="jauge max-w-72"><span style="width: {{ meilleur > 0 ? (ligne.ca * 100 // meilleur) : 0 }}%"></span></div>
+                                </div>
+                            </td>
+                            <td class="num cellule-douce">{{ ligne.quantite|number_format(0, ',', ' ') }}</td>
+                            <td class="num font-semibold text-stone-900">{{ fmt.fcfa(ligne.ca) }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% endif %}
+    </section>
+
+    {# ---- Raccourcis : les gestes courants du gérant ---- #}
+    <section class="carte apparition" style="--i: 6">
+        <div class="carte-entete">
+            <h2 class="carte-titre">Raccourcis</h2>
+        </div>
+        {% set raccourcis = [
+            { label: 'Saisir une perte',     aide: 'Casse, périmé, invendu',   route: 'admin_perte_saisie', icone: 'pertes' },
+            { label: 'Inventaires',          aide: 'Compter et corriger le stock', route: 'admin_inventaires', icone: 'inventaire' },
+            { label: 'Clôtures de caisse',   aide: 'Rapports Z et écarts',     route: 'admin_clotures',     icone: 'clotures' },
+            { label: 'Fiches techniques',    aide: 'Coût matières et marges',  route: 'admin_production',   icone: 'production' },
+        ] %}
+        <ul class="p-2">
+            {% for raccourci in raccourcis %}
+                <li>
+                    <a href="{{ path(raccourci.route) }}"
+                       class="group flex items-center gap-3 rounded-xl px-3 py-2.5 transition hover:bg-stone-50">
+                        <span class="kpi-icone transition-transform duration-300 group-hover:scale-110">{{ ui.icone(raccourci.icone) }}</span>
+                        <span class="min-w-0 flex-1">
+                            <span class="block text-sm font-semibold text-stone-800">{{ raccourci.label }}</span>
+                            <span class="block text-xs text-stone-500">{{ raccourci.aide }}</span>
+                        </span>
+                        <span class="text-stone-300 transition-transform duration-300 group-hover:translate-x-1 group-hover:text-amber-600">{{ ui.icone('chevron', 'h-4 w-4') }}</span>
+                    </a>
+                </li>
             {% endfor %}
-        </tbody>
-    </table>
+        </ul>
+    </section>
 </div>
 {% endblock %}

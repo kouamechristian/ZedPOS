@@ -1,5 +1,6 @@
 {% extends 'pilotage/base.html.twig' %}
 {% import 'admin/_macros.html.twig' as fmt %}
+{% import 'admin/_icones.html.twig' as ui %}
 {% import '_pagination.html.twig' as pagination %}
 
 {% block page_title %}Tickets du {{ jour|date('d/m/Y') }}{% endblock %}
@@ -8,51 +9,61 @@
 {# Changer de jour ou de page ne rafraîchit que cette liste. #}
 <turbo-frame id="liste-tickets" data-turbo-action="advance">
 
-<form method="get" class="mb-4 flex items-center gap-2">
-    <label for="jour" class="sr-only">Journée</label>
-    <input type="date" id="jour" name="jour" value="{{ jour|date('Y-m-d') }}"
-           class="flex-1 rounded-xl border border-stone-300 px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-stone-400">
-    <button class="rounded-xl bg-stone-900 text-white px-4 py-2.5 text-sm font-semibold hover:bg-stone-700">Voir</button>
-</form>
+<div class="apparition mb-5 flex flex-wrap items-end justify-between gap-3">
+    <div>
+        <div class="sur-titre">Tickets</div>
+        <h1 class="text-2xl font-bold tracking-tight text-stone-900">{{ jour|date('d/m/Y') }}</h1>
+    </div>
+    <form method="get" class="flex items-center gap-2">
+        <label for="jour" class="sr-only">Journée</label>
+        <div class="champ-avec-icone">
+            {{ ui.icone('calendrier') }}
+            <input type="date" id="jour" name="jour" value="{{ jour|date('Y-m-d') }}" class="champ w-auto">
+        </div>
+        <button class="btn btn-primaire">Voir</button>
+    </form>
+</div>
 
 <div class="mb-3 flex items-baseline justify-between text-sm text-stone-500">
-    <span>{{ resultat.total }} ticket{{ resultat.total > 1 ? 's' }}</span>
-    <span>Page {{ resultat.page }} / {{ resultat.pages }}</span>
+    <span><strong class="font-semibold text-stone-800">{{ resultat.total }}</strong> ticket{{ resultat.total > 1 ? 's' }}</span>
+    <span class="tabular-nums">Page {{ resultat.page }} / {{ resultat.pages }}</span>
 </div>
 
 {# Cartes plutôt qu'un tableau : lisible sur un écran étroit. Elles se rangent en
    colonnes quand la place le permet, plutôt que de s'étirer sur toute la largeur
    d'un écran d'ordinateur pour trois informations. #}
-<ul class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+<ul class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
     {% for vente in resultat.items %}
-        <li>
+        <li class="apparition" style="--i: {{ min(loop.index0, 12) }}">
             <a href="{{ path('pilotage_vente', {uuid: vente.uuid}) }}" data-turbo-frame="_top"
-               class="block h-full bg-white rounded-2xl shadow-sm p-4 hover:shadow-md transition">
+               class="carte carte-interactive group relative block h-full overflow-hidden p-4 pl-5">
+                <span class="absolute inset-y-0 left-0 w-1 {{ vente.estValidee ? 'bg-gradient-to-b from-amber-400 to-amber-600' : 'bg-red-400' }}"></span>
                 <div class="flex items-baseline justify-between gap-3">
-                    <span class="font-mono text-xs text-stone-500">{{ vente.numero }}</span>
+                    <span class="code text-stone-500">{{ vente.numero }}</span>
                     <span class="text-lg font-black tabular-nums {{ vente.estValidee ? 'text-stone-900' : 'text-stone-400 line-through' }}">
                         {{ fmt.fcfa(vente.totalTtc) }}
                     </span>
                 </div>
-                <div class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-stone-500">
-                    <span class="tabular-nums">{{ vente.createdAt|date('H:i') }}</span>
+                <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-stone-500">
+                    <span class="inline-flex items-center gap-1 tabular-nums">{{ ui.icone('horloge', 'h-3.5 w-3.5') }} {{ vente.createdAt|date('H:i') }}</span>
                     <span class="font-medium text-stone-700">{{ vente.sessionCaisse.utilisateur.nom }}</span>
-                    <span class="inline-flex rounded-full px-2 py-0.5 text-xs {{ vente.mode.value == 'BOULANGERIE' ? 'bg-amber-100 text-amber-800' : 'bg-orange-100 text-orange-800' }}">
-                        {{ vente.mode.value == 'BOULANGERIE' ? 'Boulangerie' : 'Fast-food' }}
-                    </span>
+                    {% if vente.mode.value == 'BOULANGERIE' %}
+                        <span class="badge badge-ambre">Boulangerie</span>
+                    {% else %}
+                        <span class="badge badge-orange">Fast-food</span>
+                    {% endif %}
                     {% if not vente.estValidee %}
-                        <span class="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800">Annulée</span>
+                        <span class="badge badge-rouge badge-point">Annulée</span>
                     {% endif %}
                     {% if vente.remise > 0 %}
-                        <span class="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
-                            Remise {{ fmt.fcfa(vente.remise) }}
-                        </span>
+                        <span class="badge badge-ambre">Remise {{ fmt.fcfa(vente.remise) }}</span>
                     {% endif %}
                 </div>
+                <span class="absolute bottom-3 right-3 text-stone-300 opacity-0 transition duration-300 group-hover:translate-x-0.5 group-hover:opacity-100">{{ ui.icone('chevron', 'h-4 w-4') }}</span>
             </a>
         </li>
     {% else %}
-        <li class="bg-white rounded-2xl shadow-sm p-8 text-center text-stone-400">Aucun ticket ce jour-là.</li>
+        <li class="carte p-10 text-center text-stone-400 md:col-span-2 xl:col-span-3">Aucun ticket ce jour-là.</li>
     {% endfor %}
 </ul>
 

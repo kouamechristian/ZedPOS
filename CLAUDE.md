@@ -395,8 +395,14 @@ Habillage « boulangerie » : chaleureux, lisible en plein jour, sans dépendanc
 réseau. **Deux palettes Tailwind natives, rien de personnalisé à maintenir :**
 
 - **`amber`** — l'accent. `amber-700` (#b45309) pour les actions et les états
-  actifs, `amber-500` pour le logo et les liserés, `amber-50` (#fffbeb) en fond
-  de page. C'est la couleur de la croûte.
+  actifs, `amber-500` pour le logo et les liserés. C'est la couleur de la croûte.
+- **Fond des espaces de gestion : gris clair `#f3f4f6`**, cartes blanches — classe
+  `.espace-gestion` de `app.css` (`/admin`, `/pilotage`, `/comptabilite`), voir
+  « Système de composants » plus bas.
+  ⚠ Elle ne doit **pas** redéfinir `--color-amber-*` ni `--color-stone-*` : une
+  palette inversée (vestige d'un essai en bleu nuit) rendait les textes ambre et
+  les bandeaux d'alerte illisibles sur ce fond clair. Les composants lisent leurs
+  couleurs dans des jetons `--zp-*` écrits en clair.
 - **`stone`** — le neutre. **Chaud**, contrairement au `slate` bleuté par défaut
   de Tailwind : c'est ce qui empêche l'interface de « refroidir ».
   **Ne jamais réintroduire de `slate-*`** — le remplacer par `stone-*`.
@@ -414,16 +420,109 @@ Déclinaisons par espace :
 
 | Espace | Traitement |
 |---|---|
-| `/admin` | Barre latérale brun profond, liseré ambre sur l'entrée active, fond crème, en-tête translucide |
-| `/pilotage` | En-tête en dégradé chaud, onglets en pastilles ambre, cartes à liseré dégradé |
-| `/caisse` | Ambre sur les états actifs (famille, mode) — en plein jour la sélection doit sauter aux yeux. Les **règlements portent la couleur de leur opérateur** ; le bouton **Encaisser** reste vert : convention forte en caisse |
+| `/admin` | Coquille : barre latérale blanche **groupée et repliable**, tiroir sur mobile, barre haute translucide, palette ⌘K, menu utilisateur |
+| `/pilotage` | En-tête flottant, onglets en pastilles ; **onglets en bas d'écran sur téléphone** ; carte héros sombre pour le CA |
+| `/comptabilite` | Même en-tête flottant que le pilotage, sans onglets |
 
-**Détail de l'écran de caisse** — il avait dérivé vers le monochrome (états actifs
-en gris `#f5f4f2`, fond quasi blanc) ; `CaisseTest::testLesEtatsActifsSontEnAmbre`
-interdit maintenant ce retour en arrière.
+#### Système de composants des espaces de gestion
 
-- **Famille active** : pastille `amber-700` pleine, texte blanc. Un gris clair ne se
-  distingue pas derrière un comptoir en plein jour.
+Les écrans de gestion ne recomposent plus chaque bouton en vingt utilitaires : ils
+emploient les **composants** de `assets/styles/app.css` (`@layer components`).
+Changer le rayon d'une carte se fait là, une fois, pour quarante écrans.
+
+| Famille | Classes |
+|---|---|
+| Structure | `coquille`, `barre-laterale`, `lien-nav`, `nav-groupe`, `barre-haute`, `entete-flottante`, `contenu`, `entete-page` + `sur-titre` |
+| Surfaces | `carte` (+ `carte-entete`, `carte-titre`, `carte-corps`, `carte-pied`, `carte-interactive`), `kpi` (+ `kpi-icone`, `kpi-valeur`…), `heros` |
+| Tableaux | `tableau-conteneur` > `defilement-x` > `tableau` ; cellules `num`, `cellule-principale`, `cellule-douce`, `cellule-vide` ; `actions-ligne` |
+| Actions | `btn` + `btn-primaire` / `btn-secondaire` / `btn-fantome` / `btn-danger` / `btn-danger-plein` / `btn-succes`, tailles `btn-sm` / `btn-lg` / `btn-icone` ; `lien` |
+| États | `badge` + `badge-vert` / `rouge` / `ambre` / `orange` / `bleu` / `neutre` (+ `badge-point`), `alerte` + `alerte-ambre` / `rouge` / `vert` / `bleu`, `jauge` |
+| Formulaires | `champ`, `champ-avec-icone`, `etiquette`, `etiquette-legere`, `aide`, `interrupteur` (case à cocher en glissière) |
+| Navigation | `onglets` + `onglet` (actif : `aria-current="page"`), `onglets-bas` + `onglet-bas`, `palette` |
+
+Règles qui ne se voient pas à l'œil :
+
+- **Tout le système est confiné sous `.espace-gestion`** (sélecteurs imbriqués).
+  L'écran de caisse a ses propres classes `champ`, `onglet` et `lien` : sans ce
+  confinement, un `height: 2.5rem` de gestion aurait redimensionné le champ du
+  montant reçu. L'élément `.espace-gestion` doit donc **englober** la coquille, pas
+  la porter.
+- **Icônes : `templates/admin/_icones.html.twig`**, macro `icone(nom, classe)`. Tracés
+  écrits dans la page, aucune ressource distante.
+- **Messages flash en toasts** (`admin/_toasts.html.twig`, `toast_controller.js`) :
+  ils s'effacent seuls — 5 s pour une confirmation, 9 s pour une erreur, compte à
+  rebours suspendu au survol — mais restent dans le DOM pendant leur affichage,
+  lisibles par un lecteur d'écran et par les tests qui cherchent leur texte.
+- **Barre latérale repliée : cookie `zp_barre_repliee`, rendu côté serveur**
+  (`data-replie`). En localStorage, elle se déplierait puis se replierait à chaque
+  navigation, Turbo remplaçant le `<body>` avant que le contrôleur se connecte.
+- **Palette ⌘K / Ctrl+K** (`palette_controller.js`) : liste rendue par le serveur
+  depuis **la même variable `groupes`** que la barre latérale — ce qu'on ne peut
+  pas ouvrir n'y figure pas. Elle ne liste que des **écrans**, jamais des actions :
+  plusieurs tests comptent les liens « Importer », « Nouvel utilisateur » ou
+  « Fiche technique » d'une page, et une copie dans la palette les fausserait.
+- **`header img` et `aside img` sont réservés au logo** (`LogoBoutiqueTest`) : le
+  menu utilisateur affiche des **initiales** (`avatar`), jamais une photo.
+- **Un seul `<nav data-turbo-prefetch>` sur `/admin`** (`TurboNavigationTest`) : les
+  groupes de la barre latérale vivent dans **un** `<nav>`.
+- **Attributs conditionnels : `{% if actif %}aria-current="page"{% endif %}`**, jamais
+  `{{ actif ? 'aria-current="page"' }}` — l'échappement Twig transformerait les
+  guillemets en `&quot;` et l'attribut serait cassé.
+- **Onglets de la fiche article** : radios masqués ; le libellé actif se rallume par
+  `:has()` (`.carte:has(#onglet-fiche:checked) label[for="onglet-fiche"]`).
+  `peer-checked` ne voit que les voisins directs, et les libellés sont imbriqués —
+  l'ancien surlignage n'a d'ailleurs jamais fonctionné pour cette raison.
+- **Le tableau filtré par la recherche reste le dernier `<table>` de la page**
+  (`RechercheBackOfficeTest` lit le dernier) : sur `/admin/pertes`, le détail vient
+  après la ventilation et le top 5.
+
+**Mouvement** — tout est coupé sous `prefers-reduced-motion` :
+
+- **Transitions de page** : Turbo 8 + View Transitions (`<meta name="view-transition">`).
+  Seul `contenu` fond et glisse ; `barre-laterale`, `barre-haute` et `onglets-bas`
+  portent leur propre `view-transition-name` et restent en place. La racine
+  n'anime pas, sinon tout l'écran clignoterait à chaque clic.
+- **Apparition en cascade** : classe `apparition`, retard réglé par `style="--i: n"` ;
+  les lignes de `tableau` arrivent d'elles-mêmes (délais par `nth-child`).
+- **Compteurs** (`compteur_controller.js`) : la valeur finale est **déjà dans la
+  page**, le contrôleur ne fait qu'un effet. `cible` est un **entier** (FCFA entiers,
+  obtenus par `// 100` en Twig) et l'accélération se calcule en arithmétique
+  entière — un montant ne passe jamais par un flottant, même le temps d'une image.
+- **Barre haute** : liseré et ombre au défilement par `animation-timeline: scroll()`,
+  sans JavaScript ; ailleurs, elle reste simplement translucide.
+| `/caisse` | **Fond ardoise** (`#0f141a`) — seul espace sombre du projet, voir plus bas. Ambre éclairci (`#ffb95b`) sur les états actifs ; les **règlements portent la couleur de leur opérateur** ; le bouton **Encaisser** reste vert : convention forte en caisse |
+
+**Détail de l'écran de caisse — le seul espace sombre du projet.**
+
+Le back-office, le pilotage et la comptabilité sont en gris clair et ambre ; la
+caisse, elle, est sur **fond ardoise** `#0f141a`. Ce n'est pas une inconstance :
+c'est le seul écran allumé douze heures d'affilée sous les néons du comptoir, et
+un fond crème plein écran renvoie cette lumière dans les yeux de la caissière
+toute la journée. Les huit teintes chaudes des touches produits deviennent alors
+la **seule surface claire** de l'écran — c'est là que l'œil se pose, et c'est
+exactement où il doit se poser.
+
+Conséquence directe : **l'ambre du back-office (`#b45309`) est inutilisable ici**,
+il tombe à 1,9:1 sur l'ardoise et disparaît. La caisse emploie `#ffb95b`, avec du
+brun foncé `#462a00` en encre (8,1:1). Ne pas réintroduire `amber-700` sur cet
+écran, ni `bg-amber-50` en fond.
+
+L'habillage vit **dans le gabarit**, en jetons CSS sous `.caisse`
+(`--ardoise`, `--ambre`, `--vert`, `--texte`…). `ticket_controller.js` engendre
+une partie de l'écran — onglets, lignes du ticket, coupures proposées, montant à
+rendre — et pose **les mêmes classes** (`onglet`, `ligne-ticket`, `pas`,
+`coupure`, `montant-du` / `montant-manque`) plutôt que des couleurs écrites sur
+place : sans quoi la moitié de la colonne du ticket échapperait au thème.
+
+> ⚠ `--encre` est **réservé** aux boutons de règlement, où il porte l'encre du
+> réseau. Le texte général s'appelle `--texte` : nommer les deux pareil les ferait
+> se marcher dessus à l'intérieur d'un bouton.
+
+`CaisseTest::testLesEtatsActifsSontEnAmbre` fige l'ardoise, l'ambre éclairci et le
+vert d'Encaisser.
+
+- **Famille active** : aplat `#ffb95b` plein, encre `#462a00`. Un simple changement
+  de ton ne se distingue pas derrière un comptoir en plein jour.
 - **Moyens de paiement — aux couleurs des réseaux.** Seul endroit de l'application
   où la couleur ne nous appartient pas : la caissière reconnaît le bleu Wave ou le
   jaune MTN avant d'avoir lu le libellé, ce qui supprime une hésitation par vente.
@@ -470,14 +569,20 @@ interdit maintenant ce retour en arrière.
   Un fichier disparu **retire l'image** (`onerror="this.remove()"`) et la touche
   retombe sur son aplat : une icône d'image cassée en pleine grille de caisse ne
   rend service à personne.
-- **Encaisser** : `green-800` (#166534), blanc à 7,0:1. Vert et jamais ambre —
-  c'est le seul bouton qui engage l'argent, il ne doit se confondre avec aucun état
-  actif. Il était en `emerald-700` (5,48:1) ; depuis que les règlements portent les
-  couleurs des réseaux, l'emerald se noyait dans la rangée colorée juste au-dessus,
-  et un vert plus dense reprend le dessus. **Ne pas remonter vers `emerald-600`** :
-  le blanc n'y atteint que 3,77:1, illisible en plein jour.
-- **Total** : `.titre` (serif) en `amber-800`, le plus gros chiffre de l'écran —
-  c'est le montant que la caissière annonce à voix haute.
+- **Encaisser** : émeraude `#24c188`, encre `#00291a` à 7,3:1. **Vert et jamais
+  ambre** — c'est le seul bouton qui engage l'argent, et sur cet écran l'ambre
+  marque déjà la famille retenue et le total ; les confondre serait la faute. La
+  règle date du fond crème, où le bouton était en `green-800` (#166534) ; seule la
+  teinte a suivi le passage à l'ardoise, sur laquelle un vert sombre s'éteint.
+- **Total** : en chiffres de largeur constante, ambre `#ffb95b`, le plus gros de
+  l'écran — c'est le montant que la caissière annonce à voix haute. Le serif
+  `.titre` est laissé au reste du projet : sur ardoise, une graisse monospace tient
+  mieux la colonne quand le montant change de longueur.
+
+> **Polices système, ici aussi.** La maquette d'origine appelait Plus Jakarta Sans,
+> JetBrains Mono et Material Symbols chez Google. La caisse doit s'afficher hors
+> ligne : les trois sont remplacés par des piles système (`--police`,
+> `--chiffres`) et par des icônes SVG écrites dans la page.
 
 **Exception : les tickets imprimés.** `templates/ticket/ticket.html.twig` et
 `templates/caisse/rapport.html.twig` restent en noir et blanc neutre — ils sortent
@@ -787,6 +892,10 @@ fonction Twig `image_article()`.
   elle gonflerait le cache du Service Worker — dont dépend la caisse hors ligne.
   L'alpha est préservé (`imagealphablending` / `imagesavealpha`), sans quoi un
   PNG transparent ressortirait sur du noir.
+  ⚠ Y compris **sans réduction** : `lire()` pose `imagesavealpha()` dès la
+  lecture. Il ne le faisait longtemps que dans `reduire()`, et tout PNG
+  transparent de moins de 400 / 600 px était enregistré **sur fond noir** — les
+  logos et photos téléversés avant la correction sont à re-téléverser.
 - **Nom de fichier tiré au sort** à chaque téléversement. Ce n'est pas un détail :
   remplacer une photo **change son URL**, ce qui autorise le « cache d'abord » du
   Service Worker et le `Cache-Control: immutable` du `.htaccess`. Une adresse
@@ -891,9 +1000,12 @@ table que le ticket, par deux fonctions Twig (`App\Twig\BoutiqueExtension`) :
   les onglets et voleraient de la hauteur aux chiffres à chaque défilement.
 - Le fond du logo est **blanc** dans les deux en-têtes (barre brune, dégradé
   sombre) : un logo à fond transparent y disparaîtrait.
-- La caisse, la connexion et l'installation gardent `ZedPOS` : ce sont des écrans
-  du logiciel, pas de la vitrine — et la caisse doit s'afficher hors ligne, sans
-  dépendre d'une lecture en base.
+- **La caisse affiche aussi logo et nom** (panneau latéral, replié dans la barre
+  du haut sous 1024 px, et onglet du navigateur). Hors ligne ils tiennent : le nom
+  est dans la page gardée par le Service Worker, le logo sous `/uploads/` est servi
+  « cache d'abord ». Sans logo, pastille « Z ». `LogoBoutiqueTest` le fige.
+- La connexion et l'installation gardent `ZedPOS` : ce sont des écrans du
+  logiciel, pas de la vitrine.
 
 `ParametresBoutiqueTest` couvre le stockage et la reprise sur le ticket ;
 `LogoBoutiqueTest` fige le téléversement, la réduction, le refus d'un fichier qui
@@ -923,6 +1035,23 @@ l'absence de nom codé en dur dans les deux espaces de gestion.
   - Le champ est **facultatif** : laissé vide il vaut compte juste, et
     l'encaissement garde sa vitesse d'un seul appui. C'est la contrainte de la
     boulangerie rapide, elle ne se négocie pas contre un champ à remplir.
+  - **Pavé tactile à l'écran** (1-2-3 en haut, `⌫`, `000`, 0) et bouton
+    « Effacer » à côté du champ. Le champ porte `inputmode="none"` : le clavier du
+    système recouvrirait Encaisser sur la tablette ; un clavier physique marche
+    toujours. Toute écriture passe par `ticket_controller.ecrireRecu()` — espaces
+    de milliers, pas de zéro en tête, 7 chiffres au plus. **Après une coupure
+    proposée, le chiffre suivant repart de zéro** (2 000 puis « 5 » = 5, pas 20 005).
+    Le pavé **reste affiché** tant que les espèces sont retenues : l'ancienne
+    version le masquait dès que le reçu couvrait le total, ce qui empêchait de
+    finir de taper « 20 000 » sur un ticket à 1 500.
+  - **Encaisser ne sort jamais de l'écran.** La colonne du ticket a trois étages :
+    lignes (`.lignes-ticket`, jamais sous 4,5 rem), paiement (`.paiement` — totaux,
+    règlements, pavé — qui **défile** si la fenêtre est trop basse) et un **pied
+    épinglé** portant la monnaie à rendre et Encaisser. Sur un portable à 100 %
+    de zoom, tout empiler faisait passer Encaisser sous le bord de l'écran.
+    Choisir « Espèces » fait défiler la zone juste assez pour montrer le pavé
+    (`montrerPave()`, calcul manuel : `scrollIntoView()` décalerait aussi les
+    conteneurs `overflow: hidden`).
   - Le calcul se fait **à l'écran, sans réseau** (`renduMonnaie()` / `manquant()`
     dans `assets/caisse/calculs.js`) : c'est le geste immédiatement suivant, et
     hors ligne la réponse du serveur n'arriverait qu'au retour du réseau — d'où
@@ -1576,6 +1705,40 @@ l'agent imprime ne peut pas diverger de ce que la caissière a sous les yeux.
   qu'un seul champ `paid` : sur un paiement mixte, il dirait « 5 000 » sans
   jamais dire d'où ils viennent.
 
+**Le logo voyage dans `/print`** — clé `logo`, toujours présente, `null` sans
+logo. C'est `App\Service\LogoThermique` qui le prépare, pour que l'agent n'ait
+**rien à calculer** :
+
+| Propriété | Valeur |
+|---|---|
+| Format | `data:image/png;base64,…` (PNG à deux couleurs) |
+| Largeur | **384 points exactement** — toute la tête 58 mm à 203 dpi, dessin déjà **centré** |
+| Hauteur | ≤ 128 points (16 mm, la boîte du ticket HTML) |
+| Couleurs | noir = point chauffé, blanc = rien |
+| Position | à imprimer **avant** `header` |
+
+- **Seuil d'Otsu, pas de trame.** Une trame Floyd-Steinberg a été essayée : sur
+  le logo réel (carré, fond orange), elle changeait le fond en grisaille qui
+  noyait le dessin. Le seuil est calculé image par image et sépare fond et dessin
+  quelles que soient leurs couleurs.
+- **Recadré sur le dessin avant réduction** : sinon la marge colorée d'un logo
+  carré mangeait la hauteur. **Fond sombre inversé** (lu sur le pourtour) : sinon
+  un pavé noir plein à chaque vente.
+- Mis en cache (`cache.app`), clé = nom de fichier + date + `VERSION` : un nouveau
+  logo change de nom, le cache ne sert jamais l'ancien. **Incrémenter `VERSION`**
+  si la conversion change.
+- Un logo illisible ou uniforme donne `null` : **le ticket sort toujours**.
+- Hors ligne, `ticketLocal()` porte la **même** chaîne (passée à la page par
+  `CaisseController`, clé `logo` des paramètres) ; le reçu à l'écran garde le logo
+  en couleur (`logoEcran`).
+
+> ⚠ **L'agent Node doit être mis à jour pour l'imprimer** — il n'est pas dans ce
+> dépôt. Tant qu'il ignore la clé, le ticket sort comme avant, sans logo. Avec
+> `node-thermal-printer`, par exemple :
+> `printer.printImageBuffer(Buffer.from(logo.split(',')[1], 'base64'))` ; sans
+> bibliothèque d'image, décoder le PNG et l'envoyer en trame `GS v 0`. L'image
+> fait déjà la largeur de la tête : **ne pas la redimensionner ni la recentrer**.
+> `LogoBoutiqueTest` fige le format.
 **Le tiroir s'ouvre à l'appui sur « Encaisser », pas à l'impression.**
 `ticket_controller.encaisser()` appelle `pos.drawer()` (`POST /drawer`) dès que la
 vente est durablement en file, **sans `await`** : la caissière va prendre l'argent,
@@ -1759,7 +1922,7 @@ compare l'implémentation à cette description et signale les écarts.
 | Paramètres de l'établissement, logo compris | ✅ | `/admin/parametres` |
 | Import du catalogue en masse (nom, prix) | ✅ | `/admin/articles/importer` |
 
-Tests : **477 tests PHPUnit** (`php bin/phpunit`) et **37 tests Node**
+Tests : **487 tests PHPUnit** (`php bin/phpunit`) et **38 tests Node**
 (`node --test "tests/js/*.test.js"`).
 
 ### Écarts par rapport au contexte métier — à traiter
@@ -1794,8 +1957,9 @@ Classés par importance.
    base64 (et l'application reprend la main sur la mise en page au caractère
    près), soit `ImpressionService` est retiré. En attendant, deux mises en page
    thermiques coexistent et **doivent être modifiées ensemble**.
-   Corollaire inchangé : le **logo ne sort ni en ESC/POS ni sur `/print`**, qui
-   n'envoient que du texte. Il faudrait une trame raster (`GS v 0`).
+   Le **logo est désormais dans `/print`** (clé `logo`, PNG 384 points noir et
+   blanc — voir « Matériel de caisse ») ; il reste à l'agent de l'imprimer. Il ne
+   sort toujours pas en ESC/POS, qui n'envoie que du texte (`GS v 0` à écrire).
 
 4. **Facture normalisée (RNE / DGI) non implémentée.**
    Le ticket porte désormais un code-barres, mais il encode le **numéro interne**

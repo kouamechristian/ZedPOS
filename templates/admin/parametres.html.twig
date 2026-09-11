@@ -1,70 +1,80 @@
 {% extends 'admin/base.html.twig' %}
 {% form_theme form 'admin/_form_theme.html.twig' %}
+{% import 'admin/_icones.html.twig' as ui %}
 
 {% block page_title %}Paramètres de l'établissement{% endblock %}
+{% block page_sous_titre %}Ces informations sont imprimées en tête et en pied de chaque ticket de caisse et de chaque rapport de clôture. Vérifiez-les avant la mise en service.{% endblock %}
 
 {% block admin_content %}
-<div class="max-w-2xl">
-    <p class="mb-5 text-sm text-stone-500">
-        Ces informations sont imprimées en tête et en pied de <strong>chaque ticket de
-        caisse</strong> et de chaque rapport de clôture. Vérifiez-les avant la mise en
-        service.
-    </p>
+{# `form_start` pose de lui-même enctype="multipart/form-data" : le formulaire
+   porte un champ fichier depuis le logo. #}
+{{ form_start(form) }}
+<div class="grid max-w-5xl gap-5 lg:grid-cols-[14rem_minmax(0,1fr)]">
 
-    {# `form_start` pose de lui-même enctype="multipart/form-data" : le formulaire
-       porte un champ fichier depuis le logo. #}
-    {{ form_start(form) }}
+    {# Sommaire collant : sur un grand écran, les sections se parcourent sans
+       perdre de vue où l'on est. #}
+    <nav class="hidden lg:block" aria-label="Sections des paramètres">
+        <ul class="sticky top-24 space-y-1 text-sm">
+            <li><a href="#section-logo" class="flex items-center gap-2 rounded-lg px-3 py-2 text-stone-600 transition hover:bg-white hover:text-stone-900">{{ ui.icone('document', 'h-4 w-4') }} Logo</a></li>
+            {% for titre, champs in groupes %}
+                <li><a href="#section-{{ loop.index }}" class="flex items-center gap-2 rounded-lg px-3 py-2 text-stone-600 transition hover:bg-white hover:text-stone-900">{{ ui.icone('chevron', 'h-4 w-4') }} {{ titre }}</a></li>
+            {% endfor %}
+        </ul>
+    </nav>
 
-    {# Le logo a sa propre section : sa valeur persistée est un nom de fichier, pas
-       une saisie — il lui faut un aperçu et une case de retrait, là où les autres
-       paramètres se contentent d'un champ engendré depuis le catalogue. #}
-    <section class="mb-5 bg-white rounded-xl shadow-sm p-6">
-        <h2 class="titre text-lg font-bold text-stone-900 mb-4">Logo</h2>
-        <div class="flex flex-col sm:flex-row sm:items-start gap-5">
-            {# Damier discret : un logo à fond transparent doit se voir tel qu'il
-               sortira sur le papier, pas fondu dans le blanc de la carte. #}
-            <div class="grid h-24 w-24 shrink-0 place-items-center rounded-lg border border-stone-200 bg-stone-50 overflow-hidden">
-                {% if logo %}
-                    <img src="{{ logo }}" alt="Logo de l'établissement" class="max-h-24 max-w-full object-contain">
-                {% else %}
-                    <span class="text-[11px] text-stone-400 text-center px-2">Aucun logo</span>
-                {% endif %}
-            </div>
-            <div class="flex-1 min-w-0">
-                {{ form_row(attribute(form, 'logo_fichier')) }}
-                {% if logo %}
-                    {{ form_row(attribute(form, 'logo_retirer')) }}
-                {% else %}
-                    {# Rien à retirer : la case n'a pas de sens ici. Marquée rendue,
-                       sinon `form_end` la ferait réapparaître seule en bas de page
-                       avec le reste du formulaire non affiché. #}
-                    {% do attribute(form, 'logo_retirer').setRendered %}
-                {% endif %}
-            </div>
-        </div>
-    </section>
-
-    {# Les groupes viennent du catalogue CleParametre : rien n'est codé en dur ici. #}
-    {% for titre, champs in groupes %}
-        <section class="mb-5 bg-white rounded-xl shadow-sm p-6">
-            <h2 class="titre text-lg font-bold text-stone-900 mb-4">{{ titre }}</h2>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-5">
-                {% for champ in champs %}
-                    <div class="{{ attribute(form, champ).vars.attr.rows is defined ? 'sm:col-span-2' : '' }}">
-                        {{ form_row(attribute(form, champ)) }}
-                    </div>
-                {% endfor %}
+    <div class="min-w-0 space-y-5">
+        {# Le logo a sa propre section : sa valeur persistée est un nom de fichier, pas
+           une saisie — il lui faut un aperçu et une case de retrait, là où les autres
+           paramètres se contentent d'un champ engendré depuis le catalogue. #}
+        <section id="section-logo" class="carte apparition scroll-mt-24">
+            <div class="carte-entete"><h2 class="carte-titre">Logo</h2><span class="carte-note">imprimé en tête de chaque ticket</span></div>
+            <div class="carte-corps flex flex-col gap-5 sm:flex-row sm:items-start">
+                {# Damier discret : un logo à fond transparent doit se voir tel qu'il
+                   sortira sur le papier, pas fondu dans le blanc de la carte. #}
+                <div class="grid h-28 w-28 shrink-0 place-items-center overflow-hidden rounded-2xl border border-stone-200 bg-[repeating-conic-gradient(#f5f5f4_0_25%,#fff_0_50%)] bg-[length:16px_16px]">
+                    {% if logo %}
+                        <img src="{{ logo }}" alt="Logo de l'établissement" class="max-h-28 max-w-full object-contain">
+                    {% else %}
+                        <span class="px-2 text-center text-[11px] text-stone-400">Aucun logo</span>
+                    {% endif %}
+                </div>
+                <div class="min-w-0 flex-1">
+                    {{ form_row(attribute(form, 'logo_fichier')) }}
+                    {% if logo %}
+                        {{ form_row(attribute(form, 'logo_retirer')) }}
+                    {% else %}
+                        {# Rien à retirer : la case n'a pas de sens ici. Marquée rendue,
+                           sinon `form_end` la ferait réapparaître seule en bas de page
+                           avec le reste du formulaire non affiché. #}
+                        {% do attribute(form, 'logo_retirer').setRendered %}
+                    {% endif %}
+                </div>
             </div>
         </section>
-    {% endfor %}
 
-    <div class="flex items-center gap-3">
-        <button class="rounded-lg bg-stone-800 text-white px-5 py-2.5 text-sm font-semibold hover:bg-stone-700">
-            Enregistrer
-        </button>
-        <span class="text-xs text-stone-400">Les tickets déjà imprimés ne changent pas.</span>
+        {# Les groupes viennent du catalogue CleParametre : rien n'est codé en dur ici. #}
+        {% for titre, champs in groupes %}
+            <section id="section-{{ loop.index }}" class="carte apparition scroll-mt-24" style="--i: {{ loop.index }}">
+                <div class="carte-entete"><h2 class="carte-titre">{{ titre }}</h2></div>
+                <div class="carte-corps grid grid-cols-1 gap-x-5 sm:grid-cols-2">
+                    {% for champ in champs %}
+                        <div class="{{ attribute(form, champ).vars.attr.rows is defined ? 'sm:col-span-2' : '' }}">
+                            {{ form_row(attribute(form, champ)) }}
+                        </div>
+                    {% endfor %}
+                </div>
+            </section>
+        {% endfor %}
+
+        {# Barre d'enregistrement collée en bas d'écran : après avoir corrigé une
+           adresse au milieu de la page, on n'a pas à redescendre pour enregistrer. #}
+        <div class="sticky bottom-4 z-10">
+            <div class="carte flex flex-wrap items-center gap-3 px-4 py-3 shadow-lg backdrop-blur">
+                <button class="btn btn-primaire">{{ ui.icone('valide') }} Enregistrer</button>
+                <span class="text-xs text-stone-500">Les tickets déjà imprimés ne changent pas.</span>
+            </div>
+        </div>
     </div>
-
-    {{ form_end(form) }}
 </div>
+{{ form_end(form) }}
 {% endblock %}

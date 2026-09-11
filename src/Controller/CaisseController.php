@@ -7,6 +7,7 @@ use App\Repository\ArticleRepository;
 use App\Repository\FamilleProduitRepository;
 use App\Repository\SessionCaisseRepository;
 use App\Service\ImageArticle;
+use App\Service\LogoThermique;
 use App\Service\ParametresBoutique;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -32,6 +33,7 @@ class CaisseController extends AbstractController
         ArticleRepository $articles,
         SessionCaisseRepository $sessions,
         ParametresBoutique $parametres,
+        LogoThermique $logoThermique,
     ): Response {
         // Pas de vente sans session ouverte : le fond de caisse doit être saisi.
         $session = $sessions->ouvertePour($this->utilisateur());
@@ -54,6 +56,9 @@ class CaisseController extends AbstractController
             'catalogue' => $catalogue,
             'session' => $session,
             'parametresTicket' => $parametres->pourTicket(),
+            // Le ticket composé hors ligne part à l'agent comme celui du serveur :
+            // il lui faut le même logo, déjà converti pour la tête thermique.
+            'logoImpression' => $logoThermique->pourImpression(),
         ]);
     }
 

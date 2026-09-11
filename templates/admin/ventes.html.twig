@@ -1,44 +1,49 @@
 {% extends 'admin/base.html.twig' %}
 {% import 'admin/_macros.html.twig' as fmt %}
+{% import 'admin/_icones.html.twig' as ui %}
 {% import '_pagination.html.twig' as pagination %}
 {% import 'admin/_recherche.html.twig' as recherche %}
 
 {% block page_title %}Ventes récentes{% endblock %}
+{% block page_sous_titre %}Tous les tickets encaissés. Un lecteur de code-barres saisit le numéro directement dans la recherche.{% endblock %}
 
 {% block admin_content %}
 <turbo-frame id="liste-ventes" data-turbo-action="advance">
 
 {{ recherche.barre('admin_ventes', 'N° de ticket ou caissière') }}
-<div class="bg-white rounded-xl shadow-sm overflow-hidden">
-    <table class="w-full text-sm">
-        <thead class="text-left text-stone-500 bg-stone-50">
+<div class="tableau-conteneur apparition">
+    <div class="defilement-x">
+    <table class="tableau">
+        <thead>
             <tr>
-                <th class="px-5 py-3 font-medium">N°</th>
-                <th class="px-5 py-3 font-medium">Date</th>
-                <th class="px-5 py-3 font-medium">Mode</th>
-                <th class="px-5 py-3 font-medium">Caissier</th>
-                <th class="px-5 py-3 font-medium text-right">Total TTC</th>
-                <th class="px-5 py-3 font-medium">Statut</th>
-                <th class="px-5 py-3 font-medium text-right">Ticket</th>
+                <th>N°</th>
+                <th>Date</th>
+                <th>Mode</th>
+                <th>Caissier</th>
+                <th class="num">Total TTC</th>
+                <th>Statut</th>
+                <th class="num">Ticket</th>
             </tr>
         </thead>
         <tbody>
             {% for vente in ventes.items %}
-                <tr class="border-t border-stone-100 hover:bg-stone-50">
-                    <td class="px-5 py-2.5 font-mono text-xs text-stone-600">{{ vente.numero }}</td>
-                    <td class="px-5 py-2.5 text-stone-600">{{ vente.createdAt|date('d/m/Y H:i') }}</td>
-                    <td class="px-5 py-2.5">
-                        <span class="inline-flex rounded-full px-2 py-0.5 text-xs {{ vente.mode.value == 'BOULANGERIE' ? 'bg-amber-100 text-amber-800' : 'bg-orange-100 text-orange-800' }}">
-                            {{ vente.mode.value == 'BOULANGERIE' ? 'Boulangerie' : 'Fast-food' }}
-                        </span>
-                    </td>
-                    <td class="px-5 py-2.5 text-stone-600">{{ vente.sessionCaisse.utilisateur.nom }}</td>
-                    <td class="px-5 py-2.5 text-right font-medium">{{ fmt.fcfa(vente.totalTtc) }}</td>
-                    <td class="px-5 py-2.5">
-                        {% if vente.statut.value == 'VALIDEE' %}
-                            <span class="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-800">Validée</span>
+                <tr>
+                    <td><span class="code rounded-md bg-stone-100 px-1.5 py-0.5 text-stone-700">{{ vente.numero }}</span></td>
+                    <td class="cellule-douce whitespace-nowrap tabular-nums">{{ vente.createdAt|date('d/m/Y H:i') }}</td>
+                    <td>
+                        {% if vente.mode.value == 'BOULANGERIE' %}
+                            <span class="badge badge-ambre">Boulangerie</span>
                         {% else %}
-                            <span class="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-800">Annulée</span>
+                            <span class="badge badge-orange">Fast-food</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-stone-700">{{ vente.sessionCaisse.utilisateur.nom }}</td>
+                    <td class="num font-semibold {{ vente.statut.value == 'VALIDEE' ? 'text-stone-900' : 'text-stone-400 line-through' }}">{{ fmt.fcfa(vente.totalTtc) }}</td>
+                    <td>
+                        {% if vente.statut.value == 'VALIDEE' %}
+                            <span class="badge badge-vert badge-point">Validée</span>
+                        {% else %}
+                            <span class="badge badge-rouge badge-point">Annulée</span>
                         {% endif %}
                     </td>
                     {# Réimpression du ticket **tel qu'il est sorti**, par l'agent
@@ -48,22 +53,23 @@
 
                        Le tiroir ne s'ouvre pas — le serveur le refuse sur cette
                        route. Une réimpression ne fait pas entrer d'argent. #}
-                    <td class="px-5 py-2.5 text-right">
+                    <td class="num">
                         <button type="button"
                                 data-controller="reimpression"
                                 data-reimpression-materiel-url-value="{{ path('app_caisse_ticket_materiel', {uuid: vente.uuid}) }}"
                                 data-reimpression-ticket-url-value="{{ path('app_caisse_ticket', {uuid: vente.uuid}) }}"
                                 data-action="reimpression#imprimer"
-                                class="rounded-lg border border-stone-200 px-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50 disabled:opacity-50">
-                            Réimprimer
+                                class="btn btn-sm btn-secondaire">
+                            {{ ui.icone('imprimer') }} Réimprimer
                         </button>
                     </td>
                 </tr>
             {% else %}
-                <tr><td colspan="7" class="px-5 py-6 text-center text-stone-400">Aucune vente.</td></tr>
+                <tr><td colspan="7" class="cellule-vide">Aucune vente.</td></tr>
             {% endfor %}
         </tbody>
     </table>
+    </div>
 </div>
 {# Les liens de page restent dans le frame : seul le tableau se rafraîchit. #}
 {{ pagination.barre(ventes, 'admin_ventes') }}

@@ -1,4 +1,5 @@
 {% extends 'pilotage/base.html.twig' %}
+{% import 'admin/_icones.html.twig' as ui %}
 {% import '_pagination.html.twig' as pagination %}
 
 {% block page_title %}Journal d'audit{% endblock %}
@@ -28,22 +29,27 @@
 {% block pilotage_content %}
 {% import _self as rendu %}
 
+<div class="entete-page apparition">
+    <div>
+        <div class="sur-titre">Traçabilité</div>
+        <h1>Journal d'audit</h1>
+        <p class="mt-1.5 max-w-2xl text-sm text-stone-500">Connexions, annulations, remises, écarts et changements de comptes — dans l'ordre où ils sont arrivés.</p>
+    </div>
+</div>
+
 {# ---- Filtres ---- #}
-<form method="get" class="bg-white rounded-xl shadow-sm p-4 mb-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-5 items-end">
+<form method="get" class="carte apparition mb-5 grid items-end gap-4 p-4 sm:grid-cols-2 lg:grid-cols-5" style="--i: 1">
     <div>
-        <label for="du" class="block text-sm font-medium text-stone-700 mb-1">Du</label>
-        <input type="date" id="du" name="du" value="{{ filtres.du }}"
-               class="w-full rounded-lg border border-stone-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-400">
+        <label for="du" class="etiquette-legere">Du</label>
+        <input type="date" id="du" name="du" value="{{ filtres.du }}" class="champ">
     </div>
     <div>
-        <label for="au" class="block text-sm font-medium text-stone-700 mb-1">Au</label>
-        <input type="date" id="au" name="au" value="{{ filtres.au }}"
-               class="w-full rounded-lg border border-stone-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-400">
+        <label for="au" class="etiquette-legere">Au</label>
+        <input type="date" id="au" name="au" value="{{ filtres.au }}" class="champ">
     </div>
     <div>
-        <label for="utilisateur" class="block text-sm font-medium text-stone-700 mb-1">Utilisateur</label>
-        <select id="utilisateur" name="utilisateur"
-                class="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-400">
+        <label for="utilisateur" class="etiquette-legere">Utilisateur</label>
+        <select id="utilisateur" name="utilisateur" class="champ">
             <option value="">— Tous —</option>
             {% for auteur in auteurs %}
                 <option value="{{ auteur.id }}" {{ filtres.utilisateur == auteur.id ? 'selected' }}>{{ auteur.nom }}</option>
@@ -51,9 +57,8 @@
         </select>
     </div>
     <div>
-        <label for="action" class="block text-sm font-medium text-stone-700 mb-1">Type d'action</label>
-        <select id="action" name="action"
-                class="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-400">
+        <label for="action" class="etiquette-legere">Type d'action</label>
+        <select id="action" name="action" class="champ">
             <option value="">— Toutes —</option>
             {% for famille, groupe in actionsParFamille %}
                 <optgroup label="{{ famille }}">
@@ -65,52 +70,51 @@
         </select>
     </div>
     <div class="flex gap-2">
-        <button class="flex-1 rounded-lg bg-stone-900 text-white px-4 py-2 text-sm font-semibold hover:bg-stone-700">Filtrer</button>
-        <a href="{{ path('pilotage_audit') }}" class="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm font-medium hover:bg-stone-50">Réinitialiser</a>
+        <button class="btn btn-primaire flex-1">{{ ui.icone('filtre') }} Filtrer</button>
+        <a href="{{ path('pilotage_audit') }}" class="btn btn-secondaire btn-icone" title="Réinitialiser" aria-label="Réinitialiser">{{ ui.icone('fermer', 'h-4 w-4') }}</a>
     </div>
 </form>
 
 <div class="mb-3 flex items-baseline justify-between text-sm text-stone-500">
-    <span>{{ resultat.total }} entrée{{ resultat.total > 1 ? 's' }}</span>
-    <span>Page {{ resultat.page }} / {{ resultat.pages }}</span>
+    <span><strong class="font-semibold text-stone-800">{{ resultat.total }}</strong> entrée{{ resultat.total > 1 ? 's' }}</span>
+    <span class="tabular-nums">Page {{ resultat.page }} / {{ resultat.pages }}</span>
 </div>
 
 {# ---- Entrées ---- #}
-<div class="bg-white rounded-xl shadow-sm overflow-hidden">
-    <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-            <thead class="text-left text-stone-500 bg-stone-50">
+<div class="tableau-conteneur apparition" style="--i: 2">
+    <div class="defilement-x">
+        <table class="tableau">
+            <thead>
                 <tr>
-                    <th class="px-4 py-3 font-medium whitespace-nowrap">Horodatage</th>
-                    <th class="px-4 py-3 font-medium">Utilisateur</th>
-                    <th class="px-4 py-3 font-medium">Action</th>
-                    <th class="px-4 py-3 font-medium">Entité</th>
-                    <th class="px-4 py-3 font-medium">Avant</th>
-                    <th class="px-4 py-3 font-medium">Après</th>
-                    <th class="px-4 py-3 font-medium whitespace-nowrap">IP</th>
+                    <th>Horodatage</th>
+                    <th>Utilisateur</th>
+                    <th>Action</th>
+                    <th>Entité</th>
+                    <th>Avant</th>
+                    <th>Après</th>
+                    <th>IP</th>
                 </tr>
             </thead>
             <tbody>
                 {% for entree in resultat.items %}
                     {% set action = libelles[entree.action]|default(null) %}
-                    <tr class="border-t border-stone-100 align-top hover:bg-stone-50">
-                        <td class="px-4 py-3 whitespace-nowrap tabular-nums text-stone-600">{{ entree.createdAt|date('d/m/Y H:i:s') }}</td>
-                        <td class="px-4 py-3 font-medium text-stone-800">{{ entree.utilisateur ? entree.utilisateur.nom : '—' }}</td>
-                        <td class="px-4 py-3">
-                            <span class="inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap
-                                         {{ action and action.sensible ? 'bg-amber-100 text-amber-800' : 'bg-stone-100 text-stone-700' }}">
+                    <tr class="align-top {{ action and action.sensible ? 'bg-amber-50/40' : '' }}">
+                        <td class="whitespace-nowrap tabular-nums text-stone-600">{{ entree.createdAt|date('d/m/Y H:i:s') }}</td>
+                        <td class="cellule-principale">{{ entree.utilisateur ? entree.utilisateur.nom : '—' }}</td>
+                        <td>
+                            <span class="badge {{ action and action.sensible ? 'badge-ambre badge-point' : 'badge-neutre' }}">
                                 {{ action ? action.libelle : entree.action }}
                             </span>
                         </td>
-                        <td class="px-4 py-3 text-stone-600 whitespace-nowrap">
+                        <td class="whitespace-nowrap text-stone-600">
                             {{ entree.entite }}{% if entree.entiteId %} <span class="text-stone-400">#{{ entree.entiteId }}</span>{% endif %}
                         </td>
-                        <td class="px-4 py-3 text-xs">{{ rendu.valeurs(entree.avant) }}</td>
-                        <td class="px-4 py-3 text-xs">{{ rendu.valeurs(entree.apres) }}</td>
-                        <td class="px-4 py-3 text-stone-400 text-xs whitespace-nowrap">{{ entree.ip ?: '—' }}</td>
+                        <td class="text-xs">{{ rendu.valeurs(entree.avant) }}</td>
+                        <td class="text-xs">{{ rendu.valeurs(entree.apres) }}</td>
+                        <td class="code whitespace-nowrap text-stone-400">{{ entree.ip ?: '—' }}</td>
                     </tr>
                 {% else %}
-                    <tr><td colspan="7" class="px-4 py-8 text-center text-stone-400">Aucune entrée pour ces critères.</td></tr>
+                    <tr><td colspan="7" class="cellule-vide">Aucune entrée pour ces critères.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -119,8 +123,9 @@
 
 {{ pagination.barre(resultat, 'pilotage_audit', filtres|filter(v => v is not null)) }}
 
-<p class="mt-6 text-xs text-stone-400">
-    Le journal d'audit est <strong>inaltérable</strong> : les entrées sont ajoutées automatiquement
-    et ne peuvent être ni modifiées ni supprimées depuis l'application.
+<p class="aide mt-6 flex items-center gap-2">
+    {{ ui.icone('audit', 'h-4 w-4 text-stone-400') }}
+    <span>Le journal d'audit est <strong>inaltérable</strong> : les entrées sont ajoutées automatiquement
+    et ne peuvent être ni modifiées ni supprimées depuis l'application.</span>
 </p>
 {% endblock %}

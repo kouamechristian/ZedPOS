@@ -1,0 +1,24 @@
+{# Messages flash des espaces de gestion, affichés en toasts.
+
+   Une seule source pour le back-office, le pilotage et la comptabilité. Les
+   messages restent dans le DOM le temps de leur affichage : lisibles par un
+   lecteur d'écran (`aria-live`), et par les tests qui cherchent leur texte.
+   Une erreur reste affichée plus longtemps qu'une confirmation. #}
+{% import 'admin/_icones.html.twig' as ui %}
+
+<div class="toasts" aria-live="polite">
+    {% for type, messages in app.flashes(['success', 'error']) %}
+        {% for message in messages %}
+            <div class="toast {{ type == 'success' ? 'toast-succes' : 'toast-erreur' }}"
+                 role="{{ type == 'success' ? 'status' : 'alert' }}"
+                 data-controller="toast" data-toast-duree-value="{{ type == 'success' ? 5000 : 9000 }}"
+                 data-action="mouseenter->toast#suspendre mouseleave->toast#reprendre">
+                <span class="toast-icone">{{ ui.icone(type == 'success' ? 'valide' : 'erreur') }}</span>
+                <p class="min-w-0 flex-1 pt-0.5">{{ message }}</p>
+                <button type="button" class="toast-fermer" data-action="toast#fermer" aria-label="Fermer">
+                    {{ ui.icone('fermer', 'h-4 w-4') }}
+                </button>
+            </div>
+        {% endfor %}
+    {% endfor %}
+</div>

@@ -149,7 +149,7 @@ class FuiteDonneesCaisseTest extends WebTestCase
         // par l'agent, et un champ ajouté par mégarde partirait vers un service
         // qui tourne hors de l'application.
         $this->assertSame(
-            ['header', 'lines', 'total', 'paid', 'change', 'footer', 'openDrawer'],
+            ['logo', 'header', 'lines', 'total', 'paid', 'change', 'footer', 'openDrawer'],
             array_keys($donnees['ticket']),
             'Le ticket matériel expose exactement les clés attendues par /print.',
         );

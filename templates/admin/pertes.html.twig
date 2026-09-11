@@ -1,97 +1,109 @@
 {% extends 'admin/base.html.twig' %}
 {% import 'admin/_macros.html.twig' as fmt %}
+{% import 'admin/_icones.html.twig' as ui %}
 {% import '_pagination.html.twig' as pagination %}
 {% import 'admin/_recherche.html.twig' as recherche %}
 
 {% block page_title %}Pertes{% endblock %}
+{% block page_sous_titre %}Casse, périmés et invendus, valorisés au coût : ce que la boutique jette chaque mois.{% endblock %}
 
 {% block page_actions %}
     <form method="get" class="flex items-center gap-2">
-        <input type="month" name="mois" value="{{ mois }}"
-               class="rounded-lg border border-stone-300 px-3 py-2 text-sm">
-        <button class="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-medium hover:bg-stone-50">Voir</button>
+        <input type="month" name="mois" value="{{ mois }}" class="champ w-auto" aria-label="Mois consulté">
+        <button class="btn btn-secondaire">Voir</button>
     </form>
-    <a href="{{ path('admin_perte_saisie') }}" class="rounded-lg bg-stone-800 text-white px-3 py-2 text-sm font-semibold hover:bg-stone-700">+ Saisir une perte</a>
+    <a href="{{ path('admin_perte_saisie') }}" class="btn btn-primaire">{{ ui.icone('plus') }} Saisir une perte</a>
 {% endblock %}
 
 {% block admin_content %}
 
 {{ recherche.barre('admin_pertes', 'Produit, matière ou commentaire') }}
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-    <div class="bg-white rounded-xl shadow-sm p-5 lg:col-span-1">
-        <div class="text-sm text-stone-500">Total des pertes valorisées</div>
-        <div class="mt-2 text-3xl font-bold text-red-600">{{ fmt.fcfa(total) }}</div>
-        <div class="mt-1 text-xs text-stone-400">mois {{ mois }}</div>
-    </div>
+<div class="grid grid-cols-1 gap-5 lg:grid-cols-3">
+    <article class="kpi apparition flex flex-col justify-between">
+        <div class="kpi-tete">
+            <span class="kpi-libelle">Total des pertes valorisées</span>
+            <span class="kpi-icone kpi-icone-rouge">{{ ui.icone('pertes') }}</span>
+        </div>
+        <div>
+            <div class="kpi-valeur text-red-600">{{ fmt.fcfa(total) }}</div>
+            <div class="kpi-note">mois {{ mois }}</div>
+        </div>
+    </article>
 
-    <div class="bg-white rounded-xl shadow-sm lg:col-span-2">
-        <div class="px-5 py-3 border-b border-stone-100 font-semibold">Ventilation par motif</div>
-        <table class="w-full text-sm">
-            <thead class="text-left text-stone-500">
-                <tr><th class="px-5 py-2 font-medium">Motif</th><th class="px-5 py-2 font-medium text-right">Nombre</th><th class="px-5 py-2 font-medium text-right">Valorisation</th></tr>
+    <section class="carte apparition lg:col-span-2" style="--i: 1">
+        <div class="carte-entete"><h2 class="carte-titre">Ventilation par motif</h2></div>
+        <table class="tableau">
+            <thead>
+                <tr><th>Motif</th><th class="num">Nombre</th><th class="num">Valorisation</th></tr>
             </thead>
             <tbody>
                 {% for ligne in ventilation %}
-                    <tr class="border-t border-stone-50">
-                        <td class="px-5 py-2">{{ ligne.motif.libelle }}</td>
-                        <td class="px-5 py-2 text-right text-stone-600">{{ ligne.nombre }}</td>
-                        <td class="px-5 py-2 text-right font-medium">{{ fmt.fcfa(ligne.valorisation) }}</td>
+                    <tr>
+                        <td class="text-stone-800">{{ ligne.motif.libelle }}</td>
+                        <td class="num cellule-douce">{{ ligne.nombre }}</td>
+                        <td class="num font-semibold">{{ fmt.fcfa(ligne.valorisation) }}</td>
                     </tr>
                 {% else %}
-                    <tr><td colspan="3" class="px-5 py-4 text-stone-400">Aucune perte sur le mois.</td></tr>
+                    <tr><td colspan="3" class="cellule-vide">Aucune perte sur le mois.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
-    </div>
+    </section>
 </div>
 
-<div class="mt-4 bg-white rounded-xl shadow-sm">
-    <div class="px-5 py-3 border-b border-stone-100 font-semibold">Top 5 des produits les plus perdus</div>
-    <table class="w-full text-sm">
-        <thead class="text-left text-stone-500">
-            <tr><th class="px-5 py-2 font-medium">Produit</th><th class="px-5 py-2 font-medium text-right">Quantité</th><th class="px-5 py-2 font-medium text-right">Valorisation</th></tr>
+<section class="carte apparition mt-5" style="--i: 2">
+    <div class="carte-entete"><h2 class="carte-titre">Top 5 des produits les plus perdus</h2></div>
+    <table class="tableau">
+        <thead>
+            <tr><th>Produit</th><th class="num">Quantité</th><th class="num">Valorisation</th></tr>
         </thead>
         <tbody>
             {% for ligne in top %}
-                <tr class="border-t border-stone-50">
-                    <td class="px-5 py-2 font-medium text-stone-800">{{ ligne.nom }}</td>
-                    <td class="px-5 py-2 text-right text-stone-600">{{ fmt.unites(ligne.quantite) }}</td>
-                    <td class="px-5 py-2 text-right font-medium">{{ fmt.fcfa(ligne.valorisation) }}</td>
+                <tr>
+                    <td class="cellule-principale">
+                        <span class="mr-2 inline-grid h-6 w-6 place-items-center rounded-md bg-red-50 text-xs font-bold text-red-700">{{ loop.index }}</span>{{ ligne.nom }}
+                    </td>
+                    <td class="num cellule-douce">{{ fmt.unites(ligne.quantite) }}</td>
+                    <td class="num font-semibold">{{ fmt.fcfa(ligne.valorisation) }}</td>
                 </tr>
             {% else %}
-                <tr><td colspan="3" class="px-5 py-4 text-stone-400">—</td></tr>
+                <tr><td colspan="3" class="cellule-vide">—</td></tr>
             {% endfor %}
         </tbody>
     </table>
-</div>
+</section>
 
-<div class="mt-4 bg-white rounded-xl shadow-sm overflow-hidden">
-    <div class="px-5 py-3 border-b border-stone-100 font-semibold">Détail des pertes</div>
-    <table class="w-full text-sm">
-        <thead class="text-left text-stone-500 bg-stone-50">
+{# Le détail reste le **dernier** tableau de la page : c'est celui que la
+   recherche filtre, et `RechercheBackOfficeTest` le lit en dernier. #}
+<section class="tableau-conteneur apparition mt-5" style="--i: 3">
+    <div class="carte-entete"><h2 class="carte-titre">Détail des pertes</h2></div>
+    <div class="defilement-x">
+    <table class="tableau">
+        <thead>
             <tr>
-                <th class="px-5 py-3 font-medium">Date</th>
-                <th class="px-5 py-3 font-medium">Motif</th>
-                <th class="px-5 py-3 font-medium">Élément</th>
-                <th class="px-5 py-3 font-medium text-right">Quantité</th>
-                <th class="px-5 py-3 font-medium text-right">Valorisation</th>
+                <th>Date</th>
+                <th>Motif</th>
+                <th>Élément</th>
+                <th class="num">Quantité</th>
+                <th class="num">Valorisation</th>
             </tr>
         </thead>
         <tbody>
             {% for perte in pertes.items %}
-                <tr class="border-t border-stone-100">
-                    <td class="px-5 py-2.5 text-stone-600">{{ perte.createdAt|date('d/m/Y H:i') }}</td>
-                    <td class="px-5 py-2.5">{{ perte.motif.libelle }}</td>
-                    <td class="px-5 py-2.5 text-stone-600">{{ perte.matierePremiere ? perte.matierePremiere.nom : (perte.article ? perte.article.nom : '—') }}</td>
-                    <td class="px-5 py-2.5 text-right">{{ fmt.unites(perte.quantite) }}</td>
-                    <td class="px-5 py-2.5 text-right font-medium">{{ fmt.fcfa(perte.valorisation) }}</td>
+                <tr>
+                    <td class="cellule-douce whitespace-nowrap tabular-nums">{{ perte.createdAt|date('d/m/Y H:i') }}</td>
+                    <td><span class="badge badge-neutre">{{ perte.motif.libelle }}</span></td>
+                    <td class="text-stone-800">{{ perte.matierePremiere ? perte.matierePremiere.nom : (perte.article ? perte.article.nom : '—') }}</td>
+                    <td class="num">{{ fmt.unites(perte.quantite) }}</td>
+                    <td class="num font-semibold">{{ fmt.fcfa(perte.valorisation) }}</td>
                 </tr>
             {% else %}
-                <tr><td colspan="5" class="px-5 py-6 text-center text-stone-400">Aucune perte enregistrée ce mois-ci.</td></tr>
+                <tr><td colspan="5" class="cellule-vide">Aucune perte enregistrée ce mois-ci.</td></tr>
             {% endfor %}
         </tbody>
     </table>
-</div>
+    </div>
+</section>
 {# Le mois consulté est un paramètre de requête : la barre le conserve. #}
 {{ pagination.barre(pertes, 'admin_pertes') }}
 {% endblock %}

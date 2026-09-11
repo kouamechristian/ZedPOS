@@ -165,26 +165,52 @@ class CaisseTest extends WebTestCase
     }
 
     /**
-     * L'écran de caisse suit l'identité documentée : ambre sur la famille active
-     * et fond crème. Un écran monochrome ne permet pas de repérer la sélection en
-     * plein jour derrière le comptoir.
+     * L'écran de caisse tient sur trois repères visuels : gris clair en fond,
+     * blanc sur ce qui est retenu, vert sur l'argent.
+     *
+     * Ce que ce test protège vraiment, c'est la **séparation** : un état retenu
+     * et le bouton qui engage l'argent ne doivent jamais porter la même couleur.
+     * C'est le défaut de tout habillage à accent unique, et il coûte des
+     * encaissements par mégarde au moment de la file du matin.
      */
-    public function testLesEtatsActifsSontEnAmbre(): void
+    public function testLesTroisCouleursDeLaCaisseNeSeConfondentPas(): void
     {
         $this->client->request('GET', '/caisse');
         $corps = (string) $this->client->getResponse()->getContent();
 
-        // amber-700 : la couleur des actions et des états actifs.
+        // Gris clair : le fond commun au projet.
+        $this->assertStringContainsString('--nuit: #f3f4f6;', $corps, 'Le fond de page doit être gris clair.');
+
+        // Blanc : ce qui est retenu, et rien d'autre. Un aplat plein, jamais un
+        // simple changement de ton — invisible en plein jour derrière le comptoir.
         $this->assertStringContainsString('.onglet[data-actif]', $corps);
-        $this->assertStringContainsString('#b45309', $corps, 'La sélection doit être en ambre (amber-700).');
-        $this->assertStringContainsString('bg-amber-50', $corps, 'Le fond de page est le crème amber-50.');
+        $this->assertStringContainsString('background: #ffffff;', $corps);
+        $this->assertStringContainsString('--texte: #1f2937;', $corps, 'La caisse doit utiliser une encre sombre.');
 
-        // Le bouton d'encaissement reste vert : convention forte en caisse.
-        // green-800 depuis que les règlements portent les couleurs des réseaux.
-        $this->assertStringContainsString('bg-green-800', $corps, 'Encaisser doit rester vert.');
-        $this->assertStringNotContainsString('bg-amber-700 py-4', $corps, "Encaisser n'est jamais en ambre.");
+        // Vert : l'argent. Le bouton qui l'encaisse le porte, et le prend d'un
+        // jeton partagé — pas d'une teinte écrite sur place, qui échapperait au
+        // thème le jour où il change.
+        $this->assertStringContainsString('--vert: #22c55e;', $corps, 'Encaisser doit rester vert.');
+        $this->assertStringContainsString(
+            '.caisse .encaisser {'."\n".'    background: var(--vert);',
+            $corps,
+            'Encaisser prend la couleur de validation, pas une teinte écrite sur place.',
+        );
 
-        // Le slate bleuté est proscrit par l'identité visuelle.
+        // La séparation elle-même : l'état retenu n'est pas vert, le bouton
+        // d'encaissement n'est pas blanc.
+        $this->assertStringNotContainsString(
+            '.onglet[data-actif] { background: var(--vert)',
+            $corps,
+            'Une famille retenue ne prend jamais le vert de l’argent.',
+        );
+        $this->assertStringNotContainsString(
+            '.caisse .encaisser {'."\n".'    background: var(--blanc);',
+            $corps,
+            'Encaisser ne prend jamais le blanc des états retenus.',
+        );
+
+        // Le slate bleuté par défaut de Tailwind reste proscrit.
         $this->assertStringNotContainsString('slate-', $corps);
     }
 
@@ -266,10 +292,18 @@ class CaisseTest extends WebTestCase
         $this->assertSelectorExists('[data-ticket-target="montantRecu"]');
         $this->assertSelectorExists('[data-ticket-target="renduMontant"]', 'La monnaie à rendre doit être affichée.');
         $this->assertSelectorExists('[data-ticket-target="suggestions"]', 'Les coupures courantes sont proposées.');
+        $touches = $this->client->getCrawler()->filter('[data-action="ticket#appuyerMontant"]')->each(
+            static fn ($touche) => $touche->attr('data-chiffre'),
+        );
+        sort($touches, \SORT_STRING);
+        $this->assertSame(['0', '000', '1', '2', '3', '4', '5', '6', '7', '8', '9'], $touches, 'Le pavé propose les dix chiffres et la touche « 000 ».');
+        $this->assertSelectorExists('[data-action="ticket#effacerMontant"]', 'Le pavé doit permettre de vider le montant.');
+        $this->assertSelectorExists('[data-action="ticket#reculerMontant"]', 'Le pavé doit permettre d’effacer le dernier chiffre.');
 
-        // Pavé numérique sur la tablette du comptoir, pas de clavier alphabétique.
+        // Le pavé est à l'écran : le clavier du système ne doit pas s'ouvrir par-dessus
+        // et recouvrir Encaisser sur la tablette du comptoir.
         $champ = $this->client->getCrawler()->filter('[data-ticket-target="montantRecu"]');
-        $this->assertSame('numeric', $champ->attr('inputmode'));
+        $this->assertSame('none', $champ->attr('inputmode'));
         $this->assertSame('Compte juste', $champ->attr('placeholder'), 'Le champ vide vaut compte juste.');
     }
 

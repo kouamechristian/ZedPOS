@@ -1,65 +1,72 @@
 {% extends 'admin/base.html.twig' %}
 {% form_theme form 'admin/_form_theme.html.twig' %}
+{% import 'admin/_icones.html.twig' as ui %}
 
 {% block page_title %}{{ titre }}{% endblock %}
 
+{% block page_actions %}
+    <a href="{{ article is defined ? path('admin_article_show', {id: article.id}) : path('admin_article_index') }}" class="btn btn-fantome">{{ ui.icone('retour') }} Retour</a>
+{% endblock %}
+
 {% block admin_content %}
-<div class="max-w-2xl bg-white rounded-xl shadow-sm p-6">
+<div class="carte apparition max-w-3xl">
     {{ form_start(form) }}
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-5">
-        <div class="sm:col-span-2">{{ form_row(form.nom) }}</div>
-        {{ form_row(form.familleProduit) }}
-        {{ form_row(form.unite) }}
-        {# Champ absent du formulaire si l'utilisateur n'est pas habilité au prix. #}
-        {% if form.prixVenteTtc is defined %}
-            {{ form_row(form.prixVenteTtc) }}
-        {% else %}
-            <div class="mb-4">
-                <span class="block text-sm font-medium text-stone-700 mb-1">Prix de vente TTC</span>
-                <p class="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-500">
-                    {{ article is defined ? (article.prixVenteTtc / 100)|number_format(0, ',', ' ') ~ ' FCFA' : '—' }}
-                    <span class="block text-xs">Seule la dirigeante peut fixer un prix de vente.</span>
-                </p>
-            </div>
-        {% endif %}
-        {{ form_row(form.tauxTva) }}
-        {{ form_row(form.positionCaisse) }}
-        {{ form_row(form.couleur) }}
-    </div>
-
-    {# Photo de la touche. L'aperçu montre l'image **en place**, à la taille
-       qu'elle occupera en caisse : c'est là qu'on voit qu'un plan large ne donne
-       rien une fois réduit à la hauteur d'une touche. #}
-    <div class="mt-4 rounded-xl border border-stone-200 p-4">
-        <div class="flex flex-wrap items-start gap-5">
-            <div class="min-w-0 flex-1">
-                {{ form_row(form.imageFichier) }}
-                {% if article is defined and article.image %}
-                    {{ form_row(form.supprimerImage) }}
-                {% endif %}
-            </div>
-
-            {% if article is defined and article.image %}
-                <div class="shrink-0">
-                    <span class="mb-1 block text-xs font-medium text-stone-500">Aperçu de la touche</span>
-                    <span class="flex w-28 flex-col overflow-hidden rounded-[12px] text-left shadow-sm"
-                          style="min-height: 92px; background: {{ article.couleur ?: '#fce3b4' }}; color: #7a4708;">
-                        <img src="{{ image_article(article.image) }}" alt="" class="h-20 w-full shrink-0 object-cover">
-                        <span class="flex flex-1 flex-col justify-between p-2">
-                            <span class="text-[13px] font-medium leading-snug">{{ article.nom }}</span>
-                        </span>
-                    </span>
+    <div class="carte-corps">
+        <div class="grid grid-cols-1 gap-x-5 sm:grid-cols-2">
+            <div class="sm:col-span-2">{{ form_row(form.nom) }}</div>
+            {{ form_row(form.familleProduit) }}
+            {{ form_row(form.unite) }}
+            {# Champ absent du formulaire si l'utilisateur n'est pas habilité au prix. #}
+            {% if form.prixVenteTtc is defined %}
+                {{ form_row(form.prixVenteTtc) }}
+            {% else %}
+                <div class="ligne-champ">
+                    <span class="etiquette">Prix de vente TTC</span>
+                    <p class="rounded-xl border border-dashed border-stone-300 bg-stone-50 px-3 py-2 text-sm text-stone-600">
+                        {{ article is defined ? (article.prixVenteTtc / 100)|number_format(0, ',', ' ') ~ ' FCFA' : '—' }}
+                        <span class="mt-0.5 block text-xs text-stone-500">Seule la dirigeante peut fixer un prix de vente.</span>
+                    </p>
                 </div>
             {% endif %}
+            {{ form_row(form.tauxTva) }}
+            {{ form_row(form.positionCaisse) }}
+            {{ form_row(form.couleur) }}
         </div>
+
+        {# Photo de la touche. L'aperçu montre l'image **en place**, à la taille
+           qu'elle occupera en caisse : c'est là qu'on voit qu'un plan large ne donne
+           rien une fois réduit à la hauteur d'une touche. #}
+        <div class="mt-2 rounded-2xl border border-stone-200 bg-stone-50/60 p-4">
+            <div class="flex flex-wrap items-start gap-5">
+                <div class="min-w-0 flex-1">
+                    {{ form_row(form.imageFichier) }}
+                    {% if article is defined and article.image %}
+                        {{ form_row(form.supprimerImage) }}
+                    {% endif %}
+                </div>
+
+                {% if article is defined and article.image %}
+                    <div class="shrink-0">
+                        <span class="etiquette-legere">Aperçu de la touche</span>
+                        <span class="flex w-28 flex-col overflow-hidden rounded-[12px] text-left shadow-sm"
+                              style="min-height: 92px; background: {{ article.couleur ?: '#fce3b4' }}; color: #7a4708;">
+                            <img src="{{ image_article(article.image) }}" alt="" class="h-20 w-full shrink-0 object-cover">
+                            <span class="flex flex-1 flex-col justify-between p-2">
+                                <span class="text-[13px] font-medium leading-snug">{{ article.nom }}</span>
+                            </span>
+                        </span>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="mt-4">{{ form_row(form.actif) }}</div>
     </div>
 
-    <div class="mt-2">{{ form_row(form.actif) }}</div>
-
-    <div class="mt-6 flex items-center gap-3">
-        <button class="rounded-lg bg-stone-800 text-white px-4 py-2 text-sm font-semibold hover:bg-stone-700">Enregistrer</button>
+    <div class="carte-pied">
+        <button class="btn btn-primaire">{{ ui.icone('valide') }} Enregistrer</button>
         <a href="{{ article is defined ? path('admin_article_show', {id: article.id}) : path('admin_article_index') }}"
-           class="rounded-lg border border-stone-300 px-4 py-2 text-sm hover:bg-stone-50">Annuler</a>
+           class="btn btn-fantome">Annuler</a>
     </div>
     {{ form_end(form) }}
 </div>

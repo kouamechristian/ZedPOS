@@ -12,6 +12,7 @@
 #}
 
 {% macro barre(route, placeholder) %}
+    {% import 'admin/_icones.html.twig' as ui %}
     {% set terme = app.request.query.get('q') %}
     {# Les autres paramètres de l'URL sont reconduits : chercher dans les pertes
        d'un mois donné ne doit pas ramener au mois en cours. `page` est au
@@ -26,23 +27,23 @@
        recherche reste **dedans** — au même titre que la pagination : elle ne
        redessine que le tableau. `TurboNavigationTest` fige les deux sens. #}
     <form method="get" role="search" aria-label="Recherche dans le tableau"
-          class="mb-5 flex flex-wrap items-center gap-2">
+          class="mb-4 flex flex-wrap items-center gap-2">
         {% for cle, valeur in conserves %}
             <input type="hidden" name="{{ cle }}" value="{{ valeur }}">
         {% endfor %}
 
-        <input type="search" name="q" value="{{ terme }}" placeholder="{{ placeholder }}"
-               class="w-64 max-w-full rounded-lg border border-stone-300 px-3 py-2 text-sm
-                      focus:outline-none focus:ring-2 focus:ring-stone-400">
-        <button class="rounded-lg bg-stone-700 px-4 py-2 text-sm font-medium text-white hover:bg-stone-600">
-            Rechercher
-        </button>
+        <div class="champ-avec-icone w-full sm:w-80">
+            {{ ui.icone('recherche') }}
+            <input type="search" name="q" value="{{ terme }}" placeholder="{{ placeholder }}"
+                   aria-label="{{ placeholder }}" class="champ">
+        </div>
+        <button class="btn btn-secondaire">Rechercher</button>
 
         {# Le lien de réinitialisation n'apparaît que s'il y a quelque chose à
            annuler, et il ne retire que la recherche : les autres filtres restent. #}
         {% if terme %}
-            <a href="{{ path(route, conserves) }}" class="text-sm text-stone-500 underline hover:text-stone-800">
-                Réinitialiser
+            <a href="{{ path(route, conserves) }}" class="btn btn-fantome">
+                {{ ui.icone('fermer', 'h-4 w-4') }} Réinitialiser
             </a>
         {% endif %}
     </form>

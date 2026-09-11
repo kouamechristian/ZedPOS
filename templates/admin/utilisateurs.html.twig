@@ -1,62 +1,72 @@
 {% extends 'admin/base.html.twig' %}
 {% import 'admin/_macros.html.twig' as fmt %}
+{% import 'admin/_icones.html.twig' as ui %}
 {% import '_pagination.html.twig' as pagination %}
 {% import 'admin/_recherche.html.twig' as recherche %}
 
 {% block page_title %}Utilisateurs{% endblock %}
+{% block page_sous_titre %}Les comptes de l'équipe : caisse au code PIN, gestion au mot de passe.{% endblock %}
 
 {% block page_actions %}
     {# Gérant et dirigeante créent des comptes. Ce qui les sépare n'est pas ce
        bouton mais la liste des rôles qu'il ouvre : « Dirigeante » n'y figure que
        pour la dirigeante. #}
     {% if is_granted(constant('App\\Security\\Permission::UTILISATEUR_GERER')) %}
-        <a href="{{ path('admin_utilisateur_new') }}" class="rounded-lg bg-stone-800 text-white px-3 py-2 text-sm font-semibold hover:bg-stone-700">+ Nouvel utilisateur</a>
+        <a href="{{ path('admin_utilisateur_new') }}" class="btn btn-primaire">{{ ui.icone('plus') }} Nouvel utilisateur</a>
     {% endif %}
 {% endblock %}
 
 {% block admin_content %}
 
 {{ recherche.barre('admin_utilisateurs', 'Nom, e-mail ou rôle') }}
-<div class="bg-white rounded-xl shadow-sm overflow-hidden">
-    <table class="w-full text-sm">
-        <thead class="text-left text-stone-500 bg-stone-50">
+<div class="tableau-conteneur apparition">
+    <div class="defilement-x">
+    <table class="tableau">
+        <thead>
             <tr>
-                <th class="px-5 py-3 font-medium">Nom</th>
-                <th class="px-5 py-3 font-medium">E-mail</th>
-                <th class="px-5 py-3 font-medium">Rôles</th>
-                <th class="px-5 py-3 font-medium">Statut</th>
-                <th class="px-5 py-3"></th>
+                <th>Nom</th>
+                <th>E-mail</th>
+                <th>Rôles</th>
+                <th>Statut</th>
+                <th></th>
             </tr>
         </thead>
         <tbody>
             {% for utilisateur in utilisateurs.items %}
-                <tr class="border-t border-stone-100 hover:bg-stone-50">
-                    <td class="px-5 py-3 font-medium text-stone-800">{{ utilisateur.nom }}</td>
-                    <td class="px-5 py-3 text-stone-600">{{ utilisateur.email }}</td>
-                    <td class="px-5 py-3">
-                        {% for role in utilisateur.roles %}
-                            {% if role != 'ROLE_USER' %}
-                                <span class="inline-flex rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-700">{{ role|replace({'ROLE_': ''})|capitalize }}</span>
-                            {% endif %}
-                        {% endfor %}
+                {% set initiales = utilisateur.nom|split(' ')|filter(mot => mot is not empty)|slice(0, 2)|map(mot => mot|first|upper)|join('') %}
+                <tr>
+                    <td>
+                        <div class="flex items-center gap-3">
+                            <span class="avatar h-9 w-9 text-xs {{ utilisateur.actif ? '' : 'opacity-50 grayscale' }}">{{ initiales ?: '?' }}</span>
+                            <span class="cellule-principale">{{ utilisateur.nom }}</span>
+                        </div>
                     </td>
-                    <td class="px-5 py-3">{{ fmt.badge(utilisateur.actif) }}</td>
-                    <td class="px-5 py-3">
+                    <td class="cellule-douce">{{ utilisateur.email }}</td>
+                    <td>
+                        <div class="flex flex-wrap gap-1">
+                            {% for role in utilisateur.roles %}
+                                {% if role != 'ROLE_USER' %}
+                                    <span class="badge {{ role == 'ROLE_DIRIGEANTE' ? 'badge-ambre' : (role == 'ROLE_CAISSIER' ? 'badge-bleu' : 'badge-neutre') }}">{{ role|replace({'ROLE_': ''})|capitalize }}</span>
+                                {% endif %}
+                            {% endfor %}
+                        </div>
+                    </td>
+                    <td>{{ fmt.badge(utilisateur.actif) }}</td>
+                    <td>
                         {# La permission porte sur **ce** compte : les actions
                            disparaissent pour un gérant en face d'une dirigeante,
                            exactement comme les routes le refuseraient. #}
                         {% if is_granted(constant('App\\Security\\Permission::UTILISATEUR_GERER'), utilisateur) %}
-                            <div class="flex items-center justify-end gap-2">
-                                <a href="{{ path('admin_utilisateur_edit', {id: utilisateur.id}) }}"
-                                   class="rounded-lg border border-stone-300 px-3 py-1.5 text-xs font-medium hover:bg-stone-100">
-                                    Modifier
+                            <div class="actions-ligne">
+                                <a href="{{ path('admin_utilisateur_edit', {id: utilisateur.id}) }}" class="btn btn-sm btn-secondaire">
+                                    {{ ui.icone('modifier') }} Modifier
                                 </a>
                                 {# Se désactiver soi-même reviendrait à se mettre
                                    dehors : l'action n'est pas proposée. #}
                                 {% if utilisateur != app.user %}
                                     <form method="post" action="{{ path('admin_utilisateur_toggle', {id: utilisateur.id}) }}">
                                         <input type="hidden" name="_token" value="{{ csrf_token('basculer_utilisateur_' ~ utilisateur.id) }}">
-                                        <button class="rounded-lg border border-stone-300 px-3 py-1.5 text-xs font-medium hover:bg-stone-100">
+                                        <button class="btn btn-sm btn-fantome">
                                             {{ utilisateur.actif ? 'Désactiver' : 'Activer' }}
                                         </button>
                                     </form>
@@ -66,15 +76,16 @@
                     </td>
                 </tr>
             {% else %}
-                <tr><td colspan="5" class="px-5 py-6 text-center text-stone-400">Aucun utilisateur.</td></tr>
+                <tr><td colspan="5" class="cellule-vide">Aucun utilisateur.</td></tr>
             {% endfor %}
         </tbody>
     </table>
+    </div>
 </div>
 {{ pagination.barre(utilisateurs, 'admin_utilisateurs') }}
-<p class="mt-3 text-xs text-stone-400">
+<p class="aide mt-4">
     Les comptes se créent depuis cet écran, ou en console avec
-    <code class="bg-stone-100 px-1 rounded">app:creer-utilisateur</code>.
+    <code class="code rounded bg-stone-200/70 px-1.5 py-0.5">app:creer-utilisateur</code>.
     Créations et changements de statut sont tracés au journal d'audit.
 </p>
 {% endblock %}

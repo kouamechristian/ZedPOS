@@ -33,12 +33,15 @@ import { EFFACER, MONNAIE, PRIX, TOTAL, pos } from '../js/pos-agent.js';
  */
 const DUREE_MONNAIE = 15000;
 
+/** Longueur maximale du montant reçu, en chiffres de FCFA (9 999 999). */
+const CHIFFRES_RECU_MAX = 7;
+
 export default class extends Controller {
     static targets = [
-        'onglets', 'onglet', 'grilles', 'grille',
+        'onglets', 'onglet', 'grilles', 'grille', 'atelier',
         'lignes', 'compte', 'sousTotal', 'tva', 'tvaLibelle', 'total',
         'reglement', 'encaisser', 'message', 'imprimer', 'impression',
-        'especes', 'montantRecu', 'suggestions', 'renduLigne', 'renduLibelle', 'renduMontant',
+        'paiement', 'especes', 'montantRecu', 'suggestions', 'renduLigne', 'renduLibelle', 'renduMontant',
         'recu', 'recuContenu', 'recuNumero', 'recuRendu', 'recuRenduMontant',
         'actionsRecu', 'annulation', 'motif', 'motifLibre', 'confirmerAnnulation',
     ];
@@ -49,6 +52,8 @@ export default class extends Controller {
         this.reglement = null;
         /** Ce que le client a tendu, en centimes. `null` = non saisi, donc compte juste. */
         this.recu = null;
+        /** Vrai juste après un appui sur une coupure : le chiffre suivant repart de zéro. */
+        this.coupureRetenue = false;
         /** Motif d'annulation en cours de choix. `null` = rien de retenu. */
         this.motif = null;
         // `rendre()` remet du même coup l'afficheur client au repos : il garde
@@ -152,31 +157,105 @@ export default class extends Controller {
 
         this.rendreSuggestions();
         this.rendreRendu();
+        this.montrerPave();
+    }
+
+    /**
+     * Sur une fenêtre basse, la zone de paiement défile et le pavé qui vient
+     * d'apparaître peut naître sous le bord. On la fait défiler juste assez pour
+     * le montrer — calcul à la main plutôt que `scrollIntoView()`, qui ferait
+     * aussi glisser les conteneurs `overflow: hidden` et décalerait tout l'écran.
+     */
+    montrerPave() {
+        if (!this.hasPaiementTarget) {
+            return;
+        }
+
+        const zone = this.paiementTarget.getBoundingClientRect();
+        const pave = this.especesTarget.getBoundingClientRect();
+        const depassement = pave.bottom - zone.bottom;
+
+        if (depassement > 0) {
+            this.paiementTarget.scrollTop += depassement + 12;
+        }
     }
 
     get especes() {
         return 'ESPECES' === this.reglement;
     }
 
-    /** Saisie libre : la caissière tape ce que le client lui a tendu, en FCFA. */
+    /**
+     * Saisie au clavier physique, s'il y en a un sur le poste. Le champ est
+     * reformaté comme par le pavé : un seul affichage, quelle que soit la source.
+     */
     saisirRecu(event) {
-        this.recu = lireMontantFcfa(event.currentTarget.value);
-        this.rendreRendu();
-        this.majEncaisser();
+        this.ecrireRecu(event.currentTarget.value.replace(/\D/g, ''));
+    }
+
+    /**
+     * Pavé tactile du montant reçu, en FCFA entiers.
+     *
+     * Deux règles, sans lesquelles le pavé trompe la caissière :
+     * - **pas de zéro en tête** : « 0 » puis « 5 » vaut 5, et un « 000 » sur un
+     *   champ vide ne fait rien — le champ vide reste « compte juste » ;
+     * - **après une coupure proposée, la frappe repart de zéro** : 2 000 choisi
+     *   puis « 5 » tapé veut dire 5, pas 20 005.
+     */
+    appuyerMontant(event) {
+        const avant = this.coupureRetenue ? '' : this.chiffresRecu();
+        const apres = `${avant}${event.currentTarget.dataset.chiffre}`.replace(/^0+/, '');
+
+        // Sept chiffres, 9 999 999 FCFA : au-delà, c'est une touche restée
+        // enfoncée, pas ce qu'un client tend au comptoir.
+        if (apres.length > CHIFFRES_RECU_MAX) {
+            return;
+        }
+
+        this.ecrireRecu(apres);
+    }
+
+    effacerMontant() {
+        this.ecrireRecu('');
+    }
+
+    reculerMontant() {
+        this.ecrireRecu(this.chiffresRecu().slice(0, -1));
     }
 
     /** Coupure proposée : un appui remplit le champ, la monnaie s'affiche aussitôt. */
     choisirCoupure(event) {
         const montant = parseInt(event.currentTarget.dataset.montant, 10);
 
-        this.recu = montant;
-        this.montantRecuTarget.value = String(Math.round(montant / 100));
+        this.ecrireRecu(String(Math.trunc(montant / 100)));
+        this.coupureRetenue = true;
+    }
+
+    /** Chiffres actuellement saisis, sans les espaces de milliers. */
+    chiffresRecu() {
+        return this.montantRecuTarget.value.replace(/\D/g, '');
+    }
+
+    /**
+     * Seul point d'écriture du montant reçu : champ affiché, montant en centimes,
+     * monnaie et bouton Encaisser restent ainsi toujours d'accord entre eux.
+     *
+     * @param {string} chiffres FCFA entiers, chiffres seuls ('' = compte juste)
+     */
+    ecrireRecu(chiffres) {
+        const nettoyes = chiffres.replace(/^0+/, '').slice(0, CHIFFRES_RECU_MAX);
+
+        this.coupureRetenue = false;
+        // Espaces de milliers, comme partout à l'écran : « 20000 » se relit mal
+        // au moment de rendre la monnaie, « 20 000 » se lit d'un coup d'œil.
+        this.montantRecuTarget.value = nettoyes.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+        this.recu = lireMontantFcfa(nettoyes);
         this.rendreRendu();
         this.majEncaisser();
     }
 
     oublierRecu() {
         this.recu = null;
+        this.coupureRetenue = false;
         if (this.hasMontantRecuTarget) {
             this.montantRecuTarget.value = '';
         }
@@ -207,14 +286,18 @@ export default class extends Controller {
         this.renduMontantTarget.textContent = this.fcfa(manque > 0 ? manque : renduMonnaie(this.recu, total));
         // Rouge tant que le compte n'y est pas : l'encaissement est bloqué, il
         // faut que ça se voie sans lire le libellé.
-        this.renduMontantTarget.classList.toggle('text-red-700', manque > 0);
-        this.renduMontantTarget.classList.toggle('text-amber-800', 0 === manque);
+        //
+        // Les deux teintes sont définies dans `caisse/index.html.twig`, avec le
+        // reste de l'habillage : une couleur écrite ici serait la seule à
+        // échapper au thème le jour où il change.
+        this.renduMontantTarget.classList.toggle('montant-manque', manque > 0);
+        this.renduMontantTarget.classList.toggle('montant-du', 0 === manque);
     }
 
     rendreSuggestions() {
         this.suggestionsTarget.innerHTML = suggestionsEspeces(this.total()).map((montant) => `
             <button type="button" data-action="ticket#choisirCoupure" data-montant="${montant}"
-                    class="rounded-[10px] border border-amber-300 bg-white px-1 py-2 text-sm font-semibold tabular-nums text-amber-900 hover:bg-amber-100">
+                    class="coupure chiffre">
                 ${montant === this.total() ? 'Juste' : Math.round(montant / 100).toLocaleString('fr-FR').replace(/ | /g, ' ')}
             </button>
         `).join('');
@@ -389,9 +472,13 @@ export default class extends Controller {
             <div class="row"><span class="g">${this.esc(reglement.label)}</span><span class="d">${this.fcfa(reglement.montant * 100)}</span></div>
         `).join('');
 
+        // À l'écran, le logo en couleur ; `ticket.logo` est la version noir et
+        // blanc destinée à la tête thermique, gardée en repli.
+        const logo = this.parametresValue.logoEcran || ticket.logo;
+
         return `
             <div class="ticket">
-                ${ticket.logo ? `<img class="logo" src="${this.esc(ticket.logo)}" alt="${this.esc(ticket.header?.[0] ?? '')}" onerror="this.remove()">` : ''}
+                ${logo ? `<img class="logo" src="${this.esc(logo)}" alt="${this.esc(ticket.header?.[0] ?? '')}" onerror="this.remove()">` : ''}
                 ${(ticket.header ?? []).map((ligne, index) => `<div class="${0 === index ? 'center bold big' : 'center'}">${this.esc(ligne)}</div>`).join('')}
                 <div class="sep"></div>
                 <div>Ticket : ${this.esc(ticket.numero)}</div>
@@ -439,7 +526,8 @@ export default class extends Controller {
             numero: uuid.slice(0, 8).toUpperCase(),
             date,
             caissier: 'Caisse',
-            logo: this.parametresValue.logo,
+            // Même format que TicketMateriel : PNG noir et blanc en URL `data:`, ou null.
+            logo: this.parametresValue.logo || null,
             lines: this.lignes.map((ligne) => ({
                 label: ligne.nom,
                 qty: String(ligne.quantite),
@@ -659,7 +747,10 @@ export default class extends Controller {
             return false;
         }
 
-        const win = window.open('', '_blank', 'noopener,noreferrer');
+        // Surtout pas `noopener` : avec lui, `window.open()` renvoie toujours
+        // `null`, on ne peut rien écrire dans la fenêtre et le ticket hors ligne
+        // ne sortait jamais. La fenêtre est vierge et remplie par nos soins.
+        const win = window.open('', '_blank');
         if (!win) {
             return false;
         }
@@ -741,7 +832,7 @@ export default class extends Controller {
         this.ongletsTarget.innerHTML = catalogue.familles.map((famille) => `
             <button type="button" data-action="ticket#choisirFamille"
                     data-famille-id="${famille.id}" data-ticket-target="onglet"
-                    class="onglet shrink-0 rounded-[10px] px-4 py-2 text-sm text-stone-600 hover:bg-stone-100">
+                    class="onglet">
                 ${this.esc(famille.nom)}
             </button>
         `).join('');
@@ -869,26 +960,28 @@ export default class extends Controller {
     rendreLignes() {
         if (this.lignes.length === 0) {
             this.lignesTarget.innerHTML =
-                '<p class="px-5 py-12 text-center text-sm text-stone-400">Touchez un produit pour commencer</p>';
+                '<p class="vide-ticket">Touchez un produit pour commencer</p>';
         } else {
-            // Ambre sur les séparateurs et les touches +/− : la colonne du ticket
-            // doit rester dans la même famille de couleurs que le reste de l'écran.
+            // L'habillage de ces lignes (`ligne-ticket`, `pas`) est défini dans
+            // `caisse/index.html.twig`, avec le reste de l'écran. Recopier ici
+            // des couleurs en dur les ferait diverger au premier changement de
+            // thème — et ces lignes-là sont les plus regardées de la journée.
             this.lignesTarget.innerHTML = this.lignes.map((l) => `
-                <div class="flex items-center gap-3 px-5 py-3 border-b border-amber-100">
+                <div class="ligne-ticket">
                     <div class="min-w-0 flex-1">
-                        <div class="text-[15px] font-medium text-stone-800 truncate">${this.esc(l.nom)}</div>
-                        <div class="text-sm text-stone-500">${this.fcfa(l.prix)}</div>
+                        <div class="text-[15px] font-medium truncate">${this.esc(l.nom)}</div>
+                        <div class="chiffre text-sm" style="opacity: .62;">${this.fcfa(l.prix)}</div>
                     </div>
                     <div class="flex items-center gap-1">
                         <button type="button" data-action="ticket#decrementer" data-article-id="${l.articleId}"
                                 aria-label="Retirer un ${this.esc(l.nom)}"
-                                class="h-10 w-10 rounded-[10px] border border-amber-300 text-lg text-amber-800 hover:bg-amber-100">−</button>
-                        <span class="w-9 text-center text-[15px] font-semibold tabular-nums">${l.quantite}</span>
+                                class="pas">−</button>
+                        <span class="chiffre w-9 text-center text-[15px] font-semibold">${l.quantite}</span>
                         <button type="button" data-action="ticket#incrementer" data-article-id="${l.articleId}"
                                 aria-label="Ajouter un ${this.esc(l.nom)}"
-                                class="h-10 w-10 rounded-[10px] border border-amber-300 text-lg text-amber-800 hover:bg-amber-100">+</button>
+                                class="pas">+</button>
                     </div>
-                    <div class="w-24 text-right text-[15px] font-semibold tabular-nums text-stone-900">
+                    <div class="chiffre w-24 text-right text-[15px] font-semibold">
                         ${this.fcfa(l.prix * l.quantite)}
                     </div>
                 </div>
@@ -936,8 +1029,11 @@ export default class extends Controller {
         zone.textContent = message;
         // z-40 : au-dessus du panneau de reçu (z-30), sinon un message de repli
         // passerait derrière lui sans que personne ne le voie.
+        // Comme le reste de l'écran, l'habillage vient du gabarit : sur l'ardoise,
+        // un `bg-stone-800` écrit ici se confondrait avec le fond au lieu de flotter
+        // au-dessus.
         zone.className = `pointer-events-none fixed bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-[10px] px-5 py-3 text-sm ${
-            erreur ? 'bg-red-600 text-white' : 'bg-stone-800 text-white'
+            erreur ? 'infobulle infobulle-erreur' : 'infobulle'
         }`;
 
         clearTimeout(this.timer);

@@ -8,8 +8,8 @@
 
 {% macro badge(actif) %}
     {% if actif %}
-        <span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">Actif</span>
+        <span class="badge badge-vert badge-point">Actif</span>
     {% else %}
-        <span class="inline-flex items-center rounded-full bg-stone-200 px-2.5 py-0.5 text-xs font-medium text-stone-600">Inactif</span>
+        <span class="badge badge-neutre badge-point">Inactif</span>
     {% endif %}
 {% endmacro %}

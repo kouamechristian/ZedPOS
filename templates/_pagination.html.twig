@@ -23,7 +23,7 @@
              aria-label="Pagination" data-turbo-prefetch="true">
 
             <p class="text-stone-500">
-                {{ page.debut }}–{{ page.fin }} sur <span class="font-semibold text-stone-700">{{ page.total }}</span>
+                <span class="tabular-nums">{{ page.debut }}–{{ page.fin }}</span> sur <span class="font-semibold tabular-nums text-stone-800">{{ page.total }}</span>
             </p>
 
             {% if page.estPaginee %}
@@ -34,10 +34,10 @@
                     {% for numero in page.fenetre %}
                         {% if numero == page.page %}
                             <span aria-current="page"
-                                  class="min-w-9 rounded-lg bg-amber-700 px-3 py-2 text-center font-semibold text-white">{{ numero }}</span>
+                                  class="btn btn-sm btn-primaire min-w-8 tabular-nums">{{ numero }}</span>
                         {% else %}
                             <a href="{{ path(route, base|merge({page: numero})) }}"
-                               class="min-w-9 rounded-lg border border-stone-300 bg-white px-3 py-2 text-center font-medium text-stone-700 hover:bg-stone-50">{{ numero }}</a>
+                               class="btn btn-sm btn-fantome min-w-8 tabular-nums">{{ numero }}</a>
                         {% endif %}
                     {% endfor %}
 
@@ -55,9 +55,8 @@
 {% macro lien(route, base, numero, symbole, actif, titre) %}
     {% if actif %}
         <a href="{{ path(route, base|merge({page: numero})) }}" title="{{ titre }}" aria-label="{{ titre }}"
-           class="min-w-9 rounded-lg border border-stone-300 bg-white px-3 py-2 text-center font-medium text-stone-700 hover:bg-stone-50">{{ symbole }}</a>
+           class="btn btn-sm btn-secondaire min-w-8">{{ symbole }}</a>
     {% else %}
-        <span aria-hidden="true"
-              class="min-w-9 rounded-lg border border-stone-200 px-3 py-2 text-center font-medium text-stone-300">{{ symbole }}</span>
+        <span aria-hidden="true" class="btn btn-sm btn-secondaire min-w-8 pointer-events-none opacity-40">{{ symbole }}</span>
     {% endif %}
 {% endmacro %}

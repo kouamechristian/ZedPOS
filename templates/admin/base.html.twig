@@ -1,111 +1,232 @@
 {% extends 'base.html.twig' %}
+{% import 'admin/_icones.html.twig' as ui %}
 
 {# Le nom vient de /admin/parametres, jamais du gabarit : l'onglet du navigateur
    porte le nom de l'établissement, pas celui du logiciel. #}
 {% block title %}{% block page_title %}Administration{% endblock %} — {{ nom_boutique() }}{% endblock %}
 
-{% set nav = [
-    { label: 'Tableau de bord', route: 'admin_dashboard',    match: 'admin_dashboard',    icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
-    { label: 'Ventes',          route: 'admin_ventes',       match: 'admin_ventes',       icon: 'M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z' },
-    { label: 'Articles',        route: 'admin_article_index',match: 'admin_article',      icon: 'M7 7h.01M7 3h5a1.99 1.99 0 011.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.99 1.99 0 013 12V7a4 4 0 014-4z' },
-    { label: 'Stock',           route: 'admin_matiere_index',match: 'admin_matiere',      icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4' },
-    { label: 'Inventaire',      route: 'admin_inventaires',  match: 'admin_inventaire',   icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
-    { label: 'Production',      route: 'admin_production',   match: 'admin_production',    icon:'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z' },
-    { label: 'Pertes',         route: 'admin_pertes',       match: 'admin_pertes',       icon: 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z' },
-    { label: 'Clôtures',       route: 'admin_clotures',     match: 'admin_clotures',     icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z' },
-    { label: 'Comptabilité',   route: 'app_comptabilite',   match: 'app_comptabilite',   icon: 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
-    { label: 'Utilisateurs',   route: 'admin_utilisateurs', match: 'admin_utilisateurs', icon: 'M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6 0a4 4 0 00-3-3.87M9 12a4 4 0 100-8 4 4 0 000 8z' },
-    { label: 'Paramètres',     route: 'admin_parametres',   match: 'admin_parametres',   icon: 'M3 6h18M3 12h18M3 18h18M7 4v4M15 10v4M11 16v4' },
+{# Navigation en trois groupes. `match` liste les préfixes de route qui allument
+   l'entrée : les familles appartiennent aux articles, les fournisseurs au stock —
+   sans quoi la barre n'indiquerait plus où l'on est dès qu'on descend d'un niveau.
+   `role` restreint une entrée ; la barre et la palette ⌘K lisent la même liste,
+   ce qu'on ne peut pas ouvrir n'apparaît donc nulle part. #}
+{% set groupes = [
+    { titre: 'Activité', entrees: [
+        { label: 'Tableau de bord', route: 'admin_dashboard',     match: ['admin_dashboard'],                   icone: 'accueil' },
+        { label: 'Ventes',          route: 'admin_ventes',        match: ['admin_ventes'],                      icone: 'ventes' },
+        { label: 'Clôtures',        route: 'admin_clotures',      match: ['admin_cloture'],                     icone: 'clotures' },
+    ]},
+    { titre: 'Catalogue et stock', entrees: [
+        { label: 'Articles',        route: 'admin_article_index', match: ['admin_article', 'admin_famille'],    icone: 'articles' },
+        { label: 'Stock',           route: 'admin_matiere_index', match: ['admin_matiere', 'admin_fournisseur'], icone: 'stock' },
+        { label: 'Inventaire',      route: 'admin_inventaires',   match: ['admin_inventaire'],                  icone: 'inventaire' },
+        { label: 'Production',      route: 'admin_production',    match: ['admin_production'],                  icone: 'production' },
+        { label: 'Pertes',          route: 'admin_pertes',        match: ['admin_perte'],                       icone: 'pertes' },
+    ]},
+    { titre: 'Administration', entrees: [
+        { label: 'Comptabilité',    route: 'app_comptabilite',    match: ['app_comptabilite'],                  icone: 'comptabilite' },
+        { label: 'Utilisateurs',    route: 'admin_utilisateurs',  match: ['admin_utilisateur'],                 icone: 'utilisateurs' },
+        { label: 'Paramètres',      route: 'admin_parametres',    match: ['admin_parametres'],                  icone: 'parametres' },
+        { label: 'Pilotage',        route: 'app_pilotage',        match: ['app_pilotage'],                      icone: 'pilotage', role: 'ROLE_DIRIGEANTE' },
+    ]},
 ] %}
 {% set current = app.request.attributes.get('_route') %}
 
 {% block body %}
-<div class="min-h-screen flex bg-amber-50 text-stone-800">
-    {# Barre latérale « croûte » : brun profond, liseré ambre sur l'entrée active. #}
-    <aside class="w-60 shrink-0 bg-stone-900 text-stone-300 flex flex-col">
-        <div class="px-5 py-5 border-b border-stone-800/80">
-            <div class="flex items-center gap-2.5">
-                {# Le logo saisi dans /admin/parametres s'il existe, sinon la
-                   pastille « Z » : un back-office sans logo ne doit pas s'ouvrir
-                   sur un trou dans sa barre latérale.
+{# Groupe et entrée de la page courante : ils nourrissent le fil d'Ariane et le
+   sur-titre de l'en-tête. #}
+{% set groupe_courant = null %}
+{% set entree_courante = null %}
+{% for groupe in groupes %}
+    {% for entree in groupe.entrees %}
+        {% if entree_courante is null and entree.match|filter(prefixe => current starts with prefixe)|length > 0 %}
+            {% set groupe_courant = groupe.titre %}
+            {% set entree_courante = entree.label %}
+        {% endif %}
+    {% endfor %}
+{% endfor %}
 
-                   Variable nommée `logo_entete` et non `logo` : `admin/parametres`
-                   reçoit de son contrôleur un `logo` à lui, et il est rendu à
-                   l'intérieur de ce bloc — les deux valeurs se valent aujourd'hui,
-                   les confondre serait un piège pour demain. #}
-                {% set logo_entete = logo_boutique() %}
-                {% if logo_entete %}
-                    <img src="{{ logo_entete }}" alt="" class="h-9 w-9 shrink-0 rounded-lg bg-white object-contain" onerror="this.remove()">
-                {% else %}
-                    <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-amber-500 text-stone-900 text-sm font-black">Z</span>
-                {% endif %}
-                {# Le nom peut faire deux mots longs (« DELICES DU CAMPUS ») dans une
-                   barre de 240 px : il passe donc à la ligne au lieu d'être coupé.
-                   Tronquer le nom de la boutique dans son propre back-office serait
-                   le seul texte de l'écran qu'on ne pourrait pas lire en entier. #}
-                <div class="min-w-0 leading-tight">
-                    <div class="titre text-base font-bold text-white break-words">{{ nom_boutique() }}</div>
-                    <div class="text-[11px] uppercase tracking-widest text-amber-500/80">Back-office</div>
-                </div>
+{# Barre repliée : lue dans un cookie et rendue ici, côté serveur — appliquée en
+   JavaScript après coup, elle se déplierait puis se replierait à chaque clic. #}
+{% set replie = app.request.cookies.get('zp_barre_repliee') == '1' %}
+{% set nom_utilisateur = app.user ? app.user.nom : '' %}
+{% set initiales = nom_utilisateur|split(' ')|filter(mot => mot is not empty)|slice(0, 2)|map(mot => mot|first|upper)|join('') %}
+
+<div class="espace-gestion">
+<div class="coquille" data-controller="coquille palette" {{ replie ? 'data-replie' }}>
+
+    {# ======================= Barre latérale ======================= #}
+    <aside class="barre-laterale" aria-label="Navigation du back-office">
+        <div class="marque">
+            {# Le logo saisi dans /admin/parametres s'il existe, sinon la pastille
+               « Z » : un back-office sans logo ne doit pas s'ouvrir sur un trou.
+
+               Variable nommée `logo_entete` et non `logo` : `admin/parametres`
+               reçoit de son contrôleur un `logo` à lui, et il est rendu à
+               l'intérieur de ce bloc. #}
+            {% set logo_entete = logo_boutique() %}
+            {% if logo_entete %}
+                <img src="{{ logo_entete }}" alt="" class="marque-logo" onerror="this.remove()">
+            {% else %}
+                <span class="marque-pastille">Z</span>
+            {% endif %}
+            {# Le nom passe à la ligne au lieu d'être coupé : tronquer le nom de la
+               boutique dans son propre back-office serait le seul texte de l'écran
+               qu'on ne pourrait pas lire en entier. #}
+            <div class="masque-replie min-w-0 flex-1 leading-tight">
+                <div class="break-words text-[15px] font-bold tracking-tight text-stone-900">{{ nom_boutique() }}</div>
+                <div class="mt-0.5 text-[10.5px] font-semibold uppercase tracking-[.14em] text-amber-700">Back-office</div>
             </div>
+            <button type="button" class="btn btn-fantome btn-sm btn-icone lg:hidden"
+                    data-action="coquille#fermer" aria-label="Fermer le menu">
+                {{ ui.icone('fermer', 'h-4 w-4') }}
+            </button>
         </div>
 
-        {# Préchargement au survol : la page suivante est déjà en mémoire au clic. #}
-        <nav class="flex-1 p-3 space-y-0.5 text-sm" data-turbo-prefetch="true">
-            {% for item in nav %}
-                {% set actif = current starts with item.match %}
-                <a href="{{ path(item.route) }}"
-                   class="relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition
-                          {{ actif
-                             ? 'bg-stone-800 text-white font-semibold'
-                             : 'text-stone-400 hover:bg-stone-800/60 hover:text-white' }}">
-                    {% if actif %}
-                        <span class="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r bg-amber-500"></span>
-                    {% endif %}
-                    <svg class="h-5 w-5 shrink-0 {{ actif ? 'text-amber-500' : '' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="{{ item.icon }}"/>
-                    </svg>
-                    {{ item.label }}
-                </a>
+        {# Préchargement au survol : la page suivante est déjà en mémoire au clic.
+           **Un seul** <nav> préchargé sur la page : `TurboNavigationTest` le fige. #}
+        <nav class="flex-1 overflow-y-auto overflow-x-hidden pb-3" data-turbo-prefetch="true">
+            {% for groupe in groupes %}
+                {% set visibles = groupe.entrees|filter(entree => entree.role is not defined or is_granted(entree.role)) %}
+                {% if visibles is not empty %}
+                    <div class="nav-groupe">{{ groupe.titre }}</div>
+                    {% for entree in visibles %}
+                        {% set actif = entree.match|filter(prefixe => current starts with prefixe)|length > 0 %}
+                        <a href="{{ path(entree.route) }}" class="lien-nav" title="{{ entree.label }}"
+                           {% if actif %}aria-current="page"{% endif %}>
+                            {{ ui.icone(entree.icone) }}
+                            <span class="masque-replie">{{ entree.label }}</span>
+                        </a>
+                    {% endfor %}
+                {% endif %}
             {% endfor %}
         </nav>
 
-        <div class="p-4 border-t border-stone-800/80 text-xs">
-            {% if app.user %}
-                <div class="text-stone-200 font-medium">{{ app.user.nom }}</div>
-                <div class="text-stone-500 truncate">{{ app.user.email }}</div>
-            {% endif %}
-            <a href="{{ path('app_logout') }}" class="mt-2 inline-block text-stone-400 hover:text-amber-400 underline">Déconnexion</a>
+        <div class="border-t border-stone-100 py-3">
+            <button type="button" class="lien-nav w-[calc(100%-1.5rem)] max-lg:hidden"
+                    data-action="coquille#replier" title="Réduire ou déplier le menu">
+                <span class="icone-replier">{{ ui.icone('replier') }}</span>
+                <span class="masque-replie">Réduire le menu</span>
+            </button>
+            <a href="{{ path('app_logout') }}" class="lien-nav" title="Déconnexion">
+                {{ ui.icone('deconnexion') }}
+                <span class="masque-replie">Déconnexion</span>
+            </a>
         </div>
     </aside>
 
-    <div class="flex-1 flex flex-col min-w-0">
-        <header class="bg-white/80 backdrop-blur border-b border-amber-200/70 px-6 py-4 flex items-center justify-between gap-4">
-            <h1 class="titre text-2xl font-bold text-stone-900">{{ block('page_title') }}</h1>
-            <div class="flex items-center gap-2">{% block page_actions %}{% endblock %}</div>
+    <div class="voile-tiroir" data-action="click->coquille#fermer"></div>
+
+    {# ======================= Colonne principale ======================= #}
+    <div class="flex min-w-0 flex-col">
+        <header class="barre-haute">
+            <button type="button" class="btn btn-fantome btn-icone lg:hidden"
+                    data-action="coquille#ouvrir" aria-label="Ouvrir le menu">
+                {{ ui.icone('menu') }}
+            </button>
+
+            <div class="fil">
+                <span class="hidden sm:inline">{{ nom_boutique() }}</span>
+                {% if groupe_courant %}
+                    <span class="hidden sm:inline text-stone-300">{{ ui.icone('chevron', 'h-3.5 w-3.5') }}</span>
+                    <span class="hidden md:inline">{{ groupe_courant }}</span>
+                    <span class="hidden md:inline text-stone-300">{{ ui.icone('chevron', 'h-3.5 w-3.5') }}</span>
+                    <strong class="truncate">{{ entree_courante }}</strong>
+                {% endif %}
+            </div>
+
+            <div class="ml-auto flex items-center gap-2">
+                <button type="button" class="declencheur-palette max-sm:hidden" data-action="palette#ouvrir">
+                    {{ ui.icone('recherche', 'h-4 w-4') }}
+                    <span>Aller à…</span>
+                    <kbd class="touche-clavier">Ctrl K</kbd>
+                </button>
+                <button type="button" class="btn btn-fantome btn-icone sm:hidden" data-action="palette#ouvrir" aria-label="Aller à un écran">
+                    {{ ui.icone('recherche') }}
+                </button>
+
+                {% if app.user %}
+                    {# Initiales et non photo : `header img` est réservé au logo de la
+                       boutique, que `LogoBoutiqueTest` y cherche. #}
+                    <details class="menu">
+                        <summary class="flex items-center gap-2.5 rounded-full py-1 pl-1 pr-2 transition hover:bg-white/80">
+                            <span class="avatar">{{ initiales ?: '?' }}</span>
+                            <span class="hidden text-left leading-tight md:block">
+                                <span class="block text-[13px] font-semibold text-stone-800">{{ nom_utilisateur }}</span>
+                                <span class="block text-[11px] text-stone-500">{{ is_granted('ROLE_DIRIGEANTE') ? 'Dirigeante' : 'Gérance' }}</span>
+                            </span>
+                        </summary>
+                        <div class="menu-panneau">
+                            <div class="px-3 pb-2 pt-1.5">
+                                <div class="text-sm font-semibold text-stone-900">{{ nom_utilisateur }}</div>
+                                <div class="truncate text-xs text-stone-500">{{ app.user.email }}</div>
+                            </div>
+                            <div class="my-1 h-px bg-stone-100"></div>
+                            <a href="{{ path('app_logout') }}" class="menu-lien">
+                                {{ ui.icone('deconnexion') }} Déconnexion
+                            </a>
+                        </div>
+                    </details>
+                {% endif %}
+            </div>
         </header>
 
-        <main class="flex-1 p-6 min-w-0">
+        <main class="contenu">
+            <div class="entete-page apparition">
+                <div class="min-w-0">
+                    {% if groupe_courant %}<div class="sur-titre">{{ groupe_courant }}</div>{% endif %}
+                    <h1>{{ block('page_title') }}</h1>
+                    {% if block('page_sous_titre') is defined %}
+                        <p class="mt-1.5 max-w-2xl text-sm text-stone-500">{{ block('page_sous_titre') }}</p>
+                    {% endif %}
+                </div>
+                <div class="actions-page">{% block page_actions %}{% endblock %}</div>
+            </div>
+
             {% set sousSeuil = alertesStock.matieresSousSeuil %}
             {% if sousSeuil is not empty %}
-                <div class="mb-4 rounded-lg bg-amber-50 border border-amber-300 px-4 py-3 text-sm text-amber-900">
-                    <span class="font-semibold">⚠ Stock bas :</span>
-                    {{ sousSeuil|length }} matière(s) sous le seuil —
-                    {% for matiere in sousSeuil|slice(0, 4) %}{{ matiere.nom }}{{ not loop.last ? ', ' }}{% endfor %}{% if sousSeuil|length > 4 %}…{% endif %}
-                    <a href="{{ path('admin_matiere_index') }}" class="ml-1 font-medium underline">voir le stock</a>
+                <div class="alerte alerte-ambre apparition mb-5" style="--i: 1">
+                    {{ ui.icone('pertes') }}
+                    <div class="min-w-0 flex-1">
+                        <span class="font-semibold">Stock bas :</span>
+                        {{ sousSeuil|length }} matière(s) sous le seuil —
+                        {% for matiere in sousSeuil|slice(0, 4) %}{{ matiere.nom }}{{ not loop.last ? ', ' }}{% endfor %}{% if sousSeuil|length > 4 %}…{% endif %}
+                    </div>
+                    <a href="{{ path('admin_matiere_index') }}" class="lien shrink-0 text-amber-900">Voir le stock</a>
                 </div>
             {% endif %}
-
-            {% for type, messages in app.flashes(['success', 'error']) %}
-                {% for message in messages %}
-                    <div class="mb-4 rounded-lg px-4 py-3 text-sm {{ type == 'success' ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-red-50 border border-red-200 text-red-800' }}">
-                        {{ message }}
-                    </div>
-                {% endfor %}
-            {% endfor %}
 
             {% block admin_content %}{% endblock %}
         </main>
     </div>
+
+    {# ======================= Messages flash ======================= #}
+    {{ include('admin/_toasts.html.twig') }}
+
+    {# ======================= Palette ⌘K ======================= #}
+    <dialog class="palette" data-palette-target="dialogue" data-action="click->palette#fermerSurFond" aria-label="Aller à un écran">
+        <div class="palette-recherche">
+            {{ ui.icone('recherche') }}
+            <input type="text" placeholder="Aller à un écran…" autocomplete="off"
+                   data-palette-target="champ"
+                   data-action="input->palette#filtrer keydown->palette#naviguer">
+            <kbd class="touche-clavier">Échap</kbd>
+        </div>
+        <div class="palette-liste" role="listbox">
+            {% for groupe in groupes %}
+                {% for entree in groupe.entrees|filter(entree => entree.role is not defined or is_granted(entree.role)) %}
+                    <a href="{{ path(entree.route) }}" class="palette-element" role="option" aria-selected="false"
+                       data-palette-target="element" data-recherche="{{ entree.label }} {{ groupe.titre }}"
+                       data-action="mouseenter->palette#survoler">
+                        {{ ui.icone(entree.icone) }}
+                        <span>{{ entree.label }}</span>
+                        <small>{{ groupe.titre }}</small>
+                    </a>
+                {% endfor %}
+            {% endfor %}
+            <p class="palette-vide" data-palette-target="vide" hidden>Aucun écran ne correspond.</p>
+        </div>
+    </dialog>
+</div>
 </div>
 {% endblock %}

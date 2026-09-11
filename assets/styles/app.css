@@ -42,8 +42,8 @@ body {
  */
 .turbo-progress-bar {
     height: 3px;
-    background: linear-gradient(90deg, #78350f, #f59e0b);
-    box-shadow: 0 0 8px rgba(245, 158, 11, 0.7);
+    background: linear-gradient(90deg, #b45309, #f59e0b, #fbbf24);
+    box-shadow: 0 0 10px rgba(245, 158, 11, 0.6);
 }
 
 /* Un frame est un élément inconnu du navigateur : sans cela il resterait inline. */
@@ -58,4 +58,1009 @@ turbo-frame {
 turbo-frame[busy] {
     opacity: 0.55;
     transition: opacity 120ms ease-in;
+}
+
+
+/* ============================================================================
+   ESPACES DE GESTION — /admin, /pilotage, /comptabilite, /espace.
+
+   Fond gris clair, cartes blanches, accent ambre. Tout ce qui suit est un
+   **système de composants** : les gabarits emploient `carte`, `btn`, `tableau`,
+   `badge`, `champ`… plutôt que de recomposer chaque bouton en vingt utilitaires.
+   C'est ce qui garde quarante écrans cohérents : changer le rayon d'une carte se
+   fait ici, une fois.
+
+   Les couleurs sont écrites en clair dans les jetons `--zp-*` (valeurs des
+   palettes stone et amber de Tailwind) : un composant ne dépend ainsi d'aucune
+   variable de thème que Tailwind pourrait ne pas émettre.
+
+   Mouvement : transitions de page (View Transitions, déclenchées par Turbo 8
+   grâce à `<meta name="view-transition">`), apparition en cascade, compteurs et
+   barres qui se remplissent. **Tout est coupé** sous `prefers-reduced-motion`.
+   ============================================================================ */
+.espace-gestion {
+    --zp-fond: #f3f4f6;
+    --zp-surface: #ffffff;
+    --zp-bord: #e7e5e4;
+    --zp-bord-fort: #d6d3d1;
+    --zp-survol: #fafaf9;
+
+    --zp-texte: #292524;
+    --zp-texte-fort: #1c1917;
+    --zp-texte-doux: #57534e;
+    --zp-texte-faible: #78716c;
+    --zp-texte-pale: #a8a29e;
+
+    --zp-accent: #b45309;
+    --zp-accent-fort: #92400e;
+    --zp-accent-vif: #f59e0b;
+    --zp-accent-fond: #fffbeb;
+    --zp-accent-bord: #fde68a;
+
+    --zp-ombre: 0 1px 2px rgb(28 25 23 / .04), 0 1px 3px rgb(28 25 23 / .05);
+    --zp-ombre-haute: 0 14px 34px -14px rgb(28 25 23 / .22), 0 2px 6px rgb(28 25 23 / .05);
+    --zp-fluide: cubic-bezier(.2, .8, .2, 1);
+
+    background-color: var(--zp-fond);
+    color: var(--zp-texte);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Le fond déborde jusqu'aux bords : sans cette règle, l'élastique du défilement
+   découvrirait le crème du corps de page sous l'interface grise. */
+body:has(.espace-gestion) {
+    background-color: #f3f4f6;
+}
+
+@layer components {
+/* Tout le système est confiné à .espace-gestion : la caisse emploie ses propres
+   classes `champ`, `onglet` ou `lien`, qui ne doivent rien hériter d’ici. */
+.espace-gestion {
+
+    /* ------------------------------------------------------------------ Coquille
+       Grille à deux colonnes : barre latérale, puis contenu. Replier la barre ne
+       fait que changer la largeur de la première colonne — la transition est
+       portée par la grille, le contenu suit sans saut. */
+    .coquille {
+        display: grid;
+        grid-template-columns: var(--zp-largeur-barre, 16.5rem) minmax(0, 1fr);
+        min-height: 100vh;
+        transition: grid-template-columns .32s var(--zp-fluide);
+    }
+    .coquille[data-replie] { --zp-largeur-barre: 4.75rem; }
+
+    .barre-laterale {
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        background: var(--zp-surface);
+        border-right: 1px solid var(--zp-bord);
+        overflow: hidden;
+        /* La barre ne participe pas au fondu de page : elle reste en place
+           pendant que le contenu change. */
+        view-transition-name: barre-laterale;
+    }
+
+    .marque {
+        display: flex;
+        align-items: center;
+        gap: .75rem;
+        padding: 1.1rem 1.1rem 1rem;
+        min-height: 4.5rem;
+    }
+    .marque-logo {
+        display: grid;
+        place-items: center;
+        flex: none;
+        height: 2.5rem;
+        width: 2.5rem;
+        border-radius: .8rem;
+        background: #fff;
+        border: 1px solid var(--zp-bord);
+        object-fit: contain;
+        overflow: hidden;
+    }
+    .marque-pastille {
+        display: grid;
+        place-items: center;
+        flex: none;
+        height: 2.5rem;
+        width: 2.5rem;
+        border-radius: .8rem;
+        font-weight: 900;
+        color: #fff;
+        background: linear-gradient(135deg, #d97706, #b45309 55%, #92400e);
+        box-shadow: inset 0 1px 0 rgb(255 255 255 / .25), 0 4px 12px -4px rgb(180 83 9 / .55);
+    }
+
+    .nav-groupe {
+        margin: 1.1rem .75rem .35rem;
+        padding-inline: .5rem;
+        font-size: .68rem;
+        font-weight: 600;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        color: var(--zp-texte-pale);
+        white-space: nowrap;
+    }
+
+    .lien-nav {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: .75rem;
+        margin-inline: .75rem;
+        padding: .55rem .7rem;
+        border-radius: .75rem;
+        font-size: .875rem;
+        font-weight: 500;
+        color: var(--zp-texte-doux);
+        white-space: nowrap;
+        transition: background-color .18s ease, color .18s ease;
+    }
+    .lien-nav svg {
+        flex: none;
+        height: 1.25rem;
+        width: 1.25rem;
+        color: var(--zp-texte-pale);
+        transition: color .18s ease, transform .25s var(--zp-fluide);
+    }
+    .lien-nav:hover { background: #f5f5f4; color: var(--zp-texte-fort); }
+    .lien-nav:hover svg { color: var(--zp-texte-doux); transform: scale(1.08); }
+    .lien-nav[aria-current="page"] {
+        background: var(--zp-accent-fond);
+        color: var(--zp-accent-fort);
+        font-weight: 600;
+    }
+    .lien-nav[aria-current="page"] svg { color: #d97706; }
+    .lien-nav[aria-current="page"]::before {
+        content: "";
+        position: absolute;
+        left: -.75rem;
+        top: .45rem;
+        bottom: .45rem;
+        width: .22rem;
+        border-radius: 0 .3rem .3rem 0;
+        background: linear-gradient(#f59e0b, #b45309);
+        animation: zp-glisser-indicateur .35s var(--zp-fluide) both;
+    }
+
+    .icone-replier { display: inline-flex; transition: transform .32s var(--zp-fluide); }
+    .coquille[data-replie] .icone-replier { transform: rotate(180deg); }
+
+    /* Barre repliée (bureau) : seules les icônes restent. */
+    @media (min-width: 1024px) {
+        .coquille[data-replie] .masque-replie { display: none; }
+        .coquille[data-replie] .lien-nav { justify-content: center; padding-inline: 0; }
+        .coquille[data-replie] .marque { justify-content: center; padding-inline: 0; }
+        .coquille[data-replie] .nav-groupe {
+            height: 1px;
+            margin: .9rem 1.2rem .6rem;
+            padding: 0;
+            overflow: hidden;
+            color: transparent;
+            background: var(--zp-bord);
+        }
+    }
+
+    /* Mobile et tablette : la barre devient un tiroir. */
+    @media (max-width: 1023px) {
+        .coquille { grid-template-columns: minmax(0, 1fr); }
+        .barre-laterale {
+            position: fixed;
+            inset-block: 0;
+            left: 0;
+            z-index: 60;
+            width: min(18rem, 86vw);
+            transform: translateX(-102%);
+            transition: transform .32s var(--zp-fluide);
+            box-shadow: var(--zp-ombre-haute);
+        }
+        .coquille[data-ouvert] .barre-laterale { transform: none; }
+    }
+    .voile-tiroir {
+        position: fixed;
+        inset: 0;
+        z-index: 55;
+        background: rgb(28 25 23 / .35);
+        backdrop-filter: blur(2px);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity .25s ease;
+    }
+    @media (max-width: 1023px) {
+        .coquille[data-ouvert] .voile-tiroir { opacity: 1; pointer-events: auto; }
+    }
+
+    /* ------------------------------------------------------------ Barre du haut
+       Translucide, et elle prend un liseré et une ombre dès qu'on défile — sans
+       JavaScript, par une animation liée au défilement là où le navigateur la
+       connaît. Ailleurs, elle reste simplement translucide. */
+    .barre-haute {
+        position: sticky;
+        top: 0;
+        z-index: 40;
+        display: flex;
+        align-items: center;
+        gap: .75rem;
+        height: 4rem;
+        padding-inline: clamp(1rem, 2.5vw, 2rem);
+        background: rgb(243 244 246 / .72);
+        backdrop-filter: saturate(180%) blur(14px);
+        -webkit-backdrop-filter: saturate(180%) blur(14px);
+        border-bottom: 1px solid transparent;
+        view-transition-name: barre-haute;
+    }
+    @supports (animation-timeline: scroll()) {
+        .barre-haute {
+            animation: zp-barre-defilee linear both;
+            animation-timeline: scroll(root);
+            animation-range: 0 72px;
+        }
+    }
+
+    .fil {
+        display: flex;
+        align-items: center;
+        gap: .4rem;
+        min-width: 0;
+        font-size: .8125rem;
+        color: var(--zp-texte-faible);
+    }
+    .fil strong { color: var(--zp-texte-fort); font-weight: 600; }
+
+    .declencheur-palette {
+        display: inline-flex;
+        align-items: center;
+        gap: .6rem;
+        height: 2.4rem;
+        min-width: 15rem;
+        padding-inline: .8rem .45rem;
+        border-radius: .8rem;
+        border: 1px solid var(--zp-bord);
+        background: rgb(255 255 255 / .85);
+        color: var(--zp-texte-pale);
+        font-size: .8125rem;
+        box-shadow: var(--zp-ombre);
+        transition: border-color .18s ease, box-shadow .18s ease, color .18s ease;
+    }
+    .declencheur-palette:hover { border-color: var(--zp-bord-fort); color: var(--zp-texte-doux); }
+    .touche-clavier {
+        margin-left: auto;
+        padding: .1rem .4rem;
+        border-radius: .4rem;
+        border: 1px solid var(--zp-bord);
+        background: #fafaf9;
+        font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+        font-size: .7rem;
+        color: var(--zp-texte-faible);
+    }
+
+    .avatar {
+        display: grid;
+        place-items: center;
+        flex: none;
+        height: 2.25rem;
+        width: 2.25rem;
+        border-radius: 999px;
+        font-size: .8rem;
+        font-weight: 700;
+        color: var(--zp-accent-fort);
+        background: linear-gradient(135deg, #fef3c7, #fde68a);
+        box-shadow: 0 0 0 2px #fff, 0 0 0 3px var(--zp-accent-bord);
+    }
+
+    /* Menu utilisateur en <details> : aucun script, et le clavier fonctionne. */
+    .menu { position: relative; }
+    .menu > summary { list-style: none; cursor: pointer; }
+    .menu > summary::-webkit-details-marker { display: none; }
+    .menu-panneau {
+        position: absolute;
+        right: 0;
+        top: calc(100% + .5rem);
+        z-index: 70;
+        min-width: 15rem;
+        padding: .4rem;
+        border-radius: 1rem;
+        border: 1px solid var(--zp-bord);
+        background: #fff;
+        box-shadow: var(--zp-ombre-haute);
+        transform-origin: top right;
+        animation: zp-deployer .18s var(--zp-fluide) both;
+    }
+    .menu-lien {
+        display: flex;
+        align-items: center;
+        gap: .6rem;
+        padding: .55rem .7rem;
+        border-radius: .65rem;
+        font-size: .875rem;
+        color: var(--zp-texte-doux);
+    }
+    .menu-lien:hover { background: #f5f5f4; color: var(--zp-texte-fort); }
+    .menu-lien svg { height: 1.1rem; width: 1.1rem; color: var(--zp-texte-pale); }
+
+    /* ----------------------------------------------------------------- Contenu */
+    .contenu {
+        width: 100%;
+        max-width: 1440px;
+        margin-inline: auto;
+        padding: clamp(1.1rem, 2.5vw, 2rem) clamp(1rem, 2.5vw, 2rem) 4rem;
+        view-transition-name: contenu;
+    }
+
+    .entete-page {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 1rem 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+    .entete-page h1 {
+        font-size: clamp(1.5rem, 1.1rem + 1.2vw, 2rem);
+        font-weight: 700;
+        line-height: 1.15;
+        letter-spacing: -.025em;
+        color: var(--zp-texte-fort);
+    }
+    .sur-titre {
+        display: inline-flex;
+        align-items: center;
+        gap: .4rem;
+        margin-bottom: .35rem;
+        font-size: .72rem;
+        font-weight: 600;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        color: var(--zp-accent);
+    }
+    .sur-titre::before {
+        content: "";
+        height: .4rem;
+        width: .4rem;
+        border-radius: 999px;
+        background: var(--zp-accent-vif);
+        box-shadow: 0 0 0 3px rgb(245 158 11 / .2);
+    }
+    .actions-page { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+
+    /* ------------------------------------------------------------------- Cartes */
+    .carte {
+        background: var(--zp-surface);
+        border: 1px solid rgb(231 229 228 / .85);
+        border-radius: 1.1rem;
+        box-shadow: var(--zp-ombre);
+    }
+    .carte-interactive {
+        transition: transform .28s var(--zp-fluide), box-shadow .28s var(--zp-fluide), border-color .2s ease;
+    }
+    .carte-interactive:hover {
+        transform: translateY(-3px);
+        border-color: var(--zp-bord-fort);
+        box-shadow: var(--zp-ombre-haute);
+    }
+    .carte-entete {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: .5rem 1rem;
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid #f5f5f4;
+    }
+    .carte-titre {
+        font-size: .95rem;
+        font-weight: 600;
+        letter-spacing: -.01em;
+        color: var(--zp-texte-fort);
+    }
+    .carte-note { font-size: .75rem; color: var(--zp-texte-pale); }
+    .carte-corps { padding: 1.25rem; }
+    .carte-pied {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: .75rem;
+        padding: .9rem 1.25rem;
+        border-top: 1px solid #f5f5f4;
+        background: #fafaf9;
+        border-radius: 0 0 1.1rem 1.1rem;
+    }
+
+    /* ----------------------------------------------------------------- KPI */
+    .kpi {
+        position: relative;
+        overflow: hidden;
+        padding: 1.2rem 1.25rem;
+        background: var(--zp-surface);
+        border: 1px solid rgb(231 229 228 / .85);
+        border-radius: 1.1rem;
+        box-shadow: var(--zp-ombre);
+        transition: transform .28s var(--zp-fluide), box-shadow .28s var(--zp-fluide);
+    }
+    .kpi:hover { transform: translateY(-3px); box-shadow: var(--zp-ombre-haute); }
+    .kpi::after {
+        content: "";
+        position: absolute;
+        right: -2.5rem;
+        top: -2.5rem;
+        height: 7rem;
+        width: 7rem;
+        border-radius: 999px;
+        background: radial-gradient(closest-side, rgb(245 158 11 / .12), transparent);
+        pointer-events: none;
+    }
+    .kpi-tete { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+    .kpi-libelle { font-size: .8rem; font-weight: 500; color: var(--zp-texte-faible); }
+    .kpi-icone {
+        display: grid;
+        place-items: center;
+        flex: none;
+        height: 2.35rem;
+        width: 2.35rem;
+        border-radius: .8rem;
+        color: var(--zp-accent);
+        background: var(--zp-accent-fond);
+        box-shadow: inset 0 0 0 1px rgb(253 230 138 / .7);
+    }
+    .kpi-icone svg { height: 1.2rem; width: 1.2rem; }
+    .kpi-icone-rouge { color: #b91c1c; background: #fef2f2; box-shadow: inset 0 0 0 1px #fecaca; }
+    .kpi-icone-vert { color: #15803d; background: #f0fdf4; box-shadow: inset 0 0 0 1px #bbf7d0; }
+    .kpi-valeur {
+        margin-top: .7rem;
+        font-size: clamp(1.45rem, 1.1rem + 1vw, 1.85rem);
+        font-weight: 700;
+        line-height: 1.1;
+        letter-spacing: -.025em;
+        font-variant-numeric: tabular-nums;
+        color: var(--zp-texte-fort);
+        overflow-wrap: anywhere;
+    }
+    .kpi-unite { font-size: .9rem; font-weight: 600; color: var(--zp-texte-pale); }
+    .kpi-note { margin-top: .3rem; font-size: .75rem; color: var(--zp-texte-pale); }
+
+    /* Carte héros : le chiffre qu'on vient chercher, sur fond sombre et chaud. */
+    .heros {
+        position: relative;
+        overflow: hidden;
+        padding: 1.5rem;
+        border-radius: 1.3rem;
+        color: #fafaf9;
+        background:
+            radial-gradient(120% 90% at 100% 0%, rgb(245 158 11 / .38), transparent 55%),
+            radial-gradient(80% 60% at 0% 100%, rgb(180 83 9 / .35), transparent 60%),
+            linear-gradient(160deg, #292524, #1c1917);
+        box-shadow: 0 20px 40px -20px rgb(28 25 23 / .55);
+    }
+    .heros::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image: radial-gradient(rgb(255 255 255 / .06) 1px, transparent 1px);
+        background-size: 14px 14px;
+        mask-image: linear-gradient(to bottom left, #000, transparent 70%);
+        pointer-events: none;
+    }
+    .heros > * { position: relative; }
+
+    /* ---------------------------------------------------------------- Tableaux */
+    .tableau-conteneur {
+        overflow: hidden;
+        background: var(--zp-surface);
+        border: 1px solid rgb(231 229 228 / .85);
+        border-radius: 1.1rem;
+        box-shadow: var(--zp-ombre);
+    }
+    .defilement-x { overflow-x: auto; }
+    .tableau {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        font-size: .875rem;
+    }
+    .tableau thead th {
+        padding: .7rem 1.25rem;
+        text-align: left;
+        white-space: nowrap;
+        font-size: .7rem;
+        font-weight: 600;
+        letter-spacing: .06em;
+        text-transform: uppercase;
+        color: var(--zp-texte-faible);
+        background: #fafaf9;
+        border-bottom: 1px solid var(--zp-bord);
+    }
+    .tableau tbody td {
+        padding: .8rem 1.25rem;
+        vertical-align: middle;
+        border-bottom: 1px solid #f5f5f4;
+    }
+    .tableau tbody tr:last-child td { border-bottom: 0; }
+    .tableau tbody tr { transition: background-color .15s ease; }
+    .tableau tbody tr:hover { background: #fcfcfb; }
+    .tableau tfoot td {
+        padding: .8rem 1.25rem;
+        font-weight: 600;
+        background: #fafaf9;
+        border-top: 1px solid var(--zp-bord);
+    }
+    .tableau .num,
+    .tableau th.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .tableau-compact thead th,
+    .tableau-compact tbody td,
+    .tableau-compact tfoot td { padding-inline: .9rem; }
+    .tableau-nu tbody td { padding: .6rem 0; }
+    .tableau-nu tbody td + td { padding-left: 1rem; }
+    .cellule-vide { padding: 3rem 1.25rem !important; text-align: center; color: var(--zp-texte-pale); }
+    .cellule-principale { font-weight: 600; color: var(--zp-texte-fort); }
+    .cellule-douce { color: var(--zp-texte-faible); }
+    .code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: .78rem; }
+
+    /* Les premières lignes arrivent en cascade : un tableau qui se remplit se lit
+       comme une réponse, et un filtre appliqué dans un frame se voit. */
+    .tableau tbody tr { animation: zp-monter .38s var(--zp-fluide) both; }
+    .tableau tbody tr:nth-child(2) { animation-delay: 20ms; }
+    .tableau tbody tr:nth-child(3) { animation-delay: 40ms; }
+    .tableau tbody tr:nth-child(4) { animation-delay: 60ms; }
+    .tableau tbody tr:nth-child(5) { animation-delay: 80ms; }
+    .tableau tbody tr:nth-child(6) { animation-delay: 100ms; }
+    .tableau tbody tr:nth-child(7) { animation-delay: 120ms; }
+    .tableau tbody tr:nth-child(8) { animation-delay: 140ms; }
+    .tableau tbody tr:nth-child(n+9) { animation-delay: 160ms; }
+
+    .actions-ligne { display: flex; align-items: center; justify-content: flex-end; gap: .35rem; }
+
+    /* ----------------------------------------------------------------- Boutons */
+    .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: .45rem;
+        height: 2.4rem;
+        padding-inline: .95rem;
+        border-radius: .8rem;
+        border: 1px solid transparent;
+        font-size: .875rem;
+        font-weight: 600;
+        line-height: 1;
+        white-space: nowrap;
+        cursor: pointer;
+        user-select: none;
+        transition: background-color .16s ease, border-color .16s ease, color .16s ease,
+                    box-shadow .16s ease, transform .12s ease;
+    }
+    .btn:active { transform: scale(.97); }
+    .btn:focus-visible { outline: 2px solid var(--zp-accent-vif); outline-offset: 2px; }
+    .btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+    .btn svg { height: 1rem; width: 1rem; flex: none; }
+
+    .btn-primaire {
+        color: #fff;
+        background: linear-gradient(180deg, #c2410c -40%, #b45309 60%);
+        box-shadow: inset 0 1px 0 rgb(255 255 255 / .18), 0 1px 2px rgb(120 53 15 / .35), 0 4px 12px -6px rgb(180 83 9 / .6);
+    }
+    .btn-primaire:hover { background: var(--zp-accent-fort); }
+    .btn-secondaire {
+        color: var(--zp-texte);
+        background: #fff;
+        border-color: var(--zp-bord);
+        box-shadow: 0 1px 2px rgb(28 25 23 / .05);
+    }
+    .btn-secondaire:hover { background: #fafaf9; border-color: var(--zp-bord-fort); color: var(--zp-texte-fort); }
+    .btn-fantome { color: var(--zp-texte-doux); background: transparent; font-weight: 500; }
+    .btn-fantome:hover { background: rgb(231 229 228 / .6); color: var(--zp-texte-fort); }
+    .btn-danger { color: #b91c1c; background: #fff; border-color: #fecaca; }
+    .btn-danger:hover { background: #fef2f2; border-color: #fca5a5; }
+    .btn-danger-plein {
+        color: #fff;
+        background: #dc2626;
+        box-shadow: inset 0 1px 0 rgb(255 255 255 / .15), 0 4px 12px -6px rgb(220 38 38 / .6);
+    }
+    .btn-danger-plein:hover { background: #b91c1c; }
+    .btn-succes {
+        color: #fff;
+        background: #15803d;
+        box-shadow: inset 0 1px 0 rgb(255 255 255 / .15), 0 4px 12px -6px rgb(21 128 61 / .6);
+    }
+    .btn-succes:hover { background: #166534; }
+
+    .btn-sm { height: 2rem; padding-inline: .7rem; border-radius: .65rem; font-size: .78rem; }
+    .btn-lg { height: 2.85rem; padding-inline: 1.25rem; border-radius: .9rem; font-size: .95rem; }
+    .btn-icone { width: 2.4rem; padding-inline: 0; }
+    .btn-sm.btn-icone { width: 2rem; }
+
+    .lien {
+        font-weight: 500;
+        color: var(--zp-accent);
+        text-decoration: underline;
+        text-decoration-color: rgb(180 83 9 / .3);
+        text-underline-offset: 3px;
+        transition: text-decoration-color .15s ease, color .15s ease;
+    }
+    .lien:hover { color: var(--zp-accent-fort); text-decoration-color: currentColor; }
+
+    /* ----------------------------------------------------------------- Badges */
+    .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: .35rem;
+        padding: .15rem .6rem;
+        border-radius: 999px;
+        font-size: .72rem;
+        font-weight: 600;
+        line-height: 1.35;
+        white-space: nowrap;
+        box-shadow: inset 0 0 0 1px var(--badge-bord, transparent);
+        color: var(--badge-encre, #57534e);
+        background: var(--badge-fond, #f5f5f4);
+    }
+    .badge-point::before {
+        content: "";
+        height: .38rem;
+        width: .38rem;
+        border-radius: 999px;
+        background: currentColor;
+    }
+    .badge-vert   { --badge-fond: #f0fdf4; --badge-encre: #15803d; --badge-bord: rgb(22 163 74 / .2); }
+    .badge-rouge  { --badge-fond: #fef2f2; --badge-encre: #b91c1c; --badge-bord: rgb(220 38 38 / .2); }
+    .badge-ambre  { --badge-fond: #fffbeb; --badge-encre: #92400e; --badge-bord: rgb(217 119 6 / .25); }
+    .badge-orange { --badge-fond: #fff7ed; --badge-encre: #c2410c; --badge-bord: rgb(234 88 12 / .2); }
+    .badge-bleu   { --badge-fond: #f0f9ff; --badge-encre: #0369a1; --badge-bord: rgb(2 132 199 / .2); }
+    .badge-neutre { --badge-fond: #f5f5f4; --badge-encre: #57534e; --badge-bord: rgb(120 113 108 / .15); }
+
+    /* ---------------------------------------------------------------- Champs */
+    .champ {
+        display: block;
+        width: 100%;
+        height: 2.5rem;
+        padding-inline: .8rem;
+        border-radius: .8rem;
+        border: 1px solid var(--zp-bord-fort);
+        background: #fff;
+        font-size: .875rem;
+        color: var(--zp-texte-fort);
+        box-shadow: 0 1px 2px rgb(28 25 23 / .04);
+        transition: border-color .15s ease, box-shadow .15s ease;
+    }
+    .champ::placeholder { color: var(--zp-texte-pale); }
+    .champ:hover { border-color: #a8a29e; }
+    .champ:focus {
+        outline: none;
+        border-color: #f59e0b;
+        box-shadow: 0 0 0 4px rgb(245 158 11 / .16);
+    }
+    textarea.champ { height: auto; min-height: 5rem; padding-block: .6rem; line-height: 1.5; }
+    input[type="file"].champ { height: auto; padding: .35rem; font-size: .8rem; }
+    input[type="file"].champ::file-selector-button {
+        margin-right: .75rem;
+        padding: .4rem .8rem;
+        border: 0;
+        border-radius: .55rem;
+        font-weight: 600;
+        color: var(--zp-accent-fort);
+        background: var(--zp-accent-fond);
+        cursor: pointer;
+    }
+    input[type="color"].champ { width: 4.5rem; padding: .25rem; cursor: pointer; }
+    .champ-avec-icone { position: relative; }
+    .champ-avec-icone > svg {
+        position: absolute;
+        left: .75rem;
+        top: 50%;
+        height: 1rem;
+        width: 1rem;
+        transform: translateY(-50%);
+        color: var(--zp-texte-pale);
+        pointer-events: none;
+    }
+    .champ-avec-icone > .champ { padding-left: 2.3rem; }
+
+    .etiquette {
+        display: block;
+        margin-bottom: .4rem;
+        font-size: .8125rem;
+        font-weight: 600;
+        color: var(--zp-texte);
+    }
+    .etiquette-legere { display: block; margin-bottom: .35rem; font-size: .75rem; font-weight: 500; color: var(--zp-texte-faible); }
+    .aide { margin-top: .4rem; font-size: .75rem; line-height: 1.45; color: var(--zp-texte-faible); }
+    .erreurs-champ { margin-top: .4rem; font-size: .8125rem; color: #b91c1c; }
+    .ligne-champ { margin-bottom: 1.1rem; }
+
+    /* Interrupteur : une case à cocher reste une case à cocher (clavier, formulaire,
+       lecteur d'écran), elle se dessine seulement en glissière. */
+    .interrupteur {
+        appearance: none;
+        position: relative;
+        flex: none;
+        height: 1.35rem;
+        width: 2.35rem;
+        border-radius: 999px;
+        background: #d6d3d1;
+        cursor: pointer;
+        transition: background-color .2s ease;
+    }
+    .interrupteur::before {
+        content: "";
+        position: absolute;
+        top: .175rem;
+        left: .175rem;
+        height: 1rem;
+        width: 1rem;
+        border-radius: 999px;
+        background: #fff;
+        box-shadow: 0 1px 3px rgb(0 0 0 / .25);
+        transition: transform .25s var(--zp-fluide);
+    }
+    .interrupteur:checked { background: var(--zp-accent); }
+    .interrupteur:checked::before { transform: translateX(1rem); }
+    .interrupteur:focus-visible { outline: 2px solid var(--zp-accent-vif); outline-offset: 2px; }
+    .ligne-interrupteur { display: flex; align-items: center; gap: .7rem; }
+    .ligne-interrupteur label { font-size: .875rem; font-weight: 500; color: var(--zp-texte); cursor: pointer; }
+
+    /* ------------------------------------------------------------ Onglets pastille */
+    .onglets {
+        display: inline-flex;
+        gap: .25rem;
+        padding: .25rem;
+        border-radius: .9rem;
+        background: rgb(231 229 228 / .6);
+        max-width: 100%;
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+    .onglet {
+        flex: none;
+        padding: .45rem .9rem;
+        border-radius: .7rem;
+        font-size: .8125rem;
+        font-weight: 600;
+        color: var(--zp-texte-faible);
+        cursor: pointer;
+        transition: background-color .2s ease, color .2s ease, box-shadow .2s ease;
+    }
+    .onglet:hover { color: var(--zp-texte-fort); }
+    /* Onglets de la fiche article : radios masqués, sans URL propre. Le libellé
+       est imbriqué dans l'en-tête de carte, hors de portée de `peer-checked`
+       (qui ne voit que les voisins directs) : c'est `:has()` qui le rallume. */
+    .carte:has(#onglet-details:checked) label[for="onglet-details"],
+    .carte:has(#onglet-fiche:checked) label[for="onglet-fiche"],
+    .onglet[aria-current="page"],
+    .onglet-actif {
+        color: var(--zp-texte-fort);
+        background: #fff;
+        box-shadow: 0 1px 2px rgb(28 25 23 / .08), 0 2px 8px -2px rgb(28 25 23 / .08);
+    }
+
+    /* ---------------------------------------------------------------- Alertes */
+    .alerte {
+        display: flex;
+        gap: .75rem;
+        padding: .9rem 1rem;
+        border-radius: 1rem;
+        border: 1px solid;
+        font-size: .875rem;
+        line-height: 1.5;
+    }
+    .alerte svg { flex: none; height: 1.25rem; width: 1.25rem; margin-top: .05rem; }
+    .alerte-ambre { color: #78350f; background: #fffbeb; border-color: #fde68a; }
+    .alerte-rouge { color: #7f1d1d; background: #fef2f2; border-color: #fecaca; }
+    .alerte-vert  { color: #14532d; background: #f0fdf4; border-color: #bbf7d0; }
+    .alerte-bleu  { color: #0c4a6e; background: #f0f9ff; border-color: #bae6fd; }
+
+    /* ---------------------------------------------------------------- Toasts
+       Les messages flash flottent en haut à droite et s'effacent seuls ; ils
+       restent dans la page (et donc lisibles par un lecteur d'écran) le temps
+       de leur affichage. */
+    .toasts {
+        position: fixed;
+        top: 1rem;
+        right: 1rem;
+        z-index: 90;
+        display: flex;
+        flex-direction: column;
+        gap: .5rem;
+        width: min(24rem, calc(100vw - 2rem));
+        pointer-events: none;
+    }
+    .toast {
+        pointer-events: auto;
+        display: flex;
+        align-items: flex-start;
+        gap: .7rem;
+        padding: .85rem .9rem;
+        border-radius: 1rem;
+        background: #fff;
+        border: 1px solid var(--zp-bord);
+        box-shadow: var(--zp-ombre-haute);
+        font-size: .875rem;
+        color: var(--zp-texte);
+        animation: zp-toast-entree .45s var(--zp-fluide) both;
+    }
+    .toast[data-sortie] { animation: zp-toast-sortie .3s ease both; }
+    .toast-icone { display: grid; place-items: center; flex: none; height: 1.6rem; width: 1.6rem; border-radius: 999px; }
+    .toast-icone svg { height: 1rem; width: 1rem; }
+    .toast-succes .toast-icone { color: #15803d; background: #dcfce7; }
+    .toast-erreur .toast-icone { color: #b91c1c; background: #fee2e2; }
+    .toast-fermer { margin-left: auto; color: var(--zp-texte-pale); line-height: 1; padding: .15rem; border-radius: .4rem; }
+    .toast-fermer:hover { color: var(--zp-texte-fort); background: #f5f5f4; }
+
+    /* --------------------------------------------------------------- Palette ⌘K */
+    .palette {
+        width: min(38rem, calc(100vw - 2rem));
+        max-height: min(32rem, 80vh);
+        margin: 12vh auto auto;
+        padding: 0;
+        border: 1px solid var(--zp-bord);
+        border-radius: 1.2rem;
+        background: #fff;
+        color: var(--zp-texte);
+        box-shadow: 0 30px 60px -20px rgb(28 25 23 / .45);
+        overflow: hidden;
+    }
+    .palette[open] { animation: zp-deployer .22s var(--zp-fluide) both; }
+    .palette::backdrop { background: rgb(28 25 23 / .4); backdrop-filter: blur(3px); }
+    .palette-recherche {
+        display: flex;
+        align-items: center;
+        gap: .7rem;
+        padding: .9rem 1.1rem;
+        border-bottom: 1px solid #f5f5f4;
+    }
+    .palette-recherche svg { height: 1.2rem; width: 1.2rem; color: var(--zp-texte-pale); }
+    .palette-recherche input { flex: 1; border: 0; outline: 0; font-size: 1rem; background: transparent; color: var(--zp-texte-fort); }
+    .palette-liste { max-height: 22rem; overflow-y: auto; padding: .4rem; }
+    .palette-element {
+        display: flex;
+        align-items: center;
+        gap: .75rem;
+        padding: .6rem .75rem;
+        border-radius: .75rem;
+        font-size: .9rem;
+        color: var(--zp-texte);
+    }
+    .palette-element svg { height: 1.15rem; width: 1.15rem; color: var(--zp-texte-pale); flex: none; }
+    .palette-element small { margin-left: auto; font-size: .72rem; color: var(--zp-texte-pale); }
+    .palette-element[aria-selected="true"] { background: var(--zp-accent-fond); color: var(--zp-accent-fort); }
+    .palette-element[aria-selected="true"] svg { color: #d97706; }
+    .palette-vide { padding: 2rem 1rem; text-align: center; font-size: .875rem; color: var(--zp-texte-pale); }
+
+    /* ------------------------------------------------------------ Progressions */
+    .jauge { height: .45rem; flex: 1; overflow: hidden; border-radius: 999px; background: #f5f5f4; }
+    .jauge > span {
+        display: block;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #f59e0b, #b45309);
+        transform-origin: left center;
+        animation: zp-remplir .9s var(--zp-fluide) both;
+    }
+    .jauge-sombre > span { background: linear-gradient(90deg, #78716c, #292524); }
+
+    /* --------------------------------------------------------------- Apparition */
+    .apparition { animation: zp-monter .5s var(--zp-fluide) both; animation-delay: calc(var(--i, 0) * 55ms); }
+
+    /* ----------------------------------------------------------- Pilotage : entête */
+    .entete-flottante {
+        position: sticky;
+        top: 0;
+        z-index: 40;
+        background: rgb(243 244 246 / .75);
+        backdrop-filter: saturate(180%) blur(14px);
+        -webkit-backdrop-filter: saturate(180%) blur(14px);
+        border-bottom: 1px solid transparent;
+        view-transition-name: barre-haute;
+    }
+    @supports (animation-timeline: scroll()) {
+        .entete-flottante {
+            animation: zp-barre-defilee linear both;
+            animation-timeline: scroll(root);
+            animation-range: 0 72px;
+        }
+    }
+
+    /* Barre d'onglets en bas d'écran, sur téléphone : là où tombe le pouce. */
+    .onglets-bas {
+        position: fixed;
+        inset-inline: 0;
+        bottom: 0;
+        z-index: 45;
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        padding: .35rem .5rem calc(.35rem + env(safe-area-inset-bottom));
+        background: rgb(255 255 255 / .9);
+        backdrop-filter: saturate(180%) blur(14px);
+        -webkit-backdrop-filter: saturate(180%) blur(14px);
+        border-top: 1px solid var(--zp-bord);
+        view-transition-name: onglets-bas;
+    }
+    .onglet-bas {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: .15rem;
+        padding: .35rem .25rem;
+        border-radius: .8rem;
+        font-size: .66rem;
+        font-weight: 600;
+        color: var(--zp-texte-faible);
+        transition: color .18s ease, background-color .18s ease;
+    }
+    .onglet-bas svg { height: 1.35rem; width: 1.35rem; transition: transform .25s var(--zp-fluide); }
+    .onglet-bas[aria-current="page"] { color: var(--zp-accent); }
+    .onglet-bas[aria-current="page"] svg { transform: translateY(-1px) scale(1.08); }
+    @media (min-width: 768px) {
+        .onglets-bas { display: none; }
+    }
+}
+}
+
+/* ----------------------------------------------------------------- Animations */
+@keyframes zp-monter {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: none; }
+}
+@keyframes zp-deployer {
+    from { opacity: 0; transform: scale(.96) translateY(-4px); }
+    to { opacity: 1; transform: none; }
+}
+@keyframes zp-remplir {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+}
+@keyframes zp-glisser-indicateur {
+    from { transform: scaleY(.2); opacity: 0; }
+    to { transform: none; opacity: 1; }
+}
+@keyframes zp-barre-defilee {
+    to {
+        background-color: rgb(255 255 255 / .82);
+        border-bottom-color: #e7e5e4;
+        box-shadow: 0 6px 20px -12px rgb(28 25 23 / .25);
+    }
+}
+@keyframes zp-toast-entree {
+    from { opacity: 0; transform: translateX(24px) scale(.97); }
+    to { opacity: 1; transform: none; }
+}
+@keyframes zp-toast-sortie {
+    to { opacity: 0; transform: translateX(24px) scale(.97); }
+}
+@keyframes zp-fondu-sortie {
+    to { opacity: 0; }
+}
+@keyframes zp-fondu-entree {
+    from { opacity: 0; transform: translateY(8px); }
+}
+
+/* Transitions de page (Turbo 8 + View Transitions) : seul le contenu glisse,
+   barre latérale et barre du haut restent en place. La racine ne fond pas,
+   sinon tout l'écran clignoterait à chaque clic. */
+::view-transition-old(root),
+::view-transition-new(root) {
+    animation: none;
+}
+::view-transition-old(contenu) {
+    animation: zp-fondu-sortie .14s ease both;
+}
+::view-transition-new(contenu) {
+    animation: zp-fondu-entree .34s cubic-bezier(.2, .8, .2, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .espace-gestion *,
+    .espace-gestion *::before,
+    .espace-gestion *::after {
+        animation-duration: 1ms !important;
+        animation-delay: 0ms !important;
+        transition-duration: 1ms !important;
+    }
+    ::view-transition-old(contenu),
+    ::view-transition-new(contenu) {
+        animation: none;
+    }
 }

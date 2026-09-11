@@ -1,28 +1,34 @@
 {% extends 'admin/base.html.twig' %}
 {% form_theme form 'admin/_form_theme.html.twig' %}
+{% import 'admin/_icones.html.twig' as ui %}
 
 {% block page_title %}Saisir une perte{% endblock %}
 
 {% block page_actions %}
-    <a href="{{ path('admin_pertes') }}" class="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-medium hover:bg-stone-50">← Synthèse</a>
+    <a href="{{ path('admin_pertes') }}" class="btn btn-fantome">{{ ui.icone('retour') }} Synthèse</a>
 {% endblock %}
 
 {% block admin_content %}
-<div class="max-w-xl bg-white rounded-xl shadow-sm p-6">
-    <p class="text-sm text-stone-500 mb-4">Sélectionnez une <strong>matière première</strong> ou un <strong>article</strong>, la quantité perdue et le motif. La valorisation est calculée automatiquement au coût moyen pondéré.</p>
-
+<div class="carte apparition max-w-2xl">
     {{ form_start(form) }}
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-5">
-        {{ form_row(form.matierePremiere) }}
-        {{ form_row(form.article) }}
-        {{ form_row(form.quantite) }}
-        {{ form_row(form.motif) }}
-    </div>
-    {{ form_row(form.commentaire) }}
+    <div class="carte-corps">
+        <div class="alerte alerte-ambre mb-5">
+            {{ ui.icone('info') }}
+            <p>Sélectionnez une <strong>matière première</strong> ou un <strong>article</strong>, la quantité perdue et le motif. La valorisation est calculée automatiquement au coût moyen pondéré.</p>
+        </div>
 
-    <div class="mt-6 flex items-center gap-3">
-        <button class="rounded-xl bg-red-600 text-white px-5 py-3 text-base font-bold hover:bg-red-500">Enregistrer la perte</button>
-        <a href="{{ path('admin_pertes') }}" class="rounded-lg border border-stone-300 px-4 py-3 text-sm hover:bg-stone-50">Annuler</a>
+        <div class="grid grid-cols-1 gap-x-5 sm:grid-cols-2">
+            {{ form_row(form.matierePremiere) }}
+            {{ form_row(form.article) }}
+            {{ form_row(form.quantite) }}
+            {{ form_row(form.motif) }}
+        </div>
+        {{ form_row(form.commentaire) }}
+    </div>
+
+    <div class="carte-pied">
+        <button class="btn btn-danger-plein btn-lg">{{ ui.icone('pertes') }} Enregistrer la perte</button>
+        <a href="{{ path('admin_pertes') }}" class="btn btn-fantome">Annuler</a>
     </div>
     {{ form_end(form) }}
 </div>

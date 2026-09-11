@@ -1,64 +1,68 @@
 {% extends 'admin/base.html.twig' %}
 {% import 'admin/_macros.html.twig' as fmt %}
+{% import 'admin/_icones.html.twig' as ui %}
 {% import '_pagination.html.twig' as pagination %}
 {% import 'admin/_recherche.html.twig' as recherche %}
 
 {% block page_title %}Familles de produits{% endblock %}
+{% block page_sous_titre %}Les onglets de la caisse, leur ordre, leur couleur et leur compte de vente.{% endblock %}
 
 {% block page_actions %}
-    <a href="{{ path('admin_article_index') }}" class="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-medium hover:bg-stone-50">Articles</a>
-    <a href="{{ path('admin_famille_new') }}" class="rounded-lg bg-stone-800 text-white px-3 py-2 text-sm font-semibold hover:bg-stone-700">+ Nouvelle famille</a>
+    <a href="{{ path('admin_article_index') }}" class="btn btn-secondaire">Articles</a>
+    <a href="{{ path('admin_famille_new') }}" class="btn btn-primaire">{{ ui.icone('plus') }} Nouvelle famille</a>
 {% endblock %}
 
 {% block admin_content %}
 
 {{ recherche.barre('admin_famille_index', 'Nom de la famille') }}
-<div class="bg-white rounded-xl shadow-sm overflow-hidden">
-    <table class="w-full text-sm">
-        <thead class="text-left text-stone-500 bg-stone-50">
+<div class="tableau-conteneur apparition">
+    <div class="defilement-x">
+    <table class="tableau">
+        <thead>
             <tr>
-                <th class="px-5 py-3 font-medium">Famille</th>
-                <th class="px-5 py-3 font-medium">Position</th>
-                <th class="px-5 py-3 font-medium text-right">Articles</th>
-                <th class="px-5 py-3 font-medium">Compte de vente</th>
-                <th class="px-5 py-3 font-medium">Statut</th>
-                <th class="px-5 py-3 font-medium text-right">Actions</th>
+                <th>Famille</th>
+                <th>Position</th>
+                <th class="num">Articles</th>
+                <th>Compte de vente</th>
+                <th>Statut</th>
+                <th class="num">Actions</th>
             </tr>
         </thead>
         <tbody>
             {% for famille in familles.items %}
-                <tr class="border-t border-stone-100 hover:bg-stone-50">
-                    <td class="px-5 py-3">
-                        <div class="flex items-center gap-2">
-                            <span class="inline-block h-3 w-3 rounded-full" style="background: {{ famille.couleur ?: '#cbd5e1' }}"></span>
-                            <span class="font-medium text-stone-800">{{ famille.nom }}</span>
+                <tr>
+                    <td>
+                        <div class="flex items-center gap-3">
+                            <span class="h-3.5 w-3.5 shrink-0 rounded-full ring-4 ring-black/5" style="background: {{ famille.couleur ?: '#d6d3d1' }}"></span>
+                            <span class="cellule-principale">{{ famille.nom }}</span>
                         </div>
                     </td>
-                    <td class="px-5 py-3 text-stone-600">{{ famille.position }}</td>
-                    <td class="px-5 py-3 text-right text-stone-600">{{ famille.articles|length }}</td>
-                    <td class="px-5 py-3 text-stone-600">
+                    <td class="cellule-douce tabular-nums">{{ famille.position }}</td>
+                    <td class="num"><span class="badge badge-neutre">{{ famille.articles|length }}</span></td>
+                    <td>
                         {% if famille.compteVente %}
-                            <span class="font-mono text-xs">{{ famille.compteVente }}</span>
+                            <span class="code rounded-md bg-stone-100 px-1.5 py-0.5 text-stone-700">{{ famille.compteVente }}</span>
                         {% else %}
                             <span class="text-stone-400">Automatique</span>
                         {% endif %}
                     </td>
-                    <td class="px-5 py-3">{{ fmt.badge(famille.actif) }}</td>
-                    <td class="px-5 py-3">
-                        <div class="flex items-center justify-end gap-2">
-                            <a href="{{ path('admin_famille_edit', {id: famille.id}) }}" class="rounded-md border border-stone-300 px-2.5 py-1 text-xs font-medium hover:bg-stone-100">Modifier</a>
+                    <td>{{ fmt.badge(famille.actif) }}</td>
+                    <td>
+                        <div class="actions-ligne">
+                            <a href="{{ path('admin_famille_edit', {id: famille.id}) }}" class="btn btn-sm btn-secondaire">{{ ui.icone('modifier') }} Modifier</a>
                             <form method="post" action="{{ path('admin_famille_delete', {id: famille.id}) }}" data-turbo-confirm="Supprimer cette famille ?">
                                 <input type="hidden" name="_token" value="{{ csrf_token('supprimer_famille_' ~ famille.id) }}">
-                                <button class="rounded-md border border-red-300 text-red-700 px-2.5 py-1 text-xs font-medium hover:bg-red-50">Supprimer</button>
+                                <button class="btn btn-sm btn-danger btn-icone" title="Supprimer" aria-label="Supprimer">{{ ui.icone('supprimer') }}</button>
                             </form>
                         </div>
                     </td>
                 </tr>
             {% else %}
-                <tr><td colspan="6" class="px-5 py-6 text-center text-stone-400">Aucune famille.</td></tr>
+                <tr><td colspan="6" class="cellule-vide">Aucune famille.</td></tr>
             {% endfor %}
         </tbody>
     </table>
+    </div>
 </div>
 {{ pagination.barre(familles, 'admin_famille_index') }}
 {% endblock %}
