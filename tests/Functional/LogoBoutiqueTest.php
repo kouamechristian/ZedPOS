@@ -373,6 +373,28 @@ class LogoBoutiqueTest extends WebTestCase
         );
     }
 
+    /**
+     * Le ticket imprimé hors ligne sort d'une fenêtre vierge, que le Service
+     * Worker ne contrôle pas forcément : un `<img src="/uploads/…">` y partait au
+     * réseau, échouait, et le ticket sortait sans logo. Il imprime donc le logo
+     * thermique, que la page de caisse porte déjà en URL `data:` — aucune requête.
+     */
+    public function testLeTicketImprimeHorsLigneNeVaPasChercherLeLogoSurLeReseau(): void
+    {
+        // Un dessin, pas un aplat : un logo uniforme n'a rien à imprimer.
+        $nom = $this->logoDessine([255, 255, 255], [60, 30, 10]);
+
+        $crawler = $this->ouvrirLaCaisse();
+        $parametres = json_decode((string) $crawler->filter('[data-ticket-parametres-value]')->attr('data-ticket-parametres-value'), true);
+        $this->assertStringStartsWith('data:image/png;base64,', $parametres['logo']);
+
+        $source = (string) file_get_contents(\dirname(__DIR__, 2).'/assets/controllers/ticket_controller.js');
+        $this->assertStringContainsString('${this.htmlRecuLocal(ticket, true)}</body>', $source, 'La fenêtre d\'impression doit demander le rendu « papier ».');
+        $this->assertStringContainsString('const logo = thermique ? ticket.logo :', $source, 'Sur le papier, le logo thermique en URL data: passe en premier.');
+
+        $this->logos()->supprimer($nom);
+    }
+
     // ------------------------------ L'identité reprise par les écrans de gestion
 
     /**

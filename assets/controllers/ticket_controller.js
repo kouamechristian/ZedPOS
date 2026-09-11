@@ -454,7 +454,11 @@ export default class extends Controller {
         this.uuidRecu = uuid;
     }
 
-    htmlRecuLocal(ticket) {
+    /**
+     * @param {boolean} impression vrai pour la fenêtre d'impression, faux pour le
+     *                             reçu affiché dans l'écran de caisse.
+     */
+    htmlRecuLocal(ticket, impression = false) {
         const lignes = (ticket.lines ?? []).map((ligne) => `
             <div class="row">
                 <span class="g">${this.esc(ligne.qty)} × ${this.esc(ligne.label)}</span>
@@ -472,13 +476,20 @@ export default class extends Controller {
             <div class="row"><span class="g">${this.esc(reglement.label)}</span><span class="d">${this.fcfa(reglement.montant * 100)}</span></div>
         `).join('');
 
-        // À l'écran, le logo en couleur ; `ticket.logo` est la version noir et
-        // blanc destinée à la tête thermique, gardée en repli.
-        const logo = this.parametresValue.logoEcran || ticket.logo;
+        // À l'écran, le logo en couleur : la page de caisse est servie par le
+        // Service Worker, qui garde `/uploads/` en cache.
+        //
+        // Sur le papier, `ticket.logo` — la version noir et blanc de la tête
+        // thermique, déjà en URL `data:`. La fenêtre d'impression est une page
+        // vierge que le Service Worker ne contrôle pas forcément : hors ligne, son
+        // `<img src="/uploads/…">` partait au réseau, échouait, et `onerror`
+        // retirait le logo du ticket. Une URL `data:` ne demande rien à personne.
+        const thermique = impression && Boolean(ticket.logo);
+        const logo = thermique ? ticket.logo : (this.parametresValue.logoEcran || ticket.logo);
 
         return `
             <div class="ticket">
-                ${logo ? `<img class="logo" src="${this.esc(logo)}" alt="${this.esc(ticket.header?.[0] ?? '')}" onerror="this.remove()">` : ''}
+                ${logo ? `<img class="logo${thermique ? ' logo-thermique' : ''}" src="${this.esc(logo)}" alt="${this.esc(ticket.header?.[0] ?? '')}" onerror="this.remove()">` : ''}
                 ${(ticket.header ?? []).map((ligne, index) => `<div class="${0 === index ? 'center bold big' : 'center'}">${this.esc(ligne)}</div>`).join('')}
                 <div class="sep"></div>
                 <div>Ticket : ${this.esc(ticket.numero)}</div>
@@ -764,6 +775,8 @@ export default class extends Controller {
                         body { margin: 0; background: white; }
                         .ticket { width: 58mm; padding: 3mm 5mm; background: #fff; color: #000; font-family: Tahoma, Verdana, 'DejaVu Sans', Arial, sans-serif; font-size: 11px; font-variant-numeric: tabular-nums; line-height: 1.35; }
                         .logo { display: block; max-width: 44mm; max-height: 16mm; margin: 0 auto 3px; object-fit: contain; }
+                        /* 384 points déjà centrés = les 48 mm de la tête à 203 dpi : un point d'image par point imprimé. */
+                        .logo-thermique { width: 48mm; max-width: none; max-height: none; image-rendering: pixelated; }
                         .center { text-align: center; }
                         .bold { font-weight: bold; }
                         .big { font-size: 14px; }
@@ -778,7 +791,7 @@ export default class extends Controller {
                         @page { size: 58mm auto; margin: 0; }
                     </style>
                 </head>
-                <body onload="window.print(); setTimeout(() => window.close(), 500);">${this.htmlRecuLocal(ticket)}</body>
+                <body onload="window.print(); setTimeout(() => window.close(), 500);">${this.htmlRecuLocal(ticket, true)}</body>
             </html>
         `;
 

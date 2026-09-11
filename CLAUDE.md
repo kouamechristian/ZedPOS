@@ -1731,6 +1731,12 @@ logo. C'est `App\Service\LogoThermique` qui le prépare, pour que l'agent n'ait
 - Hors ligne, `ticketLocal()` porte la **même** chaîne (passée à la page par
   `CaisseController`, clé `logo` des paramètres) ; le reçu à l'écran garde le logo
   en couleur (`logoEcran`).
+- **Le ticket imprimé hors ligne sans agent** (`imprimerTicketLocal()`) prend lui
+  aussi cette chaîne `data:`, affichée à 48 mm — un point d'image par point de la
+  tête. Il portait le logo en couleur, en `/uploads/…` : la fenêtre d'impression
+  est une page vierge que le Service Worker ne contrôle pas forcément, la requête
+  échouait hors ligne et `onerror` retirait le logo. Ne pas y remettre d'URL.
+  `testLeTicketImprimeHorsLigneNeVaPasChercherLeLogoSurLeReseau` le fige.
 
 > ⚠ **L'agent Node doit être mis à jour pour l'imprimer** — il n'est pas dans ce
 > dépôt. Tant qu'il ignore la clé, le ticket sort comme avant, sans logo. Avec
