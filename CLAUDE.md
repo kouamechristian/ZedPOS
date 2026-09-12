@@ -1053,7 +1053,13 @@ table que le ticket, par deux fonctions Twig (`App\Twig\BoutiqueExtension`) :
   du haut sous 1024 px, et onglet du navigateur). Hors ligne ils tiennent : le nom
   est dans la page gardée par le Service Worker, le logo sous `/uploads/` est servi
   « cache d'abord ». Sans logo, pastille « Z ». `LogoBoutiqueTest` le fige.
-- La connexion et l'installation gardent `ZedPOS` : ce sont des écrans du
+- **L'écran de code PIN (`/caisse/login`) porte lui aussi l'enseigne et le logo** :
+  c'est le premier écran de la caissière en ouvrant le comptoir, et il ouvre sur la
+  caisse qui affiche déjà l'enseigne — y lire le nom du logiciel était une rupture.
+  Sans logo, la pastille « Z », comme partout.
+- La **connexion par mot de passe** (`/login`) et l'**installation** gardent
+  `ZedPOS` : la première sert les comptes de gestion et le cabinet comptable, la
+  seconde s'affiche avant qu'aucun paramètre n'existe — ce sont des écrans du
   logiciel, pas de la vitrine.
 
 `ParametresBoutiqueTest` couvre le stockage et la reprise sur le ticket ;

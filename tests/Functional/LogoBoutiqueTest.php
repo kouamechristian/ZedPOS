@@ -658,6 +658,42 @@ class LogoBoutiqueTest extends WebTestCase
         $this->assertStringContainsString('Z', $identite->text());
     }
 
+    /**
+     * L'écran du code PIN est le premier que la caissière voit en ouvrant le
+     * comptoir, et il donne sur une caisse qui porte déjà l'enseigne : il porte donc
+     * la même identité, jamais le nom du logiciel.
+     */
+    public function testLEcranDuCodePinPorteLIdentiteDeLEtablissement(): void
+    {
+        $this->parametres()->enregistrer([
+            CleParametre::RAISON_SOCIALE->value => 'ETS KOUAME SARL',
+            CleParametre::ENSEIGNE->value => 'DELICES DU CAMPUS',
+        ]);
+        $nom = $this->logos()->enregistrer($this->televersement());
+        $this->parametres()->definirLogo($nom);
+
+        $crawler = $this->client->request('GET', '/caisse/login');
+
+        $this->assertResponseIsSuccessful();
+        $this->assertStringContainsString('DELICES DU CAMPUS', $crawler->filter('h1')->text());
+        $this->assertStringContainsString('DELICES DU CAMPUS', $crawler->filter('title')->text());
+        $this->assertStringNotContainsString('ETS KOUAME SARL', $crawler->filter('body')->text(), 'L\'enseigne prime, comme en tête de ticket.');
+        $this->assertStringNotContainsString('ZedPOS', $crawler->filter('body')->text(), 'Le nom du logiciel n\'a rien à faire sur l\'écran de la caissière.');
+        $this->assertSame('/uploads/boutique/'.$nom, $crawler->filter('img')->first()->attr('src'));
+        // L'identité s'ajoute au pavé, elle ne lui prend pas sa place.
+        $this->assertCount(10, $crawler->filter('button[data-chiffre]'));
+
+        $this->logos()->supprimer($nom);
+    }
+
+    public function testSansLogoLEcranDuCodePinGardeLaPastilleParDefaut(): void
+    {
+        $crawler = $this->client->request('GET', '/caisse/login');
+
+        $this->assertCount(0, $crawler->filter('img'));
+        $this->assertStringContainsString('Z', $crawler->filter('body')->text());
+    }
+
     private function ouvrirLaCaisse(): Crawler
     {
         static::getContainer()->get(SessionCaisseService::class)->ouvrir($this->caissier, 0);
