@@ -2378,7 +2378,7 @@ compare l'implémentation à cette description et signale les écarts.
 | Dettes des vendeurs : manquant imputé ou passé en perte, avances, remboursements, alerte à la dotation | ✅ | `/admin/vendeurs/{id}` |
 | Rapports des stands (par stand, par vendeur, caisse et stands, top produits, CSV) et suggestion de dotation | ✅ | `/admin/rapports-stands` |
 
-Tests : **487 tests PHPUnit** (`php bin/phpunit`) et **38 tests Node**
+Tests : **639 tests PHPUnit** (`php bin/phpunit`) et **57 tests Node**
 (`node --test "tests/js/*.test.js"`).
 
 ### Écarts par rapport au contexte métier — à traiter
