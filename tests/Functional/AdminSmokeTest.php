@@ -74,6 +74,7 @@ class AdminSmokeTest extends WebTestCase
         return [
             ['/admin'],
             ['/admin/ventes'],
+            ['/admin/ventes/rapport'],   // rapport de journée ventilé par famille
             ['/admin/articles'],
             ['/admin/stock'],          // matières premières (hydratation BIGINT)
             ['/admin/production'],     // fiches (hydratation BIGINT des lignes)

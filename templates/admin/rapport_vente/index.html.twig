@@ -1,0 +1,199 @@
+{% extends 'admin/base.html.twig' %}
+{% import 'admin/_macros.html.twig' as fmt %}
+{% import 'admin/_icones.html.twig' as ui %}
+
+{# Rapport de journée par caissière, ventilé par famille. Lecture seule.
+
+   La somme des familles est le **brut** ; le total du bas en retranche les
+   remises. Les deux figurent, sinon la page ne se relit pas : on additionnerait
+   les familles, on ne tomberait pas sur le total, et le rapport paraîtrait faux
+   alors qu'il ne l'est pas. #}
+
+{% block page_title %}Rapport des ventes{% endblock %}
+{% block page_sous_titre %}{{ jour|date('d/m/Y') }} · {{ rapport.libelleCaissier }}{% endblock %}
+
+{% block page_actions %}
+    <a href="{{ path('admin_ventes') }}" class="btn btn-fantome">{{ ui.icone('retour') }} Tickets</a>
+    {# `data-turbo="false"` : Turbo attend du HTML, le PDF ne descendrait pas. #}
+    <a href="{{ path('admin_ventes_rapport_pdf', {jour: jour|date('Y-m-d'), caissier: caissier ? caissier.id : ''}) }}"
+       target="_blank" data-turbo="false" class="btn btn-primaire">
+        {{ ui.icone('telecharger') }} Rapport PDF
+    </a>
+{% endblock %}
+
+{% block admin_content %}
+
+{# ---- Filtre : la journée et la caissière ---- #}
+<section class="carte apparition mb-4">
+    <div class="carte-corps">
+        <form method="get" action="{{ path('admin_ventes_rapport') }}" class="flex flex-wrap items-end gap-3"
+              data-controller="soumission-auto">
+            <label class="block">
+                <span class="etiquette">Journée</span>
+                <div class="champ-avec-icone">
+                    {{ ui.icone('calendrier') }}
+                    <input type="date" name="jour" value="{{ jour|date('Y-m-d') }}" class="champ w-auto"
+                           data-action="change->soumission-auto#soumettre">
+                </div>
+            </label>
+            <label class="block">
+                <span class="etiquette">Caissière</span>
+                <select name="caissier" class="champ w-auto" data-action="change->soumission-auto#soumettre">
+                    <option value="">Toutes les caissières</option>
+                    {% for personne in caissiers %}
+                        <option value="{{ personne.id }}" {% if caissier and personne.id == caissier.id %}selected{% endif %}>
+                            {{ personne.nom }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </label>
+            <button class="btn btn-secondaire">{{ ui.icone('filtre') }} Afficher</button>
+            <div class="ml-auto flex gap-2">
+                <a href="{{ path('admin_ventes_rapport', {jour: 'now'|date('Y-m-d'), caissier: caissier ? caissier.id : ''}) }}" class="btn btn-sm btn-fantome">Aujourd'hui</a>
+                <a href="{{ path('admin_ventes_rapport', {jour: '-1 day'|date('Y-m-d'), caissier: caissier ? caissier.id : ''}) }}" class="btn btn-sm btn-fantome">Hier</a>
+            </div>
+        </form>
+        {% if caissiers is empty %}
+            <p class="aide mt-2">Personne n'a encaissé ce jour-là.</p>
+        {% endif %}
+    </div>
+</section>
+
+{# ---- Ce qu'on lit en premier ---- #}
+<section class="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
+    {% set cartes = [
+        { titre: 'Total encaissé', valeur: fmt.fcfa(rapport.totalTtc),   icone: 'argent' },
+        { titre: 'Tickets',        valeur: rapport.tickets,              icone: 'ventes' },
+        { titre: 'Panier moyen',   valeur: fmt.fcfa(rapport.panierMoyen), icone: 'panier' },
+        { titre: 'Articles vendus', valeur: fmt.unites(rapport.quantite), icone: 'articles' },
+    ] %}
+    {% for carte in cartes %}
+        <article class="kpi apparition" style="--i: {{ loop.index }}">
+            <div class="kpi-tete">
+                <span class="kpi-libelle">{{ carte.titre }}</span>
+                <span class="kpi-icone">{{ ui.icone(carte.icone) }}</span>
+            </div>
+            <div class="kpi-valeur">{{ carte.valeur }}</div>
+        </article>
+    {% endfor %}
+</section>
+
+{% if rapport.annulations > 0 %}
+    {# Annoncé, jamais fondu dans les totaux : c'est ce qu'on vient vérifier ici. #}
+    <div class="alerte alerte-ambre apparition mb-4" role="status">
+        {{ ui.icone('info') }}
+        <p>
+            {{ rapport.annulations }} ticket{{ rapport.annulations > 1 ? 's' }} annulé{{ rapport.annulations > 1 ? 's' }}
+            ({{ fmt.fcfa(rapport.montantAnnule) }}) — exclu{{ rapport.annulations > 1 ? 's' }} de tous les montants ci-dessous.
+        </p>
+    </div>
+{% endif %}
+
+{% if rapport.estVide %}
+    <div class="carte apparition">
+        <div class="carte-corps cellule-vide">Aucune vente ce jour-là.</div>
+    </div>
+{% else %}
+
+{# ---- Le détail, famille par famille ---- #}
+{% for famille in rapport.familles %}
+    <section class="carte apparition mb-4" style="--i: {{ min(loop.index0, 8) }}">
+        <div class="carte-entete">
+            <h2 class="carte-titre">{{ famille.nom }}</h2>
+            <div class="flex items-baseline gap-4 text-sm">
+                <span class="tabular-nums text-stone-500">{{ fmt.unites(famille.quantite) }} article{{ famille.quantite > 1000 ? 's' }}</span>
+                <span class="text-base font-bold tabular-nums text-stone-900">{{ fmt.fcfa(famille.montant) }}</span>
+            </div>
+        </div>
+        <div class="defilement-x">
+            <table class="tableau">
+                <thead>
+                    <tr>
+                        <th>Article</th>
+                        <th class="num">Quantité</th>
+                        <th class="num">Prix unitaire</th>
+                        <th class="num">Montant</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for article in famille.articles %}
+                        <tr>
+                            <td class="cellule-principale">{{ article.nom }}</td>
+                            <td class="num tabular-nums">{{ fmt.unites(article.quantite) }}</td>
+                            {# Prix nul : l'article a été vendu à plusieurs prix dans
+                               la journée. En afficher un seul serait un mensonge. #}
+                            <td class="num cellule-douce">{{ article.prixUnitaire is null ? 'plusieurs' : fmt.fcfa(article.prixUnitaire) }}</td>
+                            <td class="num font-semibold tabular-nums">{{ fmt.fcfa(article.montant) }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+{% endfor %}
+
+{# ---- Le total, en bas de page ---- #}
+<section class="carte apparition">
+    <div class="carte-entete">
+        <h2 class="carte-titre">Total de la journée</h2>
+    </div>
+    <div class="defilement-x">
+        <table class="tableau">
+            <tbody>
+                {% for famille in rapport.familles %}
+                    <tr>
+                        <td class="cellule-douce">{{ famille.nom }}</td>
+                        <td class="num tabular-nums">{{ fmt.fcfa(famille.montant) }}</td>
+                    </tr>
+                {% endfor %}
+                <tr>
+                    <td class="cellule-principale">Total brut</td>
+                    <td class="num font-semibold tabular-nums">{{ fmt.fcfa(rapport.brutTtc) }}</td>
+                </tr>
+                {% if rapport.remises > 0 %}
+                    <tr>
+                        <td class="cellule-douce">Remises accordées</td>
+                        <td class="num tabular-nums text-amber-700">− {{ fmt.fcfa(rapport.remises) }}</td>
+                    </tr>
+                {% endif %}
+                <tr>
+                    <td class="cellule-principale text-lg">Total encaissé</td>
+                    <td class="num text-lg font-black tabular-nums">{{ fmt.fcfa(rapport.totalTtc) }}</td>
+                </tr>
+                <tr>
+                    <td class="cellule-douce">dont HT / TVA</td>
+                    <td class="num cellule-douce tabular-nums">{{ fmt.fcfa(rapport.totalHt) }} / {{ fmt.fcfa(rapport.totalTva) }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    {% if rapport.reglements is not empty %}
+        <div class="carte-corps">
+            <h3 class="etiquette">Par mode de règlement</h3>
+            <div class="defilement-x">
+                <table class="tableau">
+                    <tbody>
+                        {% for reglement in rapport.reglements %}
+                            <tr>
+                                <td class="cellule-douce">{{ reglement.mode }}</td>
+                                <td class="num cellule-douce tabular-nums">{{ reglement.tickets }} règlement{{ reglement.tickets > 1 ? 's' }}</td>
+                                <td class="num font-semibold tabular-nums">{{ fmt.fcfa(reglement.montant) }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {# Le règlement enregistré est la **somme tendue**, pas le total : sur un
+               paiement en espèces sans appoint, la ventilation dépasse donc le total
+               encaissé de la monnaie rendue. Le dire évite de chercher l'erreur. #}
+            <p class="aide mt-2">
+                Les règlements comprennent la monnaie rendue : leur somme dépasse le total encaissé
+                dès qu'un client a payé en espèces sans faire l'appoint.
+            </p>
+        </div>
+    {% endif %}
+</section>
+
+{% endif %}
+{% endblock %}

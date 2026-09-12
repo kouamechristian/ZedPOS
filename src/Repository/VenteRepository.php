@@ -3,8 +3,10 @@
 namespace App\Repository;
 
 use App\Entity\SessionCaisse;
+use App\Entity\Utilisateur;
 use App\Entity\Vente;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
+use Doctrine\ORM\Query\Expr\Join;
 use Doctrine\Persistence\ManagerRegistry;
 
 /**
@@ -95,6 +97,74 @@ class VenteRepository extends ServiceEntityRepository
             ->addOrderBy('v.id', 'DESC');
 
         return Pagination::depuis($qb, $page, self::PAR_PAGE);
+    }
+
+    /**
+     * Ventes d'une journée — toutes, ou celles d'une seule caissière —, **avec
+     * leurs lignes, leurs articles et la famille de chaque article**.
+     *
+     * Sert au rapport de journée ventilé par famille. La ventilation se fait sur
+     * les lignes : sans ces trois jointures anticipées, ventiler trois cents
+     * tickets déclencherait une requête par ligne pour lire l'article, puis une
+     * autre pour sa famille. Les règlements suivent, pour la même raison.
+     *
+     * Les ventes **annulées sont renvoyées** : c'est le rapport qui décide de les
+     * écarter des totaux, et il les compte à part — un rapport muet sur les
+     * annulations de la journée le serait sur ce qu'on vient précisément y
+     * vérifier.
+     *
+     * @return list<Vente>
+     */
+    public function duJourAvecLignes(\DateTimeImmutable $jour, ?Utilisateur $caissier = null): array
+    {
+        $debut = $jour->setTime(0, 0);
+
+        $qb = $this->createQueryBuilder('v')
+            ->join('v.sessionCaisse', 's')->addSelect('s')
+            ->join('s.utilisateur', 'u')->addSelect('u')
+            ->leftJoin('v.lignes', 'l')->addSelect('l')
+            ->leftJoin('l.article', 'a')->addSelect('a')
+            ->leftJoin('a.familleProduit', 'f')->addSelect('f')
+            ->leftJoin('v.reglements', 'r')->addSelect('r')
+            ->andWhere('v.createdAt >= :debut')->setParameter('debut', $debut)
+            ->andWhere('v.createdAt < :fin')->setParameter('fin', $debut->modify('+1 day'))
+            ->orderBy('v.createdAt', 'ASC')
+            ->addOrderBy('v.id', 'ASC');
+
+        if (null !== $caissier) {
+            $qb->andWhere('u = :caissier')->setParameter('caissier', $caissier);
+        }
+
+        return $qb->getQuery()->getResult();
+    }
+
+    /**
+     * Caissières ayant encaissé au moins un ticket dans la journée, par ordre
+     * alphabétique.
+     *
+     * Alimente le sélecteur du rapport : proposer toute l'équipe, y compris ceux
+     * qui n'étaient pas de service, reviendrait à proposer des rapports vides.
+     *
+     * @return list<Utilisateur>
+     */
+    public function caissiersDuJour(\DateTimeImmutable $jour): array
+    {
+        $debut = $jour->setTime(0, 0);
+
+        // La requête part de l'utilisateur et non de la vente : Doctrine refuse
+        // de sélectionner une entité jointe sans que sa propre racine soit dans
+        // le SELECT (« Cannot select entity through identification variables »).
+        return $this->getEntityManager()->createQueryBuilder()
+            ->select('u')
+            ->distinct()
+            ->from(Utilisateur::class, 'u')
+            ->join(SessionCaisse::class, 's', Join::WITH, 's.utilisateur = u')
+            ->join(Vente::class, 'v', Join::WITH, 'v.sessionCaisse = s')
+            ->andWhere('v.createdAt >= :debut')->setParameter('debut', $debut)
+            ->andWhere('v.createdAt < :fin')->setParameter('fin', $debut->modify('+1 day'))
+            ->orderBy('u.nom', 'ASC')
+            ->getQuery()
+            ->getResult();
     }
 
     /**

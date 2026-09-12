@@ -7,6 +7,14 @@
 {% block page_title %}Ventes récentes{% endblock %}
 {% block page_sous_titre %}Tous les tickets encaissés. Un lecteur de code-barres saisit le numéro directement dans la recherche.{% endblock %}
 
+{% block page_actions %}
+    {# Le rapport ouvre une page à part et non un frame : il porte ses propres
+       filtres (journée, caissière) et son PDF. #}
+    <a href="{{ path('admin_ventes_rapport') }}" class="btn btn-secondaire">
+        {{ ui.icone('document') }} Rapport de journée
+    </a>
+{% endblock %}
+
 {% block admin_content %}
 <turbo-frame id="liste-ventes" data-turbo-action="advance">
 

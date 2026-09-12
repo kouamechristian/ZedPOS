@@ -135,6 +135,18 @@ class ParametresBoutique
     }
 
     /**
+     * Logo encodé en `data:` URI, ou `null` s'il n'y en a pas.
+     *
+     * Pour les documents composés côté serveur — un PDF rendu par Dompdf — qui
+     * n'ont pas de navigateur pour aller chercher une URL. Le logo y voyage donc
+     * dans le document lui-même, comme sur le ticket imprimé hors ligne.
+     */
+    public function logoDataUri(): ?string
+    {
+        return $this->logos->dataUri($this->valeur(CleParametre::LOGO));
+    }
+
+    /**
      * Remplace le logo par le fichier déjà déposé, ou le retire si `null`.
      *
      * Le fichier précédent n'est effacé qu'**après** l'écriture du nouveau nom :

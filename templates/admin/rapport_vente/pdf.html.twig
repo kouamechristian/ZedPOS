@@ -1,0 +1,253 @@
+{# Rapport de journée en PDF, rendu côté serveur par Dompdf.
+
+   A4, noir et blanc, page autonome — comme la feuille d'inventaire, le bon de
+   sortie et la fiche de point. C'est un document qui se classe, se signe et se
+   transmet ; la couleur n'y ajouterait rien et coûterait une cartouche.
+
+   ⚠ **Dompdf ne connaît ni flexbox ni grid.** Toute la mise en page passe par des
+   tableaux et `display: inline-block`. Une mise en page en `flex` sortirait
+   empilée, sans erreur ni avertissement — c'est le piège de ce moteur.
+
+   ⚠ **Aucune ressource distante** : le logo arrive en `data:` URI depuis le
+   contrôleur. Une URL ne serait tout simplement pas chargée, et l'image
+   manquerait sans que rien ne le signale. #}
+{% import 'admin/_macros.html.twig' as fmt %}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Rapport des ventes du {{ rapport.jour|date('d/m/Y') }}</title>
+    <style>
+        /* DejaVu Sans : la police embarquée par Dompdf qui porte les accents.
+           Sans elle, « Pâté » sort « P?t? » sur un document qu'on classe. */
+        body { font-family: "DejaVu Sans", sans-serif; font-size: 9.5pt; color: #000; }
+
+        /* ⚠ Surtout **pas** de `* { margin: 0 }` ici : sous Dompdf, le sélecteur
+           universel atteint aussi la règle `@page` et remet ses marges à zéro. Le
+           document sort alors collé aux quatre bords de la feuille, sans erreur
+           ni avertissement. La remise à zéro est donc énumérée élément par
+           élément. */
+        body, h1, h2, h3, p, div, table, td, th { margin: 0; padding: 0; }
+
+        @page { size: A4 portrait; margin: 14mm 12mm 16mm 12mm; }
+
+        .entete { width: 100%; border-bottom: 1.5pt solid #000; padding-bottom: 3mm; margin-bottom: 4mm; }
+        .entete td { vertical-align: top; }
+        .entete img { max-height: 16mm; max-width: 34mm; }
+        .boutique { font-size: 13pt; font-weight: bold; }
+        h1 { font-size: 14pt; text-align: right; }
+        .sous-titre { text-align: right; font-size: 10pt; margin-top: 1mm; }
+
+        .bandeau { width: 100%; border-collapse: collapse; margin-bottom: 5mm; }
+        .bandeau td { border: 0.5pt solid #999; padding: 2mm 3mm; width: 25%; }
+        .bandeau span { display: block; font-size: 7.5pt; text-transform: uppercase; color: #444; }
+        .bandeau strong { font-size: 11pt; }
+
+        .avis { border: 0.75pt solid #000; padding: 2mm 3mm; margin-bottom: 4mm; font-size: 9pt; }
+
+        h2 {
+            font-size: 10.5pt;
+            margin: 4mm 0 1.5mm;
+            padding: 1.5mm 2mm;
+            background: #eee;
+            border-left: 2.5pt solid #000;
+        }
+        h2 .montant { float: right; }
+
+        table.detail { width: 100%; border-collapse: collapse; }
+        table.detail th, table.detail td { border-bottom: 0.4pt solid #bbb; padding: 1.6mm 2mm; text-align: left; }
+        table.detail th { font-size: 7.5pt; text-transform: uppercase; letter-spacing: .03em; border-bottom: 0.8pt solid #000; }
+        table.detail .droite { text-align: right; }
+        table.detail tr.total td { border-top: 0.8pt solid #000; border-bottom: none; font-weight: bold; }
+
+        .totaux { width: 88mm; margin-left: auto; margin-top: 6mm; border-collapse: collapse; }
+        .totaux td { padding: 1.6mm 2mm; border-bottom: 0.4pt solid #ccc; }
+        .totaux td.droite { text-align: right; }
+        .totaux tr.fort td { font-size: 12.5pt; font-weight: bold; border-top: 1.2pt solid #000; border-bottom: 1.2pt solid #000; }
+
+        .reglements { width: 100%; border-collapse: collapse; margin-top: 6mm; }
+        .reglements th, .reglements td { border-bottom: 0.4pt solid #bbb; padding: 1.6mm 2mm; text-align: left; }
+        .reglements th { font-size: 7.5pt; text-transform: uppercase; border-bottom: 0.8pt solid #000; }
+        .reglements .droite { text-align: right; }
+
+        .note { font-size: 8pt; color: #333; margin-top: 2mm; }
+        .signatures { width: 100%; margin-top: 14mm; }
+        .signatures td { width: 50%; border-top: 0.75pt solid #000; padding-top: 2mm; font-size: 9pt; }
+
+        /* Le pied se répète sur chaque page : Dompdf rend les éléments
+           `position: fixed` une fois par page.
+           ⚠ `counter(page)` seul : `counter(pages)` sort **0** sous Dompdf (le
+           total n'est connu qu'après coup), et « 1 / 0 » sur un document qu'on
+           classe fait douter du reste de la page. */
+        .pied {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            font-size: 7.5pt;
+            color: #444;
+            border-top: 0.4pt solid #999;
+            padding-top: 1.5mm;
+        }
+        .pied .page { float: right; }
+        .pied .page:after { content: "Page " counter(page); }
+
+        /* Une famille ne se coupe pas au milieu d'un en-tête, et un tableau
+           reprend ses colonnes en haut de page — sans quoi la seconde page d'une
+           journée chargée serait illisible. */
+        h2 { page-break-after: avoid; }
+        table.detail thead { display: table-header-group; }
+        tr { page-break-inside: avoid; }
+        .totaux, .signatures { page-break-inside: avoid; }
+    </style>
+</head>
+<body>
+
+<table class="entete">
+    <tr>
+        <td>
+            {% if logo %}<img src="{{ logo }}" alt="">{% endif %}
+            <div class="boutique">{{ boutique }}</div>
+        </td>
+        <td>
+            <h1>Rapport des ventes</h1>
+            <div class="sous-titre">
+                Journée du {{ rapport.jour|date('d/m/Y') }}<br>
+                {{ rapport.libelleCaissier }}
+            </div>
+        </td>
+    </tr>
+</table>
+
+<table class="bandeau">
+    <tr>
+        <td><span>Total encaissé</span><strong>{{ fmt.fcfa(rapport.totalTtc) }}</strong></td>
+        <td><span>Tickets</span><strong>{{ rapport.tickets }}</strong></td>
+        <td><span>Panier moyen</span><strong>{{ fmt.fcfa(rapport.panierMoyen) }}</strong></td>
+        <td><span>Articles vendus</span><strong>{{ fmt.unites(rapport.quantite) }}</strong></td>
+    </tr>
+</table>
+
+{% if rapport.annulations > 0 %}
+    {# Les annulations ne se fondent jamais dans les totaux, mais elles se disent :
+       c'est ce qu'on vient vérifier sur un rapport de fin de journée. #}
+    <div class="avis">
+        <strong>{{ rapport.annulations }} ticket{{ rapport.annulations > 1 ? 's' }} annulé{{ rapport.annulations > 1 ? 's' }}</strong>
+        pour {{ fmt.fcfa(rapport.montantAnnule) }} — exclu{{ rapport.annulations > 1 ? 's' }} de tous les montants de ce rapport.
+    </div>
+{% endif %}
+
+{% if rapport.estVide %}
+    <div class="avis">Aucune vente n'a été encaissée ce jour-là.</div>
+{% else %}
+
+    {% for famille in rapport.familles %}
+        <h2>{{ famille.nom }} <span class="montant">{{ fmt.fcfa(famille.montant) }}</span></h2>
+        <table class="detail">
+            <thead>
+                <tr>
+                    <th>Article</th>
+                    <th class="droite">Quantité</th>
+                    <th class="droite">Prix unitaire</th>
+                    <th class="droite">Montant</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for article in famille.articles %}
+                    <tr>
+                        <td>{{ article.nom }}</td>
+                        <td class="droite">{{ fmt.unites(article.quantite) }}</td>
+                        {# Prix nul : l'article a été vendu à plusieurs prix dans la
+                           journée. En imprimer un seul serait un mensonge sur papier. #}
+                        <td class="droite">{{ article.prixUnitaire is null ? 'plusieurs' : fmt.fcfa(article.prixUnitaire) }}</td>
+                        <td class="droite">{{ fmt.fcfa(article.montant) }}</td>
+                    </tr>
+                {% endfor %}
+                <tr class="total">
+                    <td>Total {{ famille.nom|lower }}</td>
+                    <td class="droite">{{ fmt.unites(famille.quantite) }}</td>
+                    <td></td>
+                    <td class="droite">{{ fmt.fcfa(famille.montant) }}</td>
+                </tr>
+            </tbody>
+        </table>
+    {% endfor %}
+
+    {# ---- Le total, en bas du document ----
+
+       Le brut est la somme des familles ; le total encaissé en retranche les
+       remises. Sans la ligne du milieu, on additionnerait les familles sans
+       retomber sur le total, et le document paraîtrait faux. #}
+    <table class="totaux">
+        {% for famille in rapport.familles %}
+            <tr>
+                <td>{{ famille.nom }}</td>
+                <td class="droite">{{ fmt.fcfa(famille.montant) }}</td>
+            </tr>
+        {% endfor %}
+        <tr>
+            <td><strong>Total brut</strong></td>
+            <td class="droite"><strong>{{ fmt.fcfa(rapport.brutTtc) }}</strong></td>
+        </tr>
+        {% if rapport.remises > 0 %}
+            <tr>
+                <td>Remises accordées</td>
+                <td class="droite">− {{ fmt.fcfa(rapport.remises) }}</td>
+            </tr>
+        {% endif %}
+        <tr class="fort">
+            <td>TOTAL ENCAISSÉ</td>
+            <td class="droite">{{ fmt.fcfa(rapport.totalTtc) }}</td>
+        </tr>
+        <tr>
+            <td>dont HT</td>
+            <td class="droite">{{ fmt.fcfa(rapport.totalHt) }}</td>
+        </tr>
+        <tr>
+            <td>dont TVA</td>
+            <td class="droite">{{ fmt.fcfa(rapport.totalTva) }}</td>
+        </tr>
+    </table>
+
+    {% if rapport.reglements is not empty %}
+        <table class="reglements">
+            <thead>
+                <tr>
+                    <th>Mode de règlement</th>
+                    <th class="droite">Règlements</th>
+                    <th class="droite">Montant</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for reglement in rapport.reglements %}
+                    <tr>
+                        <td>{{ reglement.mode }}</td>
+                        <td class="droite">{{ reglement.tickets }}</td>
+                        <td class="droite">{{ fmt.fcfa(reglement.montant) }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="note">
+            Les règlements sont enregistrés pour la somme tendue : leur total dépasse le total encaissé
+            de la monnaie rendue, dès qu'un client a payé en espèces sans faire l'appoint.
+        </div>
+    {% endif %}
+
+    <table class="signatures">
+        <tr>
+            <td>Caissière : ______________________</td>
+            <td>Gérante : ______________________</td>
+        </tr>
+    </table>
+
+{% endif %}
+
+<div class="pied">
+    <span class="page"></span>
+    {{ boutique }} — rapport des ventes du {{ rapport.jour|date('d/m/Y') }}
+    · édité le {{ edite_le|date('d/m/Y à H:i') }}{{ edite_par ? ' par ' ~ edite_par }}
+</div>
+
+</body>
+</html>

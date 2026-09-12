@@ -75,6 +75,30 @@ abstract class StockageImages
     }
 
     /**
+     * Image encodée en `data:` URI, ou `null` si elle n'existe pas.
+     *
+     * Pour les documents qui ne peuvent pas aller chercher un fichier : un PDF
+     * rendu côté serveur, une fenêtre d'impression hors ligne. Une URL y
+     * échouerait — sans erreur visible, l'image manquerait simplement.
+     */
+    public function dataUri(?string $image): ?string
+    {
+        $chemin = $this->fichier($image);
+        if (null === $chemin) {
+            return null;
+        }
+
+        $octets = @file_get_contents($chemin);
+        if (false === $octets) {
+            return null;
+        }
+
+        $type = array_search(strtolower(pathinfo($chemin, \PATHINFO_EXTENSION)), self::FORMATS, true);
+
+        return 'data:'.(false !== $type ? $type : 'image/png').';base64,'.base64_encode($octets);
+    }
+
+    /**
      * Enregistre une image téléversée et renvoie son nom de fichier.
      *
      * @throws \RuntimeException si le format n'est pas exploitable
