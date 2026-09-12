@@ -537,8 +537,13 @@ export default class extends Controller {
             numero: uuid.slice(0, 8).toUpperCase(),
             date,
             caissier: 'Caisse',
-            // Même format que TicketMateriel : PNG noir et blanc en URL `data:`, ou null.
+            // Mêmes clés que TicketMateriel, et pour la même raison : l'agent ne
+            // doit pas avoir à distinguer un ticket composé par le serveur d'un
+            // ticket composé ici. `logo` est le PNG noir et blanc en URL `data:`,
+            // `logoEscpos` la trame ESC/POS prête à pousser ; l'une ou l'autre est
+            // nulle sans logo, jamais absente.
             logo: this.parametresValue.logo || null,
+            logoEscpos: this.parametresValue.logoEscpos || null,
             lines: this.lignes.map((ligne) => ({
                 label: ligne.nom,
                 qty: String(ligne.quantite),

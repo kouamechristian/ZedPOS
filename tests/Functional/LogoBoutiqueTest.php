@@ -395,6 +395,38 @@ class LogoBoutiqueTest extends WebTestCase
         $this->logos()->supprimer($nom);
     }
 
+    /**
+     * Le ticket composé **hors ligne** part à l'agent avec les mêmes clés de logo
+     * que celui du serveur.
+     *
+     * Sans cela, un agent qui ne sait lire que `logoEscpos` aurait imprimé le logo
+     * toute la journée et l'aurait perdu à la première coupure — une régression
+     * qui ne se serait découverte qu'un jour de panne réseau, et qu'on aurait
+     * alors mise sur le compte de la panne.
+     */
+    public function testLeTicketHorsLignePorteLesDeuxFormesDuLogo(): void
+    {
+        $nom = $this->logoDessine([255, 255, 255], [60, 30, 10]);
+
+        $crawler = $this->ouvrirLaCaisse();
+        $parametres = json_decode((string) $crawler->filter('[data-ticket-parametres-value]')->attr('data-ticket-parametres-value'), true);
+
+        $this->assertStringStartsWith('data:image/png;base64,', $parametres['logo']);
+        $this->assertNotEmpty($parametres['logoEscpos']);
+        $this->assertSame(
+            "\x1D",
+            substr((string) base64_decode($parametres['logoEscpos'], true), 0, 1),
+            'La page porte bien une commande GS v 0, pas une image à décoder.',
+        );
+
+        // Et le ticket local les recopie toutes les deux dans la charge utile.
+        $source = (string) file_get_contents(\dirname(__DIR__, 2).'/assets/controllers/ticket_controller.js');
+        $this->assertStringContainsString('logo: this.parametresValue.logo || null,', $source);
+        $this->assertStringContainsString('logoEscpos: this.parametresValue.logoEscpos || null,', $source);
+
+        $this->logos()->supprimer($nom);
+    }
+
     // ------------------------------ L'identité reprise par les écrans de gestion
 
     /**
@@ -556,6 +588,98 @@ class LogoBoutiqueTest extends WebTestCase
         $this->assertNull(static::getContainer()->get(LogoThermique::class)->pourImpression());
 
         $this->logos()->supprimer($nom);
+    }
+
+    /**
+     * Le même logo, en commande ESC/POS `GS v 0` — la forme que la tête comprend
+     * sans qu'aucune bibliothèque n'ait rien à décoder.
+     *
+     * L'octet de tête et les deux dimensions sont dépliés à la main depuis la
+     * spécification : une trame fausse s'imprime sans erreur, et c'est le rouleau
+     * de papier, au comptoir, qui le dit — avec un pavé noir ou trois mètres de
+     * bruit.
+     */
+    public function testLeTicketMaterielPorteAussiLeLogoEnTrameEscPos(): void
+    {
+        $nom = $this->logoDessine([255, 255, 255], [60, 30, 10]);
+
+        $uuid = $this->encaisser();
+        $this->client->request('GET', '/caisse/ticket/'.$uuid.'/materiel');
+        $this->assertResponseIsSuccessful();
+
+        $trame = json_decode($this->client->getResponse()->getContent(), true)['ticket']['logoEscpos'];
+        $this->assertIsString($trame);
+
+        $octets = base64_decode($trame, true);
+        $this->assertNotFalse($octets, 'La trame voyage en base64 : du JSON ne transporte pas d\'octets bruts.');
+
+        // GS v 0 m : 0x1D « v » « 0 », puis m = 0 (ni double largeur ni double hauteur).
+        $this->assertSame("\x1D", $octets[0]);
+        $this->assertSame('v', $octets[1]);
+        $this->assertSame('0', $octets[2]);
+        $this->assertSame("\x00", $octets[3]);
+
+        // xL xH : largeur en **octets** par ligne, poids faible d'abord. 384
+        // points de tête font 48 octets — et la tête n'en imprime pas un de plus.
+        $largeur = \ord($octets[4]) + (\ord($octets[5]) << 8);
+        $this->assertSame(48, $largeur);
+
+        // yL yH : hauteur en lignes de points. Même boîte que le ticket HTML.
+        $hauteur = \ord($octets[6]) + (\ord($octets[7]) << 8);
+        $this->assertSame(128, $hauteur);
+
+        // 8 octets d'en-tête + la trame + le saut de ligne qui referme la commande.
+        $this->assertSame(8 + $largeur * $hauteur + 1, \strlen($octets), 'La trame doit faire exactement largeur × hauteur.');
+        $this->assertSame("\n", substr($octets, -1), 'Sans ce saut de ligne, l\'en-tête du ticket se collerait au bas du logo.');
+
+        $this->logos()->supprimer($nom);
+    }
+
+    /**
+     * Les deux formes sortent de la même conversion : elles doivent allumer
+     * exactement les mêmes points.
+     *
+     * Sans ce test, elles pourraient dériver l'une de l'autre sans que rien ne le
+     * signale — et le ticket ne dirait plus la même chose selon l'agent installé
+     * sur le poste.
+     */
+    public function testLaTrameEscPosEtLePngAllumentLesMemesPoints(): void
+    {
+        $nom = $this->logoDessine([254, 189, 89], [60, 30, 10]);
+
+        $thermique = static::getContainer()->get(LogoThermique::class);
+        $image = $this->decoder((string) $thermique->pourImpression());
+        $octets = (string) base64_decode((string) $thermique->pourEscPos(), true);
+
+        $largeurOctets = \ord($octets[4]);
+        $ecarts = 0;
+
+        for ($y = 0; $y < imagesy($image); ++$y) {
+            for ($x = 0; $x < imagesx($image); ++$x) {
+                $couleurs = imagecolorsforindex($image, imagecolorat($image, $x, $y));
+                $noirDansLePng = $couleurs['red'] < 128;
+                // Le point le plus à gauche occupe le bit de poids fort.
+                $bit = (\ord($octets[8 + $y * $largeurOctets + ($x >> 3)]) >> (7 - ($x % 8))) & 1;
+
+                $ecarts += $noirDansLePng === (1 === $bit) ? 0 : 1;
+            }
+        }
+
+        $this->assertSame(0, $ecarts, 'Le PNG et la trame doivent représenter le même dessin, au point près.');
+
+        $this->logos()->supprimer($nom);
+    }
+
+    /** Sans logo, les deux clés sont là et valent `null` : l'agent n'a rien à tester. */
+    public function testSansLogoLaTrameEscPosEstNulleElleAussi(): void
+    {
+        $uuid = $this->encaisser();
+        $this->client->request('GET', '/caisse/ticket/'.$uuid.'/materiel');
+
+        $ticket = json_decode($this->client->getResponse()->getContent(), true)['ticket'];
+        $this->assertArrayHasKey('logoEscpos', $ticket);
+        $this->assertNull($ticket['logoEscpos']);
+        $this->assertNull(static::getContainer()->get(LogoThermique::class)->pourEscPos());
     }
 
     /**

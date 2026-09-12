@@ -7,7 +7,8 @@ située à **Abengourou (Côte d'Ivoire)**.
 - **Langue** : français (interface, entités, code métier).
 - **Fuseau horaire** : `Africa/Abidjan`.
 - **Stack** : Symfony 7.4 (LTS), PHP 8.2, MariaDB, Twig, Doctrine ORM, Stimulus,
-  Tailwind CSS via AssetMapper.
+  Tailwind CSS via AssetMapper. Dompdf pour les documents PDF rendus côté serveur
+  (voir « Rapport de journée par caissière »).
 
 ---
 
@@ -735,6 +736,91 @@ les noms sont condensés) et interdit la mise en cache de `sw.js`.
   badge rouge si la marge passe sous le seuil (`app.seuil_marge_bp`, défaut 6000 = 60 %).
   Ces informations sont **strictement réservées à `ROLE_GERANT`** (jamais un caissier) :
   page sous `access_control ^/admin` + garde `is_granted('ROLE_GERANT')` dans le template.
+
+### Rapport de journée par caissière (`/admin/ventes/rapport`)
+
+Bouton **« Rapport de journée »** sur `/admin/ventes`. La gérante choisit une
+**journée** et une **caissière** (ou toute l'équipe), relit ce qui est sorti du
+comptoir **rangé par famille**, et rapproche le total du bas de page des espèces
+en tiroir. Le **PDF** est ce qui reste au classeur ou part à la dirigeante.
+
+**Lecture seule** : deux routes GET (`RapportVenteController`), et il ne doit
+jamais en être ajouté d'écriture — un rapport relit ce que la caisse a produit,
+il ne le corrige pas. Même permission que la liste des tickets
+(`Permission::VOIR_TOUTES_VENTES`) : le caissier reste exclu, écran **et** PDF.
+
+**L'écran et le PDF consomment le même `VentesDuJour`.** Un document qu'on
+imprime et qui ne correspond pas à l'écran fait perdre confiance dans les deux ;
+c'est la règle de l'espace comptable, pour la même raison. Le calcul vit dans
+`App\Service\Rapport\RapportVentesJournee` et n'est écrit qu'une fois.
+
+**Trois totaux, et il faut les trois pour que la page se relise.**
+
+| Total | Ce qu'il vaut |
+|---|---|
+| Brut | la somme des lignes, donc **la somme des familles** |
+| Remises | ce qui a été accordé sur les tickets |
+| Total encaissé | `brut − remises`, c'est-à-dire `Σ vente.totalTtc` |
+
+Sans la ligne de remise, on additionnerait les familles sans retomber sur le
+total du bas, et le rapport **paraîtrait faux alors qu'il ne le serait pas**.
+Même discipline que les exports SYSCOHADA : les colonnes de la vente font foi,
+les lignes ne servent qu'à ventiler.
+
+- **Les ventes annulées sont exclues de tous les montants** — comme partout
+  ailleurs — mais **comptées et annoncées en tête**. Un rapport de fin de journée
+  muet sur les annulations le serait sur ce qu'on vient précisément y vérifier.
+- **Les familles sont rangées dans l'ordre de la caisse** (`position`), les
+  articles sans famille en dernier. C'est l'ordre que la gérante a sous les yeux
+  tous les jours, et il ne bouge pas : deux journées se comparent ligne à ligne.
+  À l'intérieur d'une famille, le plus vendu d'abord.
+- **Un article vendu à deux prix dans la journée n'affiche plus de prix
+  unitaire** mais « plusieurs » — en choisir un serait un mensonge, et sur le PDF
+  un mensonge imprimé.
+- **La ventilation par règlement dépasse le total encaissé** dès qu'un client a
+  payé en espèces sans faire l'appoint : le règlement enregistré est la **somme
+  tendue**, pas le total (voir « Interface de caisse tactile »). C'est écrit sous
+  le tableau, sinon on cherche l'erreur.
+- Le sélecteur **ne propose que les caissières ayant encaissé ce jour-là** :
+  proposer toute l'équipe reviendrait à proposer des rapports vides. Celle qui
+  est retenue y figure toujours, même sans vente, sinon le filtre disparaîtrait
+  de l'écran en se croyant appliqué.
+- Une **date illisible retombe sur aujourd'hui** et un **identifiant de caissière
+  inconnu** sur toute l'équipe : un lien périmé n'immobilise pas un écran de
+  gestion, même parti pris que la pagination.
+- Le nom du fichier porte la journée et la caissière
+  (`ventes_2026-09-12_Fatou-Traoré.pdf`) : un dossier de fins de journée se
+  classe sinon sur douze fichiers appelés « rapport.pdf ».
+
+**Le PDF est rendu côté serveur par Dompdf** (`App\Service\GenerateurPdf`, seul
+endroit du projet où il est instancié), et non par la fenêtre d'impression du
+navigateur comme la feuille d'inventaire ou la fiche de point : c'est un fichier
+qu'on envoie, pas seulement une page qu'on imprime. Trois précautions, toutes
+dans ce service :
+
+- **`DejaVu Sans` par défaut** — la police embarquée par Dompdf qui porte les
+  accents. Avec la police par défaut, « Pâté » sort « P?t? » sur un document
+  qu'on classe, et sans le moindre avertissement.
+- **Aucune ressource distante** (`isRemoteEnabled` à faux) : un PDF doit sortir
+  quand Internet est coupé, comme le reste du logiciel. Le logo voyage donc en
+  `data:` URI — `ParametresBoutique::logoDataUri()`, au-dessus de
+  `StockageImages::dataUri()`.
+- **PHP désactivé dans le gabarit** : le HTML rendu contient des libellés
+  d'articles saisis à l'écran, rien de ce qui vient de la base ne doit pouvoir
+  s'exécuter.
+
+> ⚠ **Dompdf ne connaît ni flexbox ni grid.** `templates/admin/rapport_vente/pdf.html.twig`
+> est mis en page **en tableaux**, comme les autres documents A4 du projet.
+> Une mise en page en `flex` sortirait empilée, **sans erreur ni avertissement** —
+> c'est le piège de ce moteur. Le pied de page et sa numérotation tiennent dans un
+> élément `position: fixed` avec `counter(page)`, que Dompdf rend une fois par page.
+
+Le lien vers le PDF porte `data-turbo="false"` : Turbo attend du HTML, le fichier
+ne descendrait pas.
+
+Couverture : `RapportVentesTest` (somme des familles = total, remises, ticket
+annulé exclu mais annoncé, filtre par caissière, prix multiple, date illisible,
+sortie PDF, caissier refusé), plus `/admin/ventes/rapport` dans `AdminSmokeTest`.
 
 ### Import du catalogue (`/admin/articles/importer`)
 
@@ -2171,9 +2257,13 @@ logo. C'est `App\Service\LogoThermique` qui le prépare, pour que l'agent n'ait
   logo change de nom, le cache ne sert jamais l'ancien. **Incrémenter `VERSION`**
   si la conversion change.
 - Un logo illisible ou uniforme donne `null` : **le ticket sort toujours**.
-- Hors ligne, `ticketLocal()` porte la **même** chaîne (passée à la page par
-  `CaisseController`, clé `logo` des paramètres) ; le reçu à l'écran garde le logo
-  en couleur (`logoEcran`).
+- Hors ligne, `ticketLocal()` porte les **mêmes** chaînes (passées à la page par
+  `CaisseController`, clés `logo` et `logoEscpos` des paramètres) ; le reçu à
+  l'écran garde le logo en couleur (`logoEcran`). Les deux formes, et pas une :
+  un agent qui ne saurait lire que la trame ESC/POS aurait imprimé le logo toute
+  la journée et l'aurait perdu à la première coupure — une régression qu'on aurait
+  mise sur le compte de la panne.
+  `testLeTicketHorsLignePorteLesDeuxFormesDuLogo` le fige.
 - **Le ticket imprimé hors ligne sans agent** (`imprimerTicketLocal()`) prend lui
   aussi cette chaîne `data:`, affichée à 48 mm — un point d'image par point de la
   tête. Il portait le logo en couleur, en `/uploads/…` : la fenêtre d'impression
@@ -2188,13 +2278,32 @@ logo. C'est `App\Service\LogoThermique` qui le prépare, pour que l'agent n'ait
   Limite : une vente **déjà transmise**, réimprimée après une coupure, n'a plus de
   ticket local — elle attend le retour du réseau.
 
-> ⚠ **L'agent Node doit être mis à jour pour l'imprimer** — il n'est pas dans ce
-> dépôt. Tant qu'il ignore la clé, le ticket sort comme avant, sans logo. Avec
-> `node-thermal-printer`, par exemple :
-> `printer.printImageBuffer(Buffer.from(logo.split(',')[1], 'base64'))` ; sans
-> bibliothèque d'image, décoder le PNG et l'envoyer en trame `GS v 0`. L'image
-> fait déjà la largeur de la tête : **ne pas la redimensionner ni la recentrer**.
-> `LogoBoutiqueTest` fige le format.
+**Le logo voyage sous deux formes, une seule conversion.** `LogoThermique` calcule
+le dessin en noir et blanc une fois, et l'emballe de deux façons — mises en cache
+ensemble, donc jamais divergentes :
+
+| Clé de `/print` | Format | Pour l'agent qui… |
+|---|---|---|
+| `logo` | `data:image/png;base64,…` | sait déjà imprimer une image |
+| `logoEscpos` | commande `GS v 0` complète, en base64 | n'a **aucune** bibliothèque d'image : il écrit les octets sur la tête |
+
+`logoEscpos` existe parce que `logo` demandait à l'agent de décoder un PNG — une
+dépendance qu'un pont d'impression de deux cents lignes n'a pas, et une dépendance
+qu'on n'ajoute pas se traduit par un ticket sans logo, tous les jours. `GS v 0` est
+ce que la tête comprend nativement : plus rien à calculer, à redimensionner ni à
+centrer. L'intégration tient alors en une ligne :
+`printer.raw(Buffer.from(payload.logoEscpos, 'base64'))`.
+
+> ⚠ **C'est toujours à l'agent d'appeler cette clé** — il n'est pas dans ce dépôt,
+> et tant qu'il l'ignore le ticket sort sans logo, sans que rien ne le signale
+> côté application. Le contrat complet des quatre routes et les deux extraits à
+> recopier sont dans **`docs/AGENT-MATERIEL.md`**. L'image fait déjà la largeur de
+> la tête : **ne pas la redimensionner ni la recentrer**.
+> `LogoBoutiqueTest` fige les deux formats, et surtout
+> `testLaTrameEscPosEtLePngAllumentLesMemesPoints` — qui compare les deux point
+> par point, parce qu'une trame fausse s'imprime sans erreur et que c'est le
+> rouleau, au comptoir, qui le dit.
+
 **Le tiroir s'ouvre à l'appui sur « Encaisser », pas à l'impression.**
 `ticket_controller.encaisser()` appelle `pos.drawer()` (`POST /drawer`) dès que la
 vente est durablement en file, **sans `await`** : la caissière va prendre l'argent,
@@ -2378,13 +2487,14 @@ compare l'implémentation à cette description et signale les écarts.
 | Inventaire (feuille, comptage, validation) | ✅ | `/admin/inventaires` |
 | Paramètres de l'établissement, logo compris | ✅ | `/admin/parametres` |
 | Import du catalogue en masse (nom, prix) | ✅ | `/admin/articles/importer` |
+| Rapport de journée par caissière, ventilé par famille, en PDF | ✅ | `/admin/ventes/rapport` |
 | Stock par emplacement (dépôt, stands) | ✅ | `StockManager` |
 | Revendeurs : stands, vendeurs, bons de dotation, bon de sortie imprimable | ✅ | `/admin/dotations`, `/admin/stands`, `/admin/vendeurs` |
 | Point des stands : arrêté de période, retours, écart, fiche imprimable | ✅ | `/admin/points` |
 | Dettes des vendeurs : manquant imputé ou passé en perte, avances, remboursements, alerte à la dotation | ✅ | `/admin/vendeurs/{id}` |
 | Rapports des stands (par stand, par vendeur, caisse et stands, top produits, CSV) et suggestion de dotation | ✅ | `/admin/rapports-stands` |
 
-Tests : **639 tests PHPUnit** (`php bin/phpunit`) et **57 tests Node**
+Tests : **652 tests PHPUnit** (`php bin/phpunit`) et **57 tests Node**
 (`node --test "tests/js/*.test.js"`).
 
 ### Écarts par rapport au contexte métier — à traiter
@@ -2419,9 +2529,12 @@ Classés par importance.
    base64 (et l'application reprend la main sur la mise en page au caractère
    près), soit `ImpressionService` est retiré. En attendant, deux mises en page
    thermiques coexistent et **doivent être modifiées ensemble**.
-   Le **logo est désormais dans `/print`** (clé `logo`, PNG 384 points noir et
-   blanc — voir « Matériel de caisse ») ; il reste à l'agent de l'imprimer. Il ne
-   sort toujours pas en ESC/POS, qui n'envoie que du texte (`GS v 0` à écrire).
+   Le **logo est dans `/print`** sous deux formes prêtes à imprimer — `logo`
+   (PNG 384 points) et `logoEscpos` (trame `GS v 0` complète, rien à décoder),
+   voir « Matériel de caisse » et `docs/AGENT-MATERIEL.md` ; il reste à l'agent
+   de les appeler. Il ne sort en revanche **toujours pas de `ImpressionService`**,
+   qui n'envoie que du texte : c'est la seconde mise en page thermique, celle qui
+   n'a pas de consommateur.
 
 4. **Facture normalisée (RNE / DGI) non implémentée.**
    Le ticket porte désormais un code-barres, mais il encode le **numéro interne**
@@ -2479,4 +2592,5 @@ Classés par importance.
 | `docs/GUIDE-GERANT.md` | Le gérant — stock, pertes, rapports |
 | `docs/GUIDE-COMPTABLE.md` | Le comptable — exports SYSCOHADA, contrôles, plan de comptes |
 | `docs/DEPLOIEMENT.md` | Mise en production sur un VPS — prérequis, `.env.local`, HTTPS, sauvegardes |
+| `docs/AGENT-MATERIEL.md` | Qui maintient l'agent de caisse — routes, charge utile `/print`, logo |
 | `DEMO.md` | Démonstration client en 10 minutes |

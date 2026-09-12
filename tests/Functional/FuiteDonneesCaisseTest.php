@@ -82,9 +82,18 @@ class FuiteDonneesCaisseTest extends WebTestCase
 
     /**
      * Recherche insensible à la casse d'un terme de gestion dans une charge utile.
+     *
+     * **Le base64 des logos en est retiré d'abord.** `logo` et `logoEscpos` sont
+     * des images — l'une en PNG, l'autre en trame ESC/POS — et une image ne
+     * révèle aucune donnée de gestion : les fouiller ne teste rien. Mais leur
+     * alphabet contient toutes les lettres, et la recherche est insensible à la
+     * casse : sur les ~8 000 caractères de la trame, un « cOuT » ou un « Marge »
+     * finit par sortir du tirage, et ce test échouerait un jour sur un logo
+     * téléversé, pour une raison parfaitement incompréhensible à qui le lirait.
      */
     private function assertAucunTermeSensible(string $charge, string $contexte): void
     {
+        $charge = (string) preg_replace('/"logo(?:Escpos)?":"[^"]*"/', '"logo":""', $charge);
         $normalise = mb_strtolower($charge);
 
         foreach (self::TERMES_INTERDITS as $terme) {
@@ -149,7 +158,7 @@ class FuiteDonneesCaisseTest extends WebTestCase
         // par l'agent, et un champ ajouté par mégarde partirait vers un service
         // qui tourne hors de l'application.
         $this->assertSame(
-            ['logo', 'header', 'lines', 'total', 'paid', 'change', 'footer', 'openDrawer'],
+            ['logo', 'logoEscpos', 'header', 'lines', 'total', 'paid', 'change', 'footer', 'openDrawer'],
             array_keys($donnees['ticket']),
             'Le ticket matériel expose exactement les clés attendues par /print.',
         );

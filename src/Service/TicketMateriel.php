@@ -9,8 +9,8 @@ use App\Enum\ModeReglement;
  * Traduit une vente en charge utile pour la route `/print` de l'agent matériel
  * local (voir `assets/js/pos-agent.js`).
  *
- * Le format attendu par l'agent est volontairement plat — `logo`, `header[]`,
- * `lines[]`, `total`, `paid`, `change`, `footer[]`, `openDrawer` — et il n'est pas celui du
+ * Le format attendu par l'agent est volontairement plat — `logo`, `logoEscpos`,
+ * `header[]`, `lines[]`, `total`, `paid`, `change`, `footer[]`, `openDrawer` — et il n'est pas celui du
  * ticket 58 mm rendu en HTML. Ce service est le seul point de traduction entre
  * les deux : il part du {@see TicketData} produit par {@see TicketBuilder}, donc
  * de la même source que la page imprimable et que la sortie ESC/POS. Ce que
@@ -48,6 +48,19 @@ class TicketMateriel
             // de la clé. Format : `data:image/png;base64,…`, PNG noir et blanc de
             // 384 points de large, logo déjà centré — voir LogoThermique.
             'logo' => $this->logo->pourImpression(),
+            // Le **même** logo, déjà en commande ESC/POS `GS v 0` (base64).
+            //
+            // Les deux coexistent parce que les agents ne se ressemblent pas :
+            // celui qui embarque une bibliothèque d'image prend `logo` et
+            // l'imprime ; celui qui n'a rien — le cas d'un pont d'impression de
+            // deux cents lignes — écrit `logoEscpos` tel quel sur la tête, avant
+            // l'en-tête. Décoder un PNG était justement ce qui empêchait le logo
+            // de sortir : c'est une dépendance, et une dépendance qu'on n'ajoute
+            // pas se traduit par un ticket sans logo, tous les jours.
+            //
+            // Toujours présente, `null` sans logo — comme `logo`, l'agent n'a pas
+            // à tester l'existence de la clé.
+            'logoEscpos' => $this->logo->pourEscPos(),
             'header' => $this->entete($ticket),
             'lines' => $this->lignes($ticket),
             'total' => $this->fcfa($ticket->totalTtc),

@@ -35,9 +35,19 @@ use Symfony\Contracts\Cache\CacheInterface;
  * après seuillage — logo clair sur fond sombre —, l'image est inversée : sans
  * cela, la tête imprimerait un pavé noir plein à chaque vente.
  *
- * Livré en `data:image/png;base64,…` : une seule chaîne, qui voyage dans le JSON
- * de `/print`, se range en IndexedDB avec le ticket hors ligne et s'affiche aussi
- * bien dans un `<img>`.
+ * **Deux sorties, une seule conversion.** Le même dessin en noir et blanc sort
+ * sous deux formes, calculées ensemble et mises en cache ensemble — deux
+ * conversions séparées finiraient par diverger d'un point :
+ *
+ * | Méthode | Format | Pour |
+ * |---|---|---|
+ * | {@see self::pourImpression()} | `data:image/png;base64,…` | l'agent qui sait imprimer une image, le ticket hors ligne, un `<img>` |
+ * | {@see self::pourEscPos()} | trame `GS v 0` en base64 | l'agent qui n'a **aucune** bibliothèque d'image : il pousse les octets tels quels vers la tête |
+ *
+ * La seconde existe parce que la première demandait à l'agent de décoder un PNG,
+ * ce qui suppose une dépendance qu'un pont d'impression de deux cents lignes n'a
+ * pas. `GS v 0` est ce que la tête comprend nativement : l'agent n'a plus rien à
+ * calculer, plus rien à redimensionner, plus rien à centrer — il écrit.
  *
  * **Un logo ne doit jamais empêcher un ticket de sortir** : fichier disparu,
  * format illisible ou image uniforme donnent `null`, et l'agent imprime le
@@ -52,8 +62,18 @@ class LogoThermique
     public const LARGEUR_MAX = 352;
     public const HAUTEUR_MAX = 128;
 
+    /**
+     * Octets de la commande ESC/POS `GS v 0`, nommés plutôt que semés dans une
+     * concaténation : à l'endroit où la commande se construit, on lit `GS` `v`
+     * `0` — c'est-à-dire ce que dit la spécification. Une faute de frappe sur ces
+     * octets ne se verrait qu'au comptoir, sur du papier déjà sorti.
+     */
+    private const GS = "\x1D";                 // Group Separator, préfixe de la commande
+    private const TAILLE_NORMALE = "\x30\x00"; // « 0 », puis m = 0 : ni doublé en largeur, ni en hauteur
+    private const SAUT_DE_LIGNE = "\x0A";
+
     /** À incrémenter si la conversion change : les images en cache sont alors recalculées. */
-    private const VERSION = 2;
+    private const VERSION = 3;
 
     public function __construct(
         private readonly ParametresBoutique $parametres,
@@ -65,6 +85,31 @@ class LogoThermique
     /** Le logo en PNG noir et blanc, sous forme d'URL `data:`, ou `null`. */
     public function pourImpression(): ?string
     {
+        return $this->converti()['png'] ?? null;
+    }
+
+    /**
+     * Le même logo en **trame ESC/POS `GS v 0`**, encodée en base64, ou `null`.
+     *
+     * L'agent n'a qu'à écrire ces octets sur la tête, avant l'en-tête du ticket :
+     * la commande porte déjà ses dimensions, le dessin fait la largeur exacte de
+     * la tête et il est centré. Aucun décodage d'image, aucune mise à l'échelle,
+     * donc aucune occasion de se tromper.
+     */
+    public function pourEscPos(): ?string
+    {
+        return $this->converti()['escpos'] ?? null;
+    }
+
+    /**
+     * Le logo converti, ou `null`. Les deux formes sont calculées et mises en
+     * cache **ensemble** : séparées, elles finiraient par ne plus représenter le
+     * même dessin, et le ticket papier ne dirait plus la même chose selon l'agent.
+     *
+     * @return array{png: string, escpos: string}|null
+     */
+    private function converti(): ?array
+    {
         $fichier = $this->logos->fichier($this->parametres->valeur(CleParametre::LOGO));
         if (null === $fichier) {
             return null;
@@ -75,13 +120,14 @@ class LogoThermique
         $cle = 'logo_thermique_'.hash('xxh128', $fichier.'|'.filemtime($fichier).'|'.self::VERSION);
 
         try {
-            return $this->cache->get($cle, fn (): ?string => $this->convertir($fichier));
+            return $this->cache->get($cle, fn (): ?array => $this->convertir($fichier));
         } catch (\RuntimeException) {
             return null;
         }
     }
 
-    private function convertir(string $fichier): ?string
+    /** @return array{png: string, escpos: string}|null */
+    private function convertir(string $fichier): ?array
     {
         $source = @imagecreatefromstring((string) file_get_contents($fichier));
         if (false === $source) {
@@ -260,23 +306,44 @@ class LogoThermique
         return $droite < 0 ? null : [$gauche, $haut, $droite - $gauche + 1, $bas - $haut + 1];
     }
 
-    /** @param list<int> $luminance */
-    private function encoder(array $luminance, int $largeur, int $hauteur, int $seuil, bool $inverse): ?string
+    /**
+     * Assemble le dessin dans la largeur de la tête et en sort les deux formes.
+     *
+     * Une seule boucle allume le point dans l'image GD **et** dans la trame
+     * ESC/POS : c'est ce qui garantit que le PNG et la trame représentent le même
+     * dessin, au point près.
+     *
+     * @param list<int> $luminance
+     *
+     * @return array{png: string, escpos: string}|null
+     */
+    private function encoder(array $luminance, int $largeur, int $hauteur, int $seuil, bool $inverse): ?array
     {
         $image = imagecreate(self::LARGEUR_TETE, $hauteur);
         // Première couleur allouée = fond de l'image : le blanc, donc.
         imagecolorallocate($image, 255, 255, 255);
         $noir = imagecolorallocate($image, 0, 0, 0);
 
+        // Trame ESC/POS : un bit par point, huit points par octet, le point le
+        // plus à gauche dans le bit de poids fort. 384 points font donc 48 octets
+        // par ligne, sans reste — la largeur de la tête est un multiple de 8.
+        $octetsParLigne = intdiv(self::LARGEUR_TETE, 8);
+        $trame = array_fill(0, $octetsParLigne * $hauteur, 0);
+
         // Centrage dans la largeur de la tête : fait ici une fois pour toutes.
         $decalage = intdiv(self::LARGEUR_TETE - $largeur, 2);
         $points = 0;
 
         foreach ($luminance as $i => $valeur) {
-            if (($valeur <= $seuil) !== $inverse) {
-                imagesetpixel($image, $decalage + $i % $largeur, intdiv($i, $largeur), $noir);
-                ++$points;
+            if (($valeur <= $seuil) === $inverse) {
+                continue;
             }
+
+            $x = $decalage + $i % $largeur;
+            $y = intdiv($i, $largeur);
+            imagesetpixel($image, $x, $y, $noir);
+            $trame[$y * $octetsParLigne + ($x >> 3)] |= 0x80 >> ($x & 7);
+            ++$points;
         }
 
         if (0 === $points) {
@@ -290,6 +357,31 @@ class LogoThermique
         $png = (string) ob_get_clean();
         imagedestroy($image);
 
-        return 'data:image/png;base64,'.base64_encode($png);
+        return [
+            'png' => 'data:image/png;base64,'.base64_encode($png),
+            'escpos' => base64_encode($this->rasterEscPos($trame, $octetsParLigne, $hauteur)),
+        ];
+    }
+
+    /**
+     * Commande ESC/POS « imprimer une image en mode point » — `GS v 0`.
+     *
+     * `GS` `v` `0` `m` `xL` `xH` `yL` `yH` puis les octets de la trame :
+     * `m = 0` (taille normale, ni doublée en largeur ni en hauteur), `x` en
+     * **octets** par ligne et `y` en **lignes de points**, tous deux sur deux
+     * octets, poids faible d'abord.
+     *
+     * Un saut de ligne ferme la commande : sans lui, la première ligne de
+     * l'en-tête viendrait se coller au bas du logo.
+     *
+     * @param list<int> $trame
+     */
+    private function rasterEscPos(array $trame, int $octetsParLigne, int $hauteur): string
+    {
+        $entete = self::GS.'v'.self::TAILLE_NORMALE
+            .\chr($octetsParLigne & 0xFF).\chr($octetsParLigne >> 8)
+            .\chr($hauteur & 0xFF).\chr($hauteur >> 8);
+
+        return $entete.implode('', array_map('\chr', $trame)).self::SAUT_DE_LIGNE;
     }
 }

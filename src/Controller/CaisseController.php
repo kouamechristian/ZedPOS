@@ -57,8 +57,13 @@ class CaisseController extends AbstractController
             'session' => $session,
             'parametresTicket' => $parametres->pourTicket(),
             // Le ticket composé hors ligne part à l'agent comme celui du serveur :
-            // il lui faut le même logo, déjà converti pour la tête thermique.
+            // il lui faut le même logo, déjà converti pour la tête thermique, et
+            // sous **les deux formes** — sinon un agent qui ne sait lire que la
+            // trame ESC/POS imprimerait le logo toute la journée et le perdrait
+            // à la première coupure, ce qui ne se découvrirait qu'un jour de
+            // panne réseau.
             'logoImpression' => $logoThermique->pourImpression(),
+            'logoImpressionEscpos' => $logoThermique->pourEscPos(),
         ]);
     }
 
