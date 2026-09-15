@@ -24,6 +24,7 @@ use Symfony\Component\Uid\Uuid;
 #[ORM\Index(name: 'idx_vente_created_at', columns: ['created_at'])]
 #[ORM\UniqueConstraint(name: 'uniq_vente_uuid', columns: ['uuid'])]
 #[ORM\UniqueConstraint(name: 'uniq_vente_numero', columns: ['numero'])]
+#[ORM\UniqueConstraint(name: 'uniq_vente_remplacee', columns: ['vente_remplacee_id'])]
 class Vente
 {
     use HorodatageCreation;
@@ -77,6 +78,18 @@ class Vente
     /** Motif d'annulation (obligatoire ; la vente n'est jamais supprimée). */
     #[ORM\Column(length: 255, nullable: true)]
     private ?string $motifAnnulation = null;
+
+    /**
+     * Vente que celle-ci remplace, quand elle est née d'une **modification** de
+     * ticket ({@see self::remplacer()}). L'originale reste en base, annulée.
+     *
+     * Unique : un ticket n'est remplacé qu'une fois, même par deux requêtes
+     * simultanées — la base tranche là où le contrôle applicatif ne voit pas
+     * encore l'autre.
+     */
+    #[ORM\ManyToOne(targetEntity: self::class)]
+    #[ORM\JoinColumn(name: 'vente_remplacee_id', nullable: true)]
+    private ?Vente $venteRemplacee = null;
 
     /** @var Collection<int, LigneVente> */
     #[ORM\OneToMany(mappedBy: 'vente', targetEntity: LigneVente::class, cascade: ['persist'])]
@@ -213,6 +226,53 @@ class Vente
     public function getMotifAnnulation(): ?string
     {
         return $this->motifAnnulation;
+    }
+
+    public function getVenteRemplacee(): ?Vente
+    {
+        return $this->venteRemplacee;
+    }
+
+    /**
+     * Vrai si ce ticket peut encore être modifié : validé, et pas lui-même issu
+     * d'une modification. **Une modification, une seule** — sans quoi un ticket
+     * se reprendrait de proche en proche, et chaque version effacerait la
+     * précédente du Z.
+     */
+    public function estModifiable(): bool
+    {
+        return $this->estValidee() && null === $this->venteRemplacee;
+    }
+
+    /**
+     * Fait de cette vente, tout juste construite, le remplaçant de `$originale`,
+     * qui est annulée du même geste. Les deux ne vont jamais l'une sans l'autre :
+     * un original annulé sans remplaçant perdrait la vente, un remplaçant sans
+     * original annulé la compterait deux fois.
+     *
+     * @throws \DomainException ticket déjà modifié, annulé, ou d'une autre caisse
+     */
+    public function remplacer(Vente $originale): self
+    {
+        if (null !== $this->id || null !== $this->venteRemplacee) {
+            throw new \LogicException('Seule une vente en cours de création remplace un ticket.');
+        }
+        if (null !== $originale->venteRemplacee) {
+            throw new \DomainException('Ce ticket est déjà issu d\'une modification : il ne se modifie qu\'une fois.');
+        }
+        if (!$originale->estValidee()) {
+            throw new \DomainException('Ce ticket est annulé ou a déjà été modifié.');
+        }
+        // La correction reste dans la caisse où l'erreur a été commise : c'est ce
+        // Z-là qui doit retomber juste.
+        if ($originale->sessionCaisse !== $this->sessionCaisse) {
+            throw new \DomainException('Le ticket modifié doit rester dans sa session de caisse.');
+        }
+
+        $originale->annuler(\sprintf('Modifié — remplacé par le ticket %s', $this->numero));
+        $this->venteRemplacee = $originale;
+
+        return $this;
     }
 
     /**

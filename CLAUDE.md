@@ -270,7 +270,8 @@ contrôleurs et gabarits testent une **permission**, jamais un rôle.
 | Voir **ses** ventes          | oui      | oui    | oui        | oui (L)   |
 | Modifier un prix de vente    | non      | **non**| **oui**    | non       |
 | Modifier un article          | non      | oui    | oui        | non       |
-| Annuler une vente encaissée  | son dernier ticket | **oui** | oui | non   |
+| Annuler une vente encaissée  | **non**  | **oui**| oui        | non       |
+| Modifier son dernier ticket  | **1 fois** | 1 fois | 1 fois   | non       |
 | Exporter la comptabilité     | non      | oui    | oui        | oui (L)   |
 | Gérer les comptes            | non      | oui    | oui        | non       |
 | Agir sur un compte dirigeante| non      | **non**| oui        | non       |
@@ -286,8 +287,9 @@ contrôleurs et gabarits testent une **permission**, jamais un rôle.
   être `null` pour la question générale (masquer une colonne entière).
 - **`VenteVoter`** — `VENTE_VOIR` : un caissier n'accède qu'aux ventes de **ses**
   sessions de caisse, y compris via `/caisse/ticket/{uuid}` et sa sortie ESC/POS.
-  `VENTE_ANNULER` : gérant et au-dessus sans restriction ; **le caissier sur le
-  seul ticket qu'il vient d'encaisser** — voir « Annulation du dernier ticket ».
+  `VENTE_ANNULER` : gérant et au-dessus, **sans exception pour le caissier**.
+  `VENTE_MODIFIER` : le titulaire de la session, sur son dernier ticket, **une
+  fois** — voir « Modification du dernier ticket ».
 - **`UtilisateurVoter`** — `UTILISATEUR_GERER`. Sujet `null` : « puis-je gérer des
   comptes ? » (l'écran, le bouton de création). Sujet `Utilisateur` : « puis-je
   agir sur **ce** compte ? » — un gérant ne bascule pas une dirigeante, il
@@ -315,60 +317,80 @@ sur `/pilotage` avec un bouton « J'ai vu »). Notification en base plutôt que 
 e-mail : la dirigeante consulte le pilotage depuis son téléphone, c'est le canal
 qu'elle regarde réellement.
 
-**Annulation du dernier ticket — la seule écriture accordée au caissier.**
-Le caissier annule le ticket qu'il vient d'encaisser, depuis le panneau « Reçu »
-de `/caisse`. L'erreur de saisie se constate au comptoir dans les secondes qui
-suivent, et faire venir le gérant pour deux baguettes de trop immobilise la file
-du matin — c'est-à-dire exactement ce que cette caisse existe pour éviter.
+**Modification du dernier ticket — la seule écriture accordée au caissier.**
+Le caissier **n'annule plus** (le bouton « Annuler ce ticket » a été retiré de la
+caisse, et `VENTE_ANNULER` ne lui est plus accordé même en forgeant la requête).
+Il **modifie** le ticket qu'il vient d'encaisser, depuis le panneau « Reçu » de
+`/caisse`, **une seule fois**. L'erreur de saisie se constate au comptoir dans
+les secondes qui suivent, et faire venir le gérant pour deux baguettes de trop
+immobilise la file du matin.
 
-Ce n'est pas une brèche dans la matrice, c'est une exception **bornée par trois
-conditions cumulatives**, toutes dans `VenteVoter::peutAnnuler()` :
+**Ce qu'est une modification** (`POST /api/vente/{uuid}/modifier`,
+`EncaissementService::modifier()`) : l'original passe `ANNULEE` avec le motif
+« Modifié — remplacé par le ticket V… », et une **vente de remplacement** est
+créée dans **la même session**, son champ `venteRemplacee` pointant vers
+l'original. Les deux **dans une seule transaction et un seul flush** — un original
+annulé sans remplaçant perdrait la vente, un remplaçant sans original la compterait
+deux fois. Rien d'autre n'a eu à changer : Z, rapports, pilotage, comptabilité et
+déstockage excluent déjà les ventes annulées, et `DestockageVenteListener` inverse
+les sorties de l'original tandis qu'il déstocke le remplaçant.
+
+- Le remplaçant est **recalculé côté serveur** comme un encaissement (prix,
+  remise plafonnée, règlements, rendu). Il a son propre numéro.
+- **Idempotent** sur l'uuid du remplaçant, tiré une fois par modification à
+  l'écran. Le contrôleur reconnaît le rejeu **avant** l'habilitation : l'original
+  étant désormais annulé, le voter refuserait l'essai qui suit une réponse perdue.
+- **Une fois** — `Vente::estModifiable()` : validée **et** pas elle-même issue
+  d'une modification. Un index unique sur `vente_remplacee_id` tranche en base
+  deux modifications simultanées du même ticket.
+- Pas de motif demandé : les deux versions sont au journal d'audit
+  (`VENTE_MODIFIEE`, rattachée à l'original, lignes et règlements avant / après)
+  et la dirigeante est notifiée (`NotificateurDirigeante::venteModifiee()`).
+  `/pilotage/ventes/{uuid}` relie le remplaçant à l'original.
+- L'original reste une **annulation** pour le pilotage et le Z : c'en est une, et
+  son motif dit pourquoi.
+
+Bornes cumulatives, toutes dans `VenteVoter::peutModifier()` :
 
 - **sa propre session** — connaître l'uuid du ticket d'un collègue ne suffit pas,
-  sinon un caissier effacerait les ventes d'un autre et lui laisserait l'écart ;
+  sinon un caissier réécrirait les ventes d'un autre et lui laisserait l'écart ;
 - **session encore ouverte** — après le Z la journée est arrêtée. Le refus vient
   de l'habilitation (403), pas de l'exception métier levée plus loin par
   `SessionCaisse::garantirOuverte()` : une porte fermée vaut mieux qu'une porte
   qui casse au passage ;
 - **le dernier ticket, et lui seul** (`VenteRepository::derniereDe()`) — dès
-  qu'une vente suivante est encaissée, l'annulation redevient l'affaire du
+  qu'une vente suivante est encaissée, la correction redevient l'affaire du
   gérant. Sans cette borne, un caissier pourrait remonter sa journée et effacer
-  ses écarts au fil de l'eau, et le Z ne signalerait plus rien.
+  ses écarts au fil de l'eau, et le Z ne signalerait plus rien ;
+- **une seule fois** (`Vente::estModifiable()`).
 
 > `derniereDe()` trie sur l'**identifiant**, pas sur `createdAt` : en boulangerie
 > rapide deux ventes tombent couramment dans la même seconde, et « la dernière »
 > ne doit pas dépendre de laquelle l'horodatage a départagée.
 
-Rien n'est allégé pour autant : c'est le même `EncaissementService::annuler()`,
-donc le même journal d'audit, la même notification à la dirigeante et les mêmes
-mouvements de stock inverses. L'exception est **ouverte, pas silencieuse** — c'est
-ce qui permet de l'accorder.
-
 **Côté écran** (`caisse/index.html.twig`, `ticket_controller.js`) :
 
-- Le bouton « Annuler ce ticket » est **sur sa propre ligne, sous** « Imprimer »
-  et « Nouveau ticket ». Ces deux-là gardent leur place au pixel près : c'est là
-  que le pouce va sans regarder, vingt fois par heure — une action irréversible
-  ne doit pas se trouver sous un doigt qui enchaîne.
-- **Jamais un seul appui.** Le motif est obligatoire côté serveur, il l'est donc
-  aussi à l'écran : le bouton de confirmation naît désactivé, et choisir un motif
-  tient lieu de confirmation. Quatre motifs proposés d'un appui plus un champ
-  libre — au comptoir, taper au clavier tactile coûte plus cher que le geste
-  qu'on est en train de corriger, et des motifs normalisés se relisent au
-  pilotage là où un champ libre donne autant de formulations que de caissières.
-- **L'annulation ne passe pas par la file de synchronisation.** Hors ligne elle
-  est refusée franchement. Mise en file, elle serait rejouée au retour du réseau
-  sur un ticket que d'autres ventes auront dépassé : le serveur la refuserait et
-  la caissière croirait son ticket annulé depuis une heure. C'est la seule sortie
-  réseau de l'écran qui exige le réseau — `TurboNavigationTest` fige la liste des
-  méthodes asynchrones du contrôleur, l'y ajouter était une décision.
-- Le motif retenu prend un **aplat rouge** (`red-700`, blanc à 6,4:1) et non
-  ambre : l'ambre marque les états courants de l'écran (famille, mode), ce geste
-  n'en est pas un. Comme pour les règlements, la bordure change de couleur mais
-  **jamais d'épaisseur**.
+- Le bouton « Modifier ce ticket · une seule fois » est **sur sa propre ligne,
+  sous** « Imprimer » et « Nouveau ticket », qui gardent leur place au pixel près.
+  Il est **masqué** sur un reçu hors ligne (vente encore en file, inconnue du
+  serveur) et sur le reçu d'un remplaçant.
+- `ouvrirModification()` recharge dans la colonne les lignes **gardées à
+  l'encaissement** (`dernierEncaisse`) — aucun appel réseau. Un bandeau
+  « Modification du ticket n° … — une seule fois » avec **Abandonner** s'affiche,
+  et Encaisser devient « Valider la modification » (toujours vert : c'est lui qui
+  engage l'argent).
+- **La modification ne passe pas par la file de synchronisation.** Hors ligne
+  elle est refusée franchement et le ticket reste en modification. Mise en file,
+  elle serait rejouée sur un ticket que d'autres ventes auront dépassé.
+  `TurboNavigationTest` fige la liste des méthodes asynchrones du contrôleur :
+  `validerModification` y figure, l'y ajouter était une décision.
+- Tiroir ouvert à la validation si le règlement est en espèces, comme à
+  l'encaissement : la monnaie change de main.
 
-Couverture : `VenteApiTest` (les trois bornes), `HabilitationsTest` (le ticket
-d'un collègue reste refusé), `CaisseTest::testLeRecuOffreLAnnulationDuTicketDerriereUnMotif`.
+Couverture : `VenteApiTest` (modification, une seule fois, rejeu sans doublon,
+dernier ticket, caisse clôturée, correction invalide, plus d'annulation par le
+caissier), `HabilitationsTest` (le ticket d'un collègue reste refusé),
+`CaisseTest::testLeRecuOffreDeModifierLeTicketEtNonDeLAnnuler`.
 
 **Étanchéité des réponses de caisse** : un caissier a légitimement accès à
 `/caisse/catalogue.json`, `/api/vente` et `/caisse/ticket/{uuid}` — leur sûreté
@@ -1278,8 +1300,11 @@ contre la vraie API — 60 requêtes pour 20 ventes, sans doublon.
   - **Remise** en `POURCENTAGE` ou `VALEUR`, plafonnée par rôle (**caissier 0 %,
     gérant 10 %**) ; **motif obligatoire au-delà de 500 FCFA**.
 - `POST /api/vente/{uuid}/annuler` : motif obligatoire, **jamais de suppression**
-  (statut → `ANNULEE`, motif conservé). Gérant et au-dessus sans restriction ; le
-  **caissier sur le seul dernier ticket de sa session ouverte** (`VenteVoter`).
+  (statut → `ANNULEE`, motif conservé). **Gérant et au-dessus seulement.**
+- `POST /api/vente/{uuid}/modifier` : même corps qu'un encaissement (uuid du
+  remplaçant). Annule l'original et crée le remplaçant en une transaction ;
+  **une fois**, sur le dernier ticket de sa session ouverte (`VenteVoter`). Même
+  réponse JSON qu'`/api/vente`, 201 puis 200 au rejeu.
 - Montants toujours en centimes ; erreurs métier via `EncaissementException` (code HTTP).
 - La `Vente` accepte désormais un UUID client au constructeur et porte `remise`,
   `motifRemise`, `rendu`, `motifAnnulation`.
@@ -1529,7 +1554,8 @@ automatique le 1er du mois, pour le mois écoulé :
 - L'entrée est persistée **et flushée dans la transaction de l'appelant** : une
   action annulée par un rollback ne laisse pas de trace fantôme.
 - **Actions tracées** (`App\Enum\ActionAudit`) : `CONNEXION`, `DECONNEXION`,
-  `ECHEC_CONNEXION`, `VENTE_ANNULEE`, `REMISE_ACCORDEE`, `PRIX_MODIFIE`,
+  `ECHEC_CONNEXION`, `VENTE_ANNULEE`, `VENTE_MODIFIEE` (surlignée, les deux
+  versions du ticket), `REMISE_ACCORDEE`, `PRIX_MODIFIE`,
   `PERTE_SAISIE`, `INVENTAIRE_VALIDE`, `CAISSE_CLOTUREE`, `ECART_CAISSE`,
   `UTILISATEUR_CREE`, `UTILISATEUR_MODIFIE`, `UTILISATEUR_ACTIVE`,
   `UTILISATEUR_DESACTIVE`, `SECRET_MODIFIE` (changement de **son propre** mot de
@@ -1546,7 +1572,7 @@ automatique le 1er du mois, pour le mois écoulé :
   **jamais**, pas même haché — seul `secret_remplace: true` l'est. Un journal
   d'audit se consulte, il ne doit pas devenir un second endroit où traînent des
   identifiants.
-- **Points d'appel** : `EncaissementService` (annulation, remise > 0),
+- **Points d'appel** : `EncaissementService` (annulation, modification, remise > 0),
   `Admin\ArticleController::edit` (uniquement si le prix change réellement),
   `PerteService`, `SessionCaisseService::cloturer`, `CreerUtilisateurCommand`,
   `CreationUtilisateur` (création et modification),
@@ -2465,7 +2491,7 @@ compare l'implémentation à cette description et signale les écarts.
 | Caisse tactile, mode boulangerie | ✅ | `/caisse` |
 | Caisse tactile, mode fast-food | ⚠️ partiel | variantes + commentaire seulement, voir écart n° 1 |
 | Encaissement idempotent, paiement mixte, remise plafonnée, rendu | ✅ | `POST /api/vente` |
-| Annulation du dernier ticket par le caissier (motif, audit, notification) | ✅ | panneau « Reçu » de `/caisse` |
+| Modification du dernier ticket par le caissier, une fois (audit, notification) | ✅ | panneau « Reçu » de `/caisse` |
 | Cycle de caisse : ouverture, dépenses, ticket X, clôture Z, écart | ✅ | `/caisse/session/*` |
 | Journée clôturée non modifiable | ✅ | `SessionCaisse::garantirOuverte()` |
 | Déstockage automatique par fiche technique | ✅ | `DestockageVenteListener` |
@@ -2494,7 +2520,7 @@ compare l'implémentation à cette description et signale les écarts.
 | Dettes des vendeurs : manquant imputé ou passé en perte, avances, remboursements, alerte à la dotation | ✅ | `/admin/vendeurs/{id}` |
 | Rapports des stands (par stand, par vendeur, caisse et stands, top produits, CSV) et suggestion de dotation | ✅ | `/admin/rapports-stands` |
 
-Tests : **652 tests PHPUnit** (`php bin/phpunit`) et **57 tests Node**
+Tests : **657 tests PHPUnit** (`php bin/phpunit`) et **57 tests Node**
 (`node --test "tests/js/*.test.js"`).
 
 ### Écarts par rapport au contexte métier — à traiter

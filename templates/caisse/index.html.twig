@@ -67,17 +67,6 @@
     { mode: 'MOOV_MONEY',   label: 'Moov Money',   teinte: '#0a4ea3', encre: '#ffffff' },
 ] %}
 
-{# Motifs d'annulation proposés d'un appui. Au comptoir, taper au clavier tactile
-   coûte plus cher que le geste qu'on est en train de corriger ; et des motifs
-   normalisés se relisent au pilotage, là où un champ libre donne autant de
-   formulations que de caissières. Le champ libre reste, pour le reste. #}
-{% set motifsAnnulation = [
-    'Erreur de saisie',
-    "Client s'est ravisé",
-    'Article indisponible',
-    'Erreur de règlement',
-] %}
-
 {# Teintes par famille : mêmes valeurs que ticket_controller.teinte(), pour que
    le rendu serveur et le rendu depuis IndexedDB soient identiques.
    Toute modification ici doit être reportée là-bas, et réciproquement.
@@ -350,27 +339,6 @@
 .caisse .clavier-montant:active { transform: scale(.96); }
 .caisse .clavier-montant.chiffre { font-size: 1.15rem; }
 
-/* ------------------------------------------------------------- Motifs (rouge) */
-/* Motif d'annulation retenu : aplat rouge plein. Rouge et non blanc — le blanc
-   marque les états courants de l'écran (famille, règlement), et ce geste-là n'en
-   est pas un. Comme pour les règlements, la bordure change de couleur mais
-   jamais d'épaisseur : elle décalerait le texte au clic. */
-.caisse .motif {
-    border: 1px solid #fca5a5;
-    background: var(--plan-vif);
-    color: var(--texte);
-}
-.caisse .motif:hover { background: #fee2e2; }
-.motif[data-actif] {
-    background: #b91c1c;
-    border-color: #b91c1c;
-    color: #fff;
-    font-weight: 600;
-}
-.caisse .confirmer-annulation { background: #b91c1c; }
-.caisse .confirmer-annulation:hover:not(:disabled) { background: #991b1b; }
-.caisse .confirmer-annulation:disabled { background: var(--plan-vif); color: var(--texte-faible); }
-
 /* Montant à rendre, et son contraire. Rouge tant que le compte n'y est pas :
    l'encaissement est bloqué, il faut que ça se voie sans lire le libellé.
    Ces deux classes sont posées par `ticket_controller.js`. */
@@ -446,7 +414,7 @@
      data-controller="ticket"
      data-ticket-ticket-base-value="{{ path('app_caisse_ticket', {uuid: '__UUID__'}) }}"
      data-ticket-apercu-base-value="{{ path('app_caisse_ticket_apercu', {uuid: '__UUID__'}) }}"
-     data-ticket-annuler-base-value="{{ path('api_vente_annuler', {uuid: '__UUID__'}) }}"
+     data-ticket-modifier-base-value="{{ path('api_vente_modifier', {uuid: '__UUID__'}) }}"
      data-ticket-materiel-base-value="{{ path('app_caisse_ticket_materiel', {uuid: '__UUID__'}) }}"
      data-ticket-parametres-value="{{ {
          raisonSociale: parametresTicket.raisonSociale,
@@ -698,6 +666,19 @@
                     </div>
                 </div>
 
+                {# Modification d'un ticket encaissé : les lignes du ticket repris sont
+                   dans la colonne, et rien ne doit laisser croire à une vente
+                   nouvelle. Même bandeau que le stock bas — l'écran n'a qu'une
+                   couleur d'avertissement. « Abandonner » laisse le ticket tel
+                   qu'il a été encaissé. #}
+                <div data-ticket-target="modification"
+                     class="hidden shrink-0 flex items-center justify-between gap-3 border-b px-5 py-2 text-sm"
+                     style="border-color: #5a4a12; background: #2a2410; color: #fcd34d;">
+                    <span>Modification du ticket <span class="chiffre font-semibold" data-ticket-target="modificationNumero"></span> — une seule fois</span>
+                    <button type="button" data-action="ticket#abandonnerModification"
+                            class="shrink-0 text-xs underline">Abandonner</button>
+                </div>
+
                 {# Les lignes cèdent la place au paiement, mais jamais toute : il en
                    reste toujours au moins une de visible. #}
                 <div class="lignes-ticket flex-1 overflow-y-auto" data-ticket-target="lignes"></div>
@@ -869,9 +850,10 @@
 
             {# Les deux gestes courants gardent leur place au pixel près : c'est là
                que le pouce de la caissière va sans regarder, vingt fois par heure.
-               L'annulation vient **en dessous**, sur sa propre ligne — rare,
-               irréversible, elle ne doit pas se trouver sous un doigt qui enchaîne. #}
-            <div data-ticket-target="actionsRecu" class="border-t trait p-4">
+               La modification vient **en dessous**, sur sa propre ligne — rare, et
+               elle ne se fait qu'une fois : elle ne doit pas se trouver sous un
+               doigt qui enchaîne. #}
+            <div class="border-t trait p-4">
                 <div class="flex gap-2">
                     <button type="button" data-action="ticket#imprimerRecu"
                             class="flex-1 rounded-[10px] border trait plan-vif py-3 text-sm"
@@ -881,53 +863,19 @@
                     {# Aplat sombre, texte blanc (14,7:1) : c'est le geste qui suit
                        presque chaque vente, il doit se trouver sans chercher. Il
                        était blanc sur gris clair depuis le passage au fond clair —
-                       invisible. Ni vert (réservé à l'argent) ni rouge (l'annulation). #}
+                       invisible. Ni vert (réservé à l'argent) ni rouge (les erreurs). #}
                     <button type="button" data-action="ticket#fermerRecu"
                             class="nouveau-ticket flex-1 rounded-[10px] py-3 text-sm font-semibold">
                         Nouveau ticket
                     </button>
                 </div>
-                <button type="button" data-action="ticket#ouvrirAnnulation"
-                        class="mt-2 w-full rounded-[10px] border py-2.5 text-sm"
-                        style="border-color: #6d2a22; color: var(--rouge);">
-                    Annuler ce ticket
+                {# Masqué sur un reçu hors ligne (le serveur ne connaît pas encore
+                   la vente) et sur un ticket déjà issu d'une modification. #}
+                <button type="button" data-action="ticket#ouvrirModification" data-ticket-target="modifierRecu"
+                        class="mt-2 w-full rounded-[10px] border trait py-2.5 text-sm"
+                        style="color: var(--texte-doux);">
+                    Modifier ce ticket <span class="text-xs" style="color: var(--texte-faible);">· une seule fois</span>
                 </button>
-            </div>
-
-            {# Annulation : le motif est obligatoire côté serveur, il l'est donc
-               aussi ici — le bouton reste inerte tant que rien n'est choisi ni
-               tapé. Le fond rouge dit, sans qu'on lise, qu'on a quitté les gestes
-               courants ; « Revenir » ramène au reçu sans rien avoir touché. #}
-            <div data-ticket-target="annulation" class="hidden border-t p-4"
-                 style="border-color: #6d2a22; background: var(--rouge-fond);">
-                <p class="mb-3 text-sm font-medium" style="color: var(--rouge);">Pourquoi annuler ce ticket ?</p>
-
-                <div class="grid grid-cols-2 gap-2">
-                    {% for motif in motifsAnnulation %}
-                        <button type="button" data-action="ticket#choisirMotif" data-ticket-target="motif"
-                                data-motif="{{ motif }}"
-                                class="motif rounded-[10px] px-3 py-3 text-left text-sm leading-snug">
-                            {{ motif }}
-                        </button>
-                    {% endfor %}
-                </div>
-
-                <input type="text" maxlength="120" autocomplete="off" placeholder="Autre motif…"
-                       data-ticket-target="motifLibre" data-action="ticket#saisirMotif"
-                       class="champ mt-2 w-full rounded-[10px] px-3 py-3 text-sm">
-
-                <div class="mt-3 flex gap-2">
-                    <button type="button" data-action="ticket#fermerAnnulation"
-                            class="flex-1 rounded-[10px] border trait plan-vif py-3 text-sm"
-                            style="color: var(--texte);">
-                        Revenir
-                    </button>
-                    <button type="button" data-action="ticket#confirmerAnnulation"
-                            data-ticket-target="confirmerAnnulation" disabled
-                            class="confirmer-annulation flex-1 rounded-[10px] py-3 text-sm font-semibold text-white">
-                        Annuler le ticket
-                    </button>
-                </div>
             </div>
         </div>
     </div>

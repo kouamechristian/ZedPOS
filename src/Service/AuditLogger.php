@@ -103,6 +103,41 @@ class AuditLogger
     }
 
     /**
+     * Ticket modifié depuis la caisse. Rattachée à l'**original** — c'est lui
+     * qu'on retrouve en cherchant ce qui est arrivé au ticket imprimé — avec les
+     * deux versions en regard : ce qui a changé se lit sans ouvrir deux fiches.
+     */
+    public function venteModifiee(Vente $originale, Vente $remplacante): JournalAudit
+    {
+        return $this->enregistrer(
+            ActionAudit::VENTE_MODIFIEE,
+            'Vente',
+            $originale->getId(),
+            $this->contenuVente($originale),
+            $this->contenuVente($remplacante) + ['remplace' => $originale->getNumero()],
+        );
+    }
+
+    /** @return array<string, mixed> */
+    private function contenuVente(Vente $vente): array
+    {
+        return [
+            'numero' => $vente->getNumero(),
+            'statut' => $vente->getStatut()->value,
+            'totalTtc' => $vente->getTotalTtc(),
+            'lignes' => array_map(static fn ($ligne): array => [
+                'article' => $ligne->getArticle()->getNom(),
+                'quantite' => $ligne->getQuantite(),
+                'prixUnitaire' => $ligne->getPrixUnitaire(),
+            ], $vente->getLignes()->toArray()),
+            'reglements' => array_map(static fn ($reglement): array => [
+                'mode' => $reglement->getMode()->value,
+                'montant' => $reglement->getMontant(),
+            ], $vente->getReglements()->toArray()),
+        ];
+    }
+
+    /**
      * Remise accordée sur une vente. `avant` porte le montant plein, `apres` le
      * montant réellement encaissé — l'écart est la remise consentie.
      */

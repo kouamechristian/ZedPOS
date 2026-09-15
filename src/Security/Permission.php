@@ -21,6 +21,7 @@ namespace App\Security;
  * | Modifier un prix de vente    | non      | non    | **oui**    | non       |
  * | Modifier un article          | non      | oui    | oui        | non       |
  * | Annuler une vente encaissée  | non      | **oui**| oui        | non       |
+ * | Modifier son dernier ticket  | 1 fois   | 1 fois | 1 fois     | non       |
  * | Exporter la comptabilité     | non      | oui    | oui        | oui (L)   |
  * | Gérer les comptes            | non      | oui    | oui        | non       |
  * | Agir sur un compte dirigeante| non      | **non**| oui        | non       |
@@ -50,10 +51,19 @@ final class Permission
     /**
      * Annuler une vente déjà encaissée. Notifie la dirigeante.
      *
-     * Gérant et dirigeante sans restriction ; le caissier uniquement sur le
-     * dernier ticket de sa session ouverte — celui qu'il vient d'encaisser.
+     * Gérant et dirigeante seulement. Le caissier n'annule plus : il **modifie**
+     * son dernier ticket ({@see self::VENTE_MODIFIER}).
      */
     public const VENTE_ANNULER = 'VENTE_ANNULER';
+
+    /**
+     * Modifier le ticket qu'on vient d'encaisser : l'original est annulé et
+     * remplacé par la version corrigée. Notifie la dirigeante.
+     *
+     * Sa propre session, encore ouverte, le dernier ticket — et **une seule
+     * fois** : un ticket issu d'une modification ne se modifie plus.
+     */
+    public const VENTE_MODIFIER = 'VENTE_MODIFIER';
 
     // --- Données agrégées ---------------------------------------------------
 

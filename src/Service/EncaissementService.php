@@ -99,9 +99,90 @@ class EncaissementService
     }
 
     /**
-     * Annule une vente (jamais de suppression). Qui a le droit d'annuler quoi est
-     * tranché par `VenteVoter`, au contrôleur : gérant sans restriction, caissier
-     * sur le seul ticket qu'il vient d'encaisser.
+     * Modifie un ticket encaissé : l'original est **annulé** (jamais supprimé) et
+     * une vente de remplacement est créée dans la même session, **dans la même
+     * transaction** — un original annulé sans remplaçant perdrait la vente, un
+     * remplaçant sans original annulé la compterait deux fois.
+     *
+     * Le remplaçant est recalculé côté serveur comme un encaissement ordinaire.
+     * Idempotent sur son uuid : une réponse perdue se rejoue sans rien créer.
+     * Qui peut modifier quoi est tranché par `VenteVoter`, au contrôleur.
+     *
+     * @param array<string, mixed> $donnees Ticket corrigé (uuid du remplaçant, mode, lignes, remise, reglements)
+     */
+    public function modifier(Vente $originale, Utilisateur $auteur, array $donnees, int $remiseMaxBp): ResultatEncaissement
+    {
+        $uuid = $this->lireUuid($donnees['uuid'] ?? null);
+
+        $existante = $this->ventes->findOneBy(['uuid' => $uuid]);
+        if (null !== $existante) {
+            if ($existante->getVenteRemplacee()?->getId() === $originale->getId()) {
+                return new ResultatEncaissement($existante, $existante->getRendu(), true);
+            }
+
+            throw new EncaissementException('UUID de ticket déjà utilisé.', 409);
+        }
+
+        if (!$originale->estModifiable()) {
+            throw new EncaissementException('Ce ticket a déjà été modifié une fois : il ne se modifie plus.', 409);
+        }
+
+        $mode = ModeVente::tryFrom((string) ($donnees['mode'] ?? ''))
+            ?? throw new EncaissementException('Mode de vente invalide.');
+
+        [$preparees, , $brutTva, $brutTtc] = $this->preparerLignes($donnees['lignes'] ?? []);
+        [$remise, $motifRemise] = $this->calculerRemise($donnees['remise'] ?? null, $brutTtc, $remiseMaxBp);
+
+        $netTtc = $brutTtc - $remise;
+        $remiseTva = $brutTtc > 0 ? intdiv($remise * $brutTva, $brutTtc) : 0;
+        $netTva = $brutTva - $remiseTva;
+        $netHt = $netTtc - $netTva;
+
+        [$reglements, $rendu] = $this->preparerReglements($donnees['reglements'] ?? [], $netTtc);
+
+        // Les règles du domaine sont vérifiées **avant** la transaction :
+        // `wrapInTransaction()` fermerait l'EntityManager sur exception.
+        try {
+            $vente = new Vente($originale->getSessionCaisse(), $mode, $this->genererNumero(), $netHt, $netTva, $netTtc, $uuid);
+            $vente->enregistrerRemiseEtRendu($remise, $motifRemise, $rendu);
+            $vente->remplacer($originale);
+        } catch (\DomainException $e) {
+            throw new EncaissementException($e->getMessage(), 409);
+        }
+
+        try {
+            $this->em->wrapInTransaction(function () use ($vente, $preparees, $reglements): void {
+                foreach ($preparees as $p) {
+                    new LigneVente($vente, $p['article'], $p['quantiteMillimes'], $p['prix'], 0, $p['commentaire']);
+                }
+                foreach ($reglements as $r) {
+                    new Reglement($vente, $r['mode'], $r['montant'], $r['reference']);
+                }
+
+                // Un seul flush : le déstockage du remplaçant et le restockage de
+                // l'original partent ensemble (`DestockageVenteListener`).
+                $this->em->persist($vente);
+                $this->em->flush();
+            });
+        } catch (UniqueConstraintViolationException) {
+            // Deux modifications simultanées du même ticket : l'unicité de
+            // `vente_remplacee_id` n'en laisse passer qu'une.
+            throw new EncaissementException('Ce ticket vient déjà d\'être modifié.', 409);
+        }
+
+        $this->audit->venteModifiee($originale, $vente);
+        if ($remise > 0) {
+            $this->audit->remiseAccordee($vente);
+        }
+        $this->notificateur->venteModifiee($originale, $vente, $auteur);
+
+        return new ResultatEncaissement($vente, $rendu, false);
+    }
+
+    /**
+     * Annule une vente (jamais de suppression). Qui a le droit d'annuler est
+     * tranché par `VenteVoter`, au contrôleur : le gérant et la dirigeante. Le
+     * caissier, lui, modifie ({@see self::modifier()}).
      */
     public function annuler(Uuid $uuid, string $motif, ?Utilisateur $auteur = null): Vente
     {

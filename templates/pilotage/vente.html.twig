@@ -19,6 +19,15 @@
     </div>
 {% endif %}
 
+{% if vente.venteRemplacee %}
+    <div class="alerte alerte-ambre apparition mb-4">
+        {{ ui.icone('info') }}
+        <p><span class="font-semibold">Ticket modifié en caisse.</span> Il remplace le ticket
+            <a href="{{ path('pilotage_vente', {uuid: vente.venteRemplacee.uuid}) }}" class="lien code">{{ vente.venteRemplacee.numero }}</a>,
+            annulé du même geste.</p>
+    </div>
+{% endif %}
+
 {# ---- Identité du ticket ---- #}
 <section class="heros apparition mb-4" style="--i: 1">
     <div class="flex items-start justify-between gap-3">

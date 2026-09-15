@@ -53,39 +53,47 @@ Monnaie à rendre      800 FCFA
 **Fast-food** : touchez **Fast-food** en haut. Un panneau s'ouvre pour la quantité
 et les précisions (Sur place, Piment…), puis **Ajouter au ticket**.
 
-## 3. Corriger, et annuler
+## 3. Corriger, et modifier un ticket
 
 **Avant d'encaisser**, tout se corrige : **−** enlève un article, **✕** enlève la
 ligne, **Vider** efface le ticket, **Mise en attente** met le client de côté.
 
 **Juste après avoir encaissé**, le reçu reste affiché à l'écran. Vous vous êtes
-trompée, le client se ravise ? Touchez **Annuler ce ticket**, en bas du reçu :
+trompée, le client change d'article ? Touchez **Modifier ce ticket**, en bas du
+reçu :
 
 ```
-┌─────────────────────────────┐
-│ [ Imprimer ][Nouveau ticket]│
-│ [    Annuler ce ticket     ]│
-└─────────────────────────────┘
+┌──────────────────────────────────┐
+│ [ Imprimer ][ Nouveau ticket ]   │
+│ [ Modifier ce ticket · une fois ]│
+└──────────────────────────────────┘
       ↓
-│ Pourquoi annuler ce ticket ?│
-│ [Erreur de saisie][Client…] │
-│ [Article indispo.][Erreur…] │
-│ [ Autre motif…            ] │
-│ [ Revenir ][Annuler le tic.]│
+│ Modification du ticket n° V…  [Abandonner] │
+│  Baguette        −  2  +                   │
+│  ...                                       │
+│ [ Valider la modification ]                │
 ```
 
-1. Touchez le **motif** qui correspond (ou tapez-le dans « Autre motif »).
-2. Touchez **Annuler le ticket**.
+1. Les articles du ticket reviennent à l'écran : corrigez-les (**−**, **+**,
+   nouveaux articles).
+2. Choisissez le **règlement** comme pour une vente.
+3. Touchez **Valider la modification**. Le nouveau ticket s'imprime.
 
-Trois choses à savoir :
+**Abandonner** laisse le ticket tel qu'il a été encaissé.
 
+Quatre choses à savoir :
+
+- **Une seule fois.** Le ticket corrigé ne se modifie plus. Vérifiez bien avant
+  de valider.
 - **Ce n'est que le tout dernier ticket.** Dès que vous avez encaissé le client
-  suivant, c'est fini : **appelez le gérant**, lui seul peut encore annuler.
-- **Il faut le réseau.** Internet coupé, l'annulation est refusée — appelez le
-  gérant.
-- **La direction est prévenue** de chaque annulation, avec le motif que vous avez
-  choisi. Ce n'est pas un reproche : c'est ce qui permet que vous puissiez le
-  faire vous-même sans appeler personne.
+  suivant, c'est fini : **appelez le gérant**.
+- **Il faut le réseau.** Internet coupé, la modification est refusée — réessayez
+  plus tard ou appelez le gérant.
+- **La direction est prévenue** de chaque modification. Ce n'est pas un
+  reproche : c'est ce qui permet que vous puissiez le faire vous-même sans
+  appeler personne.
+
+Il n'y a plus de bouton « Annuler » en caisse : seul le gérant annule une vente.
 
 Ne refaites jamais une vente pour « corriger » : cela compterait deux fois.
 

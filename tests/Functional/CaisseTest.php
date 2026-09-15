@@ -328,30 +328,26 @@ class CaisseTest extends WebTestCase
     }
 
     /**
-     * L'annulation du ticket qui vient d'être encaissé se fait depuis le reçu, et
-     * jamais d'un seul appui : elle est irréversible, tracée et notifiée à la
-     * dirigeante. Le motif est obligatoire côté serveur — le bouton de
-     * confirmation naît donc désactivé, c'est le choix du motif qui le libère.
+     * Le reçu n'offre plus d'annuler le ticket : il offre de le **modifier**, une
+     * fois. Le bandeau de modification reste replié tant qu'on ne l'ouvre pas, et
+     * s'abandonne sans rien toucher.
      */
-    public function testLeRecuOffreLAnnulationDuTicketDerriereUnMotif(): void
+    public function testLeRecuOffreDeModifierLeTicketEtNonDeLAnnuler(): void
     {
-        $this->client->request('GET', '/caisse');
+        $crawler = $this->client->request('GET', '/caisse');
 
         $this->assertResponseIsSuccessful();
-        $this->assertSelectorExists('[data-action="ticket#ouvrirAnnulation"]');
-        $this->assertSelectorExists('[data-ticket-target="annulation"].hidden', "Le choix du motif reste replié tant qu'on ne l'ouvre pas.");
+        $this->assertSelectorExists('[data-action="ticket#ouvrirModification"]');
+        $this->assertSelectorNotExists('[data-action="ticket#ouvrirAnnulation"]', "L'annulation ne s'offre plus au comptoir.");
+        $this->assertSelectorNotExists('[data-ticket-annuler-base-value]');
+        $this->assertSelectorTextContains('[data-action="ticket#ouvrirModification"]', 'une seule fois');
 
-        // Motifs proposés d'un appui : au comptoir, taper coûte plus cher que le
-        // geste qu'on corrige. Le champ libre reste, pour tout le reste.
-        $this->assertGreaterThanOrEqual(
-            3,
-            $this->client->getCrawler()->filter('[data-ticket-target="motif"]')->count(),
-            'Les motifs courants sont proposés sans passer par le clavier.',
+        $this->assertSelectorExists('[data-ticket-target="modification"].hidden', "Le bandeau reste replié tant qu'on ne modifie rien.");
+        $this->assertSelectorExists('[data-action="ticket#abandonnerModification"]');
+        $this->assertStringEndsWith(
+            '/__UUID__/modifier',
+            (string) $crawler->filter('[data-ticket-modifier-base-value]')->attr('data-ticket-modifier-base-value'),
         );
-        $this->assertSelectorExists('[data-ticket-target="motifLibre"]');
-
-        $confirmer = $this->client->getCrawler()->filter('[data-ticket-target="confirmerAnnulation"]');
-        $this->assertNotNull($confirmer->attr('disabled'), 'Aucun motif retenu : rien ne part.');
     }
 
     /**

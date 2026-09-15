@@ -326,8 +326,9 @@ class TurboNavigationTest extends WebTestCase
         // mémoire. Les sept méthodes ci-dessous sortent sur le réseau, et toutes
         // après coup : le catalogue au chargement, l'encaissement, sa
         // confirmation, l'affichage du reçu une fois la vente acquise, et
-        // l'annulation de ce reçu — qui, elle, exige le réseau et le dit
-        // franchement plutôt que de partir dans la file de synchronisation.
+        // la validation d'un ticket modifié — qui, elle, exige le réseau et le
+        // dit franchement plutôt que de partir dans la file de synchronisation.
+        // Reprendre le ticket (`ouvrirModification`) reste en mémoire.
         //
         // `imprimerMateriel` et `chargerTicketMateriel` s'y ajoutent : elles
         // impriment sur l'agent matériel local une fois la vente acquise, jamais
@@ -345,8 +346,8 @@ class TurboNavigationTest extends WebTestCase
         sort($asynchrones);
         $this->assertSame(
             [
-                'actualiserCatalogue', 'afficherRecu', 'chargerTicketMateriel', 'confirmerAnnulation',
-                'encaisser', 'imprimerMateriel', 'venteTransmise',
+                'actualiserCatalogue', 'afficherRecu', 'chargerTicketMateriel',
+                'encaisser', 'imprimerMateriel', 'validerModification', 'venteTransmise',
             ],
             $asynchrones,
             'Aucune autre méthode du contrôleur de ticket ne doit faire d\'aller-retour serveur.',

@@ -255,20 +255,23 @@ Elle peut être planifiée à 21h30 (voir `CLAUDE.md`).
 ## 5. Annuler une vente
 
 **Vous annulez n'importe quelle vente encaissée, à tout moment de la journée.**
-Le caissier, lui, ne peut annuler que **le tout dernier ticket** qu'il vient
-d'encaisser, tant qu'il n'a pas servi le client suivant — au-delà, il vous appelle.
+Le caissier, lui, **n'annule plus** : il peut **modifier une seule fois** le tout
+dernier ticket qu'il vient d'encaisser, tant qu'il n'a pas servi le client
+suivant — au-delà, il vous appelle. Le ticket modifié est annulé (motif
+« Modifié — remplacé par le ticket V… ») et un nouveau ticket le remplace dans la
+même caisse ; le Z compte le second, jamais les deux.
 
 Une vente n'est **jamais supprimée** : elle passe au statut *Annulée*, ses montants
-restent visibles, et **le motif saisi est conservé**. Toute annulation génère
-automatiquement une **alerte à la dirigeante**, avec le nom de son auteur et le
-motif — la vôtre comme celle d'un caissier.
+restent visibles, et **le motif saisi est conservé**. Toute annulation, et toute
+modification d'un caissier, génère automatiquement une **alerte à la dirigeante**,
+avec le nom de son auteur.
 
 Trois règles à connaître :
 
 - **Le motif est obligatoire.** Écrivez ce qui s'est passé, pas « erreur ».
 - **Après la clôture Z, plus rien n'est annulable** sur cette journée. Si un ticket
   doit être annulé, faites-le **avant** que le caissier ne clôture.
-- **Les annulations des caissiers se relisent** dans le journal d'audit
+- **Les modifications des caissiers se relisent** dans le journal d'audit
   (`/pilotage/audit`, dirigeante) et dans le rapport Z de la session. Un caissier
   qui en accumule mérite une question, pas une sanction automatique : c'est
   souvent une touche mal placée sur la grille.

@@ -30,7 +30,7 @@ class VenteApiTest extends WebTestCase
 
         $connexion = $this->em->getConnection();
         $connexion->executeStatement('SET FOREIGN_KEY_CHECKS = 0');
-        foreach (['ligne_fiche_technique', 'fiche_technique', 'ligne_vente', 'reglement', 'vente', 'mouvement_caisse', 'session_caisse', 'mouvement_stock', 'perte', 'article', 'matiere_premiere', 'fournisseur', 'famille_produit', 'journal_audit', 'utilisateur'] as $table) {
+        foreach (['ligne_fiche_technique', 'fiche_technique', 'ligne_vente', 'reglement', 'vente', 'mouvement_caisse', 'session_caisse', 'mouvement_stock', 'perte', 'article', 'matiere_premiere', 'fournisseur', 'famille_produit', 'journal_audit', 'notification', 'utilisateur'] as $table) {
             $connexion->executeStatement('DELETE FROM '.$table);
         }
         $connexion->executeStatement('SET FOREIGN_KEY_CHECKS = 1');
@@ -267,52 +267,161 @@ class VenteApiTest extends WebTestCase
     }
 
     /**
-     * L'exception accordée au caissier : le ticket qu'il vient d'encaisser.
-     * L'erreur de saisie se constate dans la seconde, faire venir le gérant pour
-     * deux baguettes de trop immobiliserait la file.
+     * Ticket corrigé : Article A seul devient A + B, payé 2 000 FCFA en espèces.
+     *
+     * @return array<string, mixed>
      */
-    public function testLeCaissierAnnuleLeTicketQuIlVientDEncaisser(): void
+    private function correction(?string $uuid = null): array
+    {
+        return [
+            'uuid' => $uuid ?? (string) Uuid::v4(),
+            'mode' => 'BOULANGERIE',
+            'lignes' => [
+                ['articleId' => $this->articleA, 'quantite' => 1],
+                ['articleId' => $this->articleB, 'quantite' => 1],
+            ],
+            'reglements' => [['mode' => 'ESPECES', 'montant' => 200000]],
+        ];
+    }
+
+    /**
+     * Le caissier n'annule plus : c'est le gérant qui annule. Même son propre
+     * dernier ticket lui est refusé.
+     */
+    public function testLeCaissierNAnnulePlusSonTicket(): void
     {
         $this->client->loginUser($this->caissier);
         $data = $this->encaisser();
 
-        [$code, $annulation] = $this->poster('/api/vente/'.$data['uuid'].'/annuler', ['motif' => 'Erreur de saisie']);
-
-        $this->assertSame(200, $code);
-        $this->assertSame('ANNULEE', $annulation['statut']);
+        [$code] = $this->poster('/api/vente/'.$data['uuid'].'/annuler', ['motif' => 'Erreur de saisie']);
+        $this->assertSame(403, $code);
 
         $this->em->clear();
-        $vente = $this->ventes()->findOneBy(['uuid' => Uuid::fromString($data['uuid'])]);
-        $this->assertSame(StatutVente::ANNULEE, $vente->getStatut());
-        $this->assertSame('Erreur de saisie', $vente->getMotifAnnulation());
+        $this->assertSame(StatutVente::VALIDEE, $this->ventes()->findOneBy(['uuid' => Uuid::fromString($data['uuid'])])->getStatut());
     }
 
     /**
-     * Et elle s'arrête là : dès qu'une vente suivante est encaissée, la précédente
-     * redevient l'affaire du gérant. Sans cette borne, un caissier pourrait
-     * remonter sa journée et effacer ses écarts au fil de l'eau — le Z ne
-     * signalerait plus rien.
+     * Il modifie en revanche le ticket qu'il vient d'encaisser : l'original est
+     * annulé, jamais supprimé, et le remplaçant est recalculé côté serveur dans
+     * la même session. Tracé et notifié à la dirigeante.
      */
-    public function testLeCaissierNAnnulePlusUnTicketQuUneAutreVenteADepasse(): void
+    public function testLeCaissierModifieLeTicketQuIlVientDEncaisser(): void
+    {
+        $this->client->loginUser($this->caissier);
+        $data = $this->encaisser();
+
+        [$code, $modifie] = $this->poster('/api/vente/'.$data['uuid'].'/modifier', $this->correction());
+
+        $this->assertSame(201, $code);
+        $this->assertSame(150000, $modifie['totalTtc'], 'Prix recalculés côté serveur.');
+        $this->assertSame(50000, $modifie['rendu']);
+        $this->assertNotSame($data['numero'], $modifie['numero'], 'Le remplaçant a son propre numéro.');
+
+        $this->em->clear();
+        $originale = $this->ventes()->findOneBy(['uuid' => Uuid::fromString($data['uuid'])]);
+        $remplacante = $this->ventes()->findOneBy(['uuid' => Uuid::fromString($modifie['uuid'])]);
+
+        $this->assertSame(StatutVente::ANNULEE, $originale->getStatut(), 'Annulé, jamais supprimé.');
+        $this->assertStringContainsString($modifie['numero'], (string) $originale->getMotifAnnulation());
+        $this->assertSame(StatutVente::VALIDEE, $remplacante->getStatut());
+        $this->assertSame($originale->getId(), $remplacante->getVenteRemplacee()?->getId());
+        $this->assertSame($originale->getSessionCaisse()->getId(), $remplacante->getSessionCaisse()->getId());
+        $this->assertCount(2, $remplacante->getLignes());
+
+        $connexion = $this->em->getConnection();
+        $this->assertSame(1, (int) $connexion->fetchOne("SELECT COUNT(*) FROM journal_audit WHERE action = 'VENTE_MODIFIEE'"));
+        $this->assertSame(1, (int) $connexion->fetchOne("SELECT COUNT(*) FROM notification WHERE type = 'VENTE_MODIFIEE'"));
+    }
+
+    /**
+     * Une modification, une seule : ni le remplaçant, ni l'original déjà repris
+     * ne se modifient à nouveau.
+     */
+    public function testUnTicketNeSeModifieQuUneFois(): void
+    {
+        $this->client->loginUser($this->caissier);
+        $data = $this->encaisser();
+        [, $modifie] = $this->poster('/api/vente/'.$data['uuid'].'/modifier', $this->correction());
+
+        [$code] = $this->poster('/api/vente/'.$modifie['uuid'].'/modifier', $this->correction());
+        $this->assertSame(403, $code, 'Le ticket né de la modification ne se modifie plus.');
+
+        [$code] = $this->poster('/api/vente/'.$data['uuid'].'/modifier', $this->correction());
+        $this->assertSame(403, $code, "L'original déjà repris ne se modifie plus.");
+
+        $this->assertSame(2, $this->ventes()->count([]), 'Aucune vente de plus.');
+    }
+
+    /**
+     * Original et remplaçant partent dans le même flush : les sorties de l'un
+     * sont inversées pendant que l'autre est déstocké, sans rien compter deux fois.
+     */
+    public function testLaModificationRectifieLeStock(): void
+    {
+        $b = $this->em->getRepository(Article::class)->find($this->articleB);
+        $b->setSuiviStock(true)->setStockActuel(10000); // 10 pièces
+        $this->em->flush();
+
+        $this->client->loginUser($this->caissier);
+        [, $data] = $this->poster('/api/vente', [
+            'uuid' => (string) Uuid::v4(),
+            'mode' => 'BOULANGERIE',
+            'lignes' => [['articleId' => $this->articleB, 'quantite' => 3]],
+            'reglements' => [['mode' => 'ESPECES', 'montant' => 150000]],
+        ]);
+        [$code] = $this->poster('/api/vente/'.$data['uuid'].'/modifier', [
+            'uuid' => (string) Uuid::v4(),
+            'mode' => 'BOULANGERIE',
+            'lignes' => [['articleId' => $this->articleB, 'quantite' => 1]],
+            'reglements' => [['mode' => 'ESPECES', 'montant' => 50000]],
+        ]);
+        $this->assertSame(201, $code);
+
+        $this->em->clear();
+        $this->assertSame(9000, $this->em->getRepository(Article::class)->find($this->articleB)->getStockActuel(), '10 − 3 + 3 − 1 = 9');
+    }
+
+    /** Réponse perdue en route : le même essai se rejoue sans créer de doublon. */
+    public function testLaModificationSeRejoueSansDoublon(): void
+    {
+        $this->client->loginUser($this->caissier);
+        $data = $this->encaisser();
+        $correction = $this->correction();
+
+        [$code, $premier] = $this->poster('/api/vente/'.$data['uuid'].'/modifier', $correction);
+        $this->assertSame(201, $code);
+
+        [$code, $rejeu] = $this->poster('/api/vente/'.$data['uuid'].'/modifier', $correction);
+        $this->assertSame(200, $code);
+        $this->assertSame($premier['numero'], $rejeu['numero']);
+        $this->assertSame(2, $this->ventes()->count([]));
+    }
+
+    /**
+     * Le dernier ticket seulement : dès qu'une vente suivante est encaissée, la
+     * précédente redevient l'affaire du gérant. Sans cette borne, un caissier
+     * pourrait remonter sa journée et effacer ses écarts au fil de l'eau — le Z
+     * ne signalerait plus rien.
+     */
+    public function testLeCaissierNeModifiePlusUnTicketQuUneAutreVenteADepasse(): void
     {
         $this->client->loginUser($this->caissier);
         $premier = $this->encaisser();
         $second = $this->encaisser();
 
-        [$code] = $this->poster('/api/vente/'.$premier['uuid'].'/annuler', ['motif' => 'Erreur de saisie']);
+        [$code] = $this->poster('/api/vente/'.$premier['uuid'].'/modifier', $this->correction());
         $this->assertSame(403, $code, 'Le ticket a été dépassé par un autre.');
 
-        // Le dernier, lui, reste annulable.
-        [$code] = $this->poster('/api/vente/'.$second['uuid'].'/annuler', ['motif' => 'Erreur de saisie']);
-        $this->assertSame(200, $code);
+        [$code] = $this->poster('/api/vente/'.$second['uuid'].'/modifier', $this->correction());
+        $this->assertSame(201, $code);
     }
 
     /**
-     * Après le Z, la journée est arrêtée : l'exception tombe avec elle. Le refus
-     * vient de l'habilitation (403), pas de l'exception métier levée plus loin —
-     * une porte fermée vaut mieux qu'une porte qui casse au passage.
+     * Après le Z, la journée est arrêtée. Le refus vient de l'habilitation (403),
+     * pas de l'exception métier levée plus loin — une porte fermée vaut mieux
+     * qu'une porte qui casse au passage.
      */
-    public function testLeCaissierNAnnulePlusRienUneFoisSaCaisseCloturee(): void
+    public function testLeCaissierNeModifiePlusRienUneFoisSaCaisseCloturee(): void
     {
         $this->client->loginUser($this->caissier);
         $data = $this->encaisser();
@@ -321,8 +430,24 @@ class VenteApiTest extends WebTestCase
         $session = $sessions->exigerSessionOuverte($this->caissier);
         $sessions->cloturer($session, 3100000);
 
-        [$code] = $this->poster('/api/vente/'.$data['uuid'].'/annuler', ['motif' => 'Erreur de saisie']);
+        [$code] = $this->poster('/api/vente/'.$data['uuid'].'/modifier', $this->correction());
         $this->assertSame(403, $code);
+    }
+
+    /** Un ticket corrigé reste un ticket : vide ou mal réglé, il est refusé et l'original reste valide. */
+    public function testUneModificationInvalideLaisseLeTicketIntact(): void
+    {
+        $this->client->loginUser($this->caissier);
+        $data = $this->encaisser();
+
+        $correction = $this->correction();
+        $correction['reglements'] = [['mode' => 'ESPECES', 'montant' => 100000]]; // < 1 500 FCFA
+        [$code] = $this->poster('/api/vente/'.$data['uuid'].'/modifier', $correction);
+        $this->assertSame(400, $code);
+
+        $this->em->clear();
+        $this->assertSame(StatutVente::VALIDEE, $this->ventes()->findOneBy(['uuid' => Uuid::fromString($data['uuid'])])->getStatut());
+        $this->assertSame(1, $this->ventes()->count([]));
     }
 
     public function testAnnulationMotifObligatoire(): void

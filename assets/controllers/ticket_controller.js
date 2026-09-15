@@ -43,9 +43,9 @@ export default class extends Controller {
         'reglement', 'encaisser', 'message', 'imprimer', 'impression',
         'paiement', 'especes', 'montantRecu', 'suggestions', 'renduLigne', 'renduLibelle', 'renduMontant',
         'recu', 'recuContenu', 'recuNumero', 'recuRendu', 'recuRenduMontant',
-        'actionsRecu', 'annulation', 'motif', 'motifLibre', 'confirmerAnnulation',
+        'modifierRecu', 'modification', 'modificationNumero',
     ];
-    static values = { ticketBase: String, apercuBase: String, annulerBase: String, materielBase: String, parametres: Object };
+    static values = { ticketBase: String, apercuBase: String, modifierBase: String, materielBase: String, parametres: Object };
 
     connect() {
         this.lignes = [];
@@ -54,8 +54,10 @@ export default class extends Controller {
         this.recu = null;
         /** Vrai juste après un appui sur une coupure : le chiffre suivant repart de zéro. */
         this.coupureRetenue = false;
-        /** Motif d'annulation en cours de choix. `null` = rien de retenu. */
-        this.motif = null;
+        /** Ticket encaissé en cours de modification : `{ uuid, numero, uuidRemplacant }`, ou `null`. */
+        this.modification = null;
+        /** Lignes du dernier ticket encaissé, gardées pour pouvoir le reprendre sans réseau. */
+        this.dernierEncaisse = null;
         // `rendre()` remet du même coup l'afficheur client au repos : il garde
         // sinon le dernier montant reçu, et rouvrir la caisse le laisserait sur le
         // total du client de la veille.
@@ -310,6 +312,12 @@ export default class extends Controller {
      * durable, idempotence, reprise hors ligne) est celle déjà en place.
      */
     async encaisser() {
+        // Un ticket repris ne repart pas dans la file : il remplace une vente que
+        // le serveur connaît déjà, et exige donc le réseau.
+        if (this.modification) {
+            return this.validerModification();
+        }
+
         if (this.lignes.length === 0 || !this.reglement) {
             return;
         }
@@ -361,15 +369,11 @@ export default class extends Controller {
             console.info(`[ZedPOS Matériel] Règlement "${this.reglement}" : tiroir-caisse non sollicité.`);
         }
 
-        // 3. La vente est acquise : l'écran se libère immédiatement.
+        // 3. La vente est acquise : l'écran se libère immédiatement. Ses lignes
+        //    sont gardées, le temps que le reçu offre de la modifier.
         const imprimer = this.hasImprimerTarget ? this.imprimerTarget.checked : false;
-        this.lignes = [];
-        this.reglement = null;
-        this.reglementTargets.forEach((r) => this.marquer(r, false));
-        this.oublierRecu();
-        this.especesTarget.classList.add('hidden');
-        this.rendre();
-        this.encaisserTarget.disabled = false;
+        this.dernierEncaisse = { uuid, lignes: this.lignes.map((l) => ({ ...l })) };
+        this.libererEcran();
 
         // 4. Transmission, immédiate si le réseau est là.
         await this.horsLigne.synchroniser();
@@ -406,12 +410,25 @@ export default class extends Controller {
         }
     }
 
+    /** Remet la colonne du ticket à vide, règlement et montant reçu compris. */
+    libererEcran() {
+        this.lignes = [];
+        this.reglement = null;
+        this.reglementTargets.forEach((r) => this.marquer(r, false));
+        this.oublierRecu();
+        this.especesTarget.classList.add('hidden');
+        this.rendre();
+    }
+
     /**
      * Charge le fragment 58 mm de la vente et l'affiche. C'est le seul appel
      * réseau *après* l'encaissement ; la vente est déjà enregistrée, un échec
      * d'affichage ne remet donc rien en cause.
+     *
+     * @param {boolean} modifiable faux pour un ticket né d'une modification : il
+     *                             ne se modifie qu'une fois.
      */
-    async afficherRecu(uuid, rendu = 0) {
+    async afficherRecu(uuid, rendu = 0, modifiable = true) {
         // La monnaie est répétée en grand au-dessus du fragment : c'est le geste
         // qui suit, la caissière ne doit pas avoir à la relire en corps 9 sur les
         // 58 mm du reçu.
@@ -428,6 +445,7 @@ export default class extends Controller {
 
             this.recuContenuTarget.innerHTML = await reponse.text();
             this.recuNumeroTarget.textContent = this.numeroAffiche();
+            this.modifierRecuTarget.classList.toggle('hidden', !modifiable || this.dernierEncaisse?.uuid !== uuid);
             this.recuTarget.classList.remove('hidden');
             this.uuidRecu = uuid;
         } catch {
@@ -450,6 +468,9 @@ export default class extends Controller {
 
         this.recuContenuTarget.innerHTML = this.htmlRecuLocal(ticket);
         this.recuNumeroTarget.textContent = this.numeroAffiche();
+        // Vente encore dans la file : le serveur ne la connaît pas, il n'y a rien
+        // à modifier chez lui.
+        this.modifierRecuTarget.classList.add('hidden');
         this.recuTarget.classList.remove('hidden');
         this.uuidRecu = uuid;
     }
@@ -592,9 +613,6 @@ export default class extends Controller {
     }
 
     fermerRecu() {
-        // Le panneau se rouvrira sur la vente suivante : il doit repartir de ses
-        // deux boutons, jamais du choix de motif laissé en plan.
-        this.fermerAnnulation();
         this.recuTarget.classList.add('hidden');
         this.recuContenuTarget.innerHTML = '';
         this.uuidRecu = null;
@@ -603,92 +621,126 @@ export default class extends Controller {
         this.majAfficheur();
     }
 
-    // ------------------------------------------- Annulation du dernier ticket
+    // ------------------------------------------- Modification du dernier ticket
 
     /**
-     * Le caissier n'annule que le ticket qu'il vient d'encaisser — le serveur le
-     * vérifie (`VenteVoter`), l'écran ne fait que l'offrir là où c'est utile.
+     * Reprend le ticket qui vient d'être encaissé : ses lignes reviennent dans la
+     * colonne du ticket, la caissière corrige, choisit le règlement et valide.
+     * Le serveur annule alors l'original et crée le remplaçant d'un seul bloc.
      *
-     * Jamais en un seul appui : la vente n'est pas supprimée mais son statut ne se
-     * reprend pas, et l'annulation part au journal d'audit **et** en notification
-     * à la dirigeante. Choisir un motif tient lieu de confirmation.
+     * **Une seule fois** — le remplaçant ne se modifie plus — et seulement le
+     * dernier ticket : le serveur le vérifie (`VenteVoter`), l'écran ne fait que
+     * l'offrir là où c'est utile. Aucun appel réseau ici : les lignes sont celles
+     * gardées à l'encaissement.
      */
-    ouvrirAnnulation() {
-        this.motif = null;
-        this.motifTargets.forEach((m) => this.marquer(m, false));
-        this.motifLibreTarget.value = '';
-        this.actionsRecuTarget.classList.add('hidden');
-        this.annulationTarget.classList.remove('hidden');
-        this.majConfirmerAnnulation();
-    }
-
-    fermerAnnulation() {
-        this.annulationTarget.classList.add('hidden');
-        this.actionsRecuTarget.classList.remove('hidden');
-    }
-
-    choisirMotif(event) {
-        this.motif = event.currentTarget.dataset.motif;
-        this.motifTargets.forEach((m) => this.marquer(m, m === event.currentTarget));
-        // Les deux saisies diraient deux motifs différents : la dernière l'emporte.
-        this.motifLibreTarget.value = '';
-        this.majConfirmerAnnulation();
-    }
-
-    saisirMotif(event) {
-        this.motif = event.currentTarget.value.trim() || null;
-        this.motifTargets.forEach((m) => this.marquer(m, false));
-        this.majConfirmerAnnulation();
-    }
-
-    majConfirmerAnnulation() {
-        this.confirmerAnnulationTarget.disabled = null === this.motif;
-    }
-
-    async confirmerAnnulation() {
-        if (!this.uuidRecu || null === this.motif) {
+    ouvrirModification() {
+        const uuid = this.uuidRecu;
+        if (!uuid || this.dernierEncaisse?.uuid !== uuid) {
             return;
         }
 
-        this.confirmerAnnulationTarget.disabled = true;
+        const numero = this.recuNumeroTarget.textContent.trim();
+        const lignes = this.dernierEncaisse.lignes.map((l) => ({ ...l }));
+
+        this.fermerRecu();
+        this.libererEcran();
+        this.modification = { uuid, numero, uuidRemplacant: null };
+        this.lignes = lignes;
+        this.majModification();
+        this.rendre();
+    }
+
+    /** Le ticket reste tel qu'il a été encaissé ; il reste modifiable. */
+    abandonnerModification() {
+        this.modification = null;
+        this.majModification();
+        this.libererEcran();
+    }
+
+    majModification() {
+        const actif = null !== this.modification;
+
+        this.modificationTarget.classList.toggle('hidden', !actif);
+        this.modificationNumeroTarget.textContent = actif ? this.modification.numero : '';
+        // Le même bouton vert : c'est toujours lui qui engage l'argent. Son
+        // libellé dit seulement qu'on ne crée pas une vente de plus.
+        this.encaisserTarget.textContent = actif ? 'Valider la modification' : 'Encaisser';
+    }
+
+    async validerModification() {
+        if (this.lignes.length === 0 || !this.reglement) {
+            return;
+        }
+
+        const total = this.total();
+        const encaisse = this.especes && null !== this.recu ? this.recu : total;
+        if (encaisse < total) {
+            return;
+        }
+        const rendu = renduMonnaie(encaisse, total);
+
+        // Uuid du remplaçant tiré une fois par modification : si la réponse se
+        // perd, le nouvel essai est reconnu par le serveur au lieu de se heurter
+        // à un ticket désormais annulé.
+        this.modification.uuidRemplacant ??= this.genererUuid();
+        const { uuid: originale, numero, uuidRemplacant: uuid } = this.modification;
+
+        this.encaisserTarget.disabled = true;
 
         let reponse;
         try {
-            reponse = await fetch(this.annulerBaseValue.replace('__UUID__', this.uuidRecu), {
+            reponse = await fetch(this.modifierBaseValue.replace('__UUID__', originale), {
                 method: 'POST',
                 credentials: 'same-origin',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ motif: this.motif }),
+                body: JSON.stringify({
+                    uuid,
+                    mode: 'BOULANGERIE',
+                    lignes: this.lignes.map((l) => ({ articleId: l.articleId, quantite: l.quantite, commentaire: '' })),
+                    reglements: [{ mode: this.reglement, montant: encaisse }],
+                }),
             });
         } catch {
-            // Une annulation ne part **pas** dans la file de synchronisation.
+            // Une modification ne part **pas** dans la file de synchronisation.
             // Rejouée au retour du réseau, elle porterait sur un ticket que
             // d'autres ventes auront entre-temps dépassé : le serveur la
-            // refuserait, et la caissière croirait son ticket annulé depuis une
+            // refuserait, et la caissière croirait son ticket corrigé depuis une
             // heure. Mieux vaut le dire au moment où elle appuie.
-            this.confirmerAnnulationTarget.disabled = false;
-            this.notifier('Annulation impossible hors ligne — appelez le gérant', true);
+            this.majEncaisser();
+            this.notifier('Modification impossible hors ligne — réessayez ou abandonnez', true);
 
             return;
         }
 
         if (!reponse.ok) {
-            // Refus du serveur : ticket dépassé par un autre, caisse clôturée,
-            // vente déjà annulée. Son message est plus précis que le nôtre.
+            // Refus du serveur : ticket dépassé, déjà modifié, caisse clôturée.
+            // Son message est plus précis que le nôtre.
             const erreur = await reponse.json().catch(() => ({}));
 
-            this.confirmerAnnulationTarget.disabled = false;
-            this.notifier(erreur.erreur ?? 'Annulation refusée — appelez le gérant', true);
+            this.majEncaisser();
+            this.notifier(erreur.erreur ?? 'Modification refusée — appelez le gérant', true);
 
             return;
         }
 
-        // Le stock déstocké à la vente est remonté par le serveur (mouvements
-        // inverses) : il n'y a rien à rejouer ici, l'écran se contente de repartir
-        // sur un ticket vierge.
-        const numero = this.recuNumeroTarget.textContent.trim();
-        this.fermerRecu();
-        this.notifier(numero ? `Ticket ${numero} annulé` : 'Ticket annulé', false);
+        if (this.especes) {
+            pos.drawer();
+        }
+
+        // Le stock est rectifié par le serveur (sorties de l'original inversées,
+        // remplaçant déstocké) : l'écran n'a plus qu'à repartir à vide.
+        const imprimer = this.hasImprimerTarget ? this.imprimerTarget.checked : false;
+        this.modification = null;
+        this.dernierEncaisse = null;
+        this.majModification();
+        this.libererEcran();
+        this.annoncerMonnaie(rendu);
+
+        await this.afficherRecu(uuid, rendu, false);
+        if (imprimer) {
+            await this.imprimerMateriel(uuid, false);
+        }
+        this.notifier(`Ticket ${numero} modifié`, false);
     }
 
     async venteTransmise(uuid) {

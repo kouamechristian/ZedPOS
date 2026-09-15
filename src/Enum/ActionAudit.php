@@ -17,6 +17,9 @@ enum ActionAudit: string
 
     // Ventes
     case VENTE_ANNULEE = 'VENTE_ANNULEE';
+    // Ticket modifié par le caissier depuis la caisse : l'original est annulé et
+    // remplacé. Une seule entrée, qui porte les deux versions.
+    case VENTE_MODIFIEE = 'VENTE_MODIFIEE';
     case REMISE_ACCORDEE = 'REMISE_ACCORDEE';
 
     // Catalogue et stock
@@ -60,6 +63,7 @@ enum ActionAudit: string
             self::DECONNEXION => 'Déconnexion',
             self::ECHEC_CONNEXION => 'Échec de connexion',
             self::VENTE_ANNULEE => 'Annulation de vente',
+            self::VENTE_MODIFIEE => 'Modification de ticket',
             self::REMISE_ACCORDEE => 'Remise accordée',
             self::PRIX_MODIFIE => 'Modification de prix',
             self::PERTE_SAISIE => 'Saisie de perte',
@@ -91,6 +95,8 @@ enum ActionAudit: string
         return \in_array($this, [
             self::ECHEC_CONNEXION,
             self::VENTE_ANNULEE,
+            // Un ticket repris après encaissement change ce que le Z attend.
+            self::VENTE_MODIFIEE,
             self::REMISE_ACCORDEE,
             self::ECART_CAISSE,
             self::UTILISATEUR_DESACTIVE,
@@ -113,7 +119,7 @@ enum ActionAudit: string
     {
         return match ($this) {
             self::CONNEXION, self::DECONNEXION, self::ECHEC_CONNEXION => 'Sécurité',
-            self::VENTE_ANNULEE, self::REMISE_ACCORDEE => 'Ventes',
+            self::VENTE_ANNULEE, self::VENTE_MODIFIEE, self::REMISE_ACCORDEE => 'Ventes',
             self::PRIX_MODIFIE, self::PERTE_SAISIE, self::INVENTAIRE_VALIDE => 'Catalogue et stock',
             self::CAISSE_CLOTUREE, self::ECART_CAISSE => 'Caisse',
             self::UTILISATEUR_CREE, self::UTILISATEUR_MODIFIE,

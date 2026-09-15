@@ -19,21 +19,23 @@ use Symfony\Component\Security\Core\Authorization\Voter\Voter;
  * d'habilitations ne s'appuie pas sur l'imprévisibilité d'un identifiant.
  *
  * L'annulation d'une vente encaissée appartient au gérant (et, par hiérarchie, à
- * la dirigeante). **Une exception, et une seule** : le caissier peut annuler le
- * ticket qu'il vient d'encaisser. L'erreur de saisie se constate au comptoir dans
- * les secondes qui suivent, et faire venir le gérant pour deux baguettes de trop
- * immobilise la file du matin — c'est-à-dire exactement ce que cette caisse est
- * censée éviter.
+ * la dirigeante), **sans exception**.
  *
- * L'exception est bornée à ce ticket-là : dès qu'une vente suivante est
- * encaissée, l'annulation redevient l'affaire du gérant. Un caissier qui pourrait
- * remonter sa journée pourrait aussi effacer ses écarts au fil de l'eau, et le Z
- * ne signalerait plus rien. Dans tous les cas l'annulation reste tracée au journal
- * d'audit et notifiée à la dirigeante : elle est ouverte, pas silencieuse.
+ * Le caissier, lui, **modifie** le ticket qu'il vient d'encaisser. L'erreur de
+ * saisie se constate au comptoir dans les secondes qui suivent, et faire venir le
+ * gérant pour deux baguettes de trop immobilise la file du matin. La modification
+ * est bornée :
+ * - sa propre caisse, encore ouverte ;
+ * - le dernier ticket, et lui seul — un caissier qui pourrait remonter sa journée
+ *   effacerait ses écarts au fil de l'eau, et le Z ne signalerait plus rien ;
+ * - **une seule fois** : un ticket issu d'une modification ne se reprend plus.
+ *
+ * Elle reste tracée au journal d'audit et notifiée à la dirigeante : elle est
+ * ouverte, pas silencieuse.
  */
 class VenteVoter extends Voter
 {
-    private const ATTRIBUTS = [Permission::VENTE_VOIR, Permission::VENTE_ANNULER];
+    private const ATTRIBUTS = [Permission::VENTE_VOIR, Permission::VENTE_ANNULER, Permission::VENTE_MODIFIER];
 
     public function __construct(
         private readonly Security $security,
@@ -60,16 +62,20 @@ class VenteVoter extends Voter
             Permission::VENTE_VOIR => $this->peutVoir($vente, $utilisateur),
 
             // Écriture : le comptable, en lecture seule, n'a pas ROLE_GERANT.
-            Permission::VENTE_ANNULER => $this->peutAnnuler($vente, $utilisateur),
+            Permission::VENTE_ANNULER => $this->security->isGranted('ROLE_GERANT'),
+
+            Permission::VENTE_MODIFIER => $this->peutModifier($vente, $utilisateur),
 
             default => false,
         };
     }
 
-    private function peutAnnuler(Vente $vente, Utilisateur $utilisateur): bool
+    private function peutModifier(Vente $vente, Utilisateur $utilisateur): bool
     {
-        if ($this->security->isGranted('ROLE_GERANT')) {
-            return true;
+        // Une modification, une seule : ni un ticket déjà repris (annulé), ni
+        // le ticket né de la reprise.
+        if (!$vente->estModifiable()) {
+            return false;
         }
 
         $session = $vente->getSessionCaisse();

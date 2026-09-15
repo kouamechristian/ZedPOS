@@ -48,9 +48,64 @@ class VenteApiController extends AbstractController
     }
 
     /**
-     * Annulation d'une vente encaissée : gérant et dirigeante sans restriction, et
-     * le caissier sur le seul ticket qu'il vient d'encaisser
-     * ({@see \App\Security\Voter\VenteVoter}).
+     * Modification du ticket qu'on vient d'encaisser : l'original est annulé et
+     * remplacé par la version corrigée, **une seule fois**
+     * ({@see \App\Security\Voter\VenteVoter}). Toujours notifiée à la dirigeante.
+     *
+     * Ne passe **pas** par la file de synchronisation hors ligne : rejouée au
+     * retour du réseau, elle porterait sur un ticket que d'autres ventes auront
+     * dépassé. L'écran la refuse franchement quand le réseau manque.
+     */
+    #[Route('/vente/{uuid}/modifier', name: 'api_vente_modifier', methods: ['POST'])]
+    public function modifier(string $uuid, Request $request, VenteRepository $ventes): JsonResponse
+    {
+        /** @var array<string, mixed> $donnees */
+        $donnees = json_decode($request->getContent(), true) ?? [];
+
+        try {
+            $identifiant = Uuid::fromString($uuid);
+        } catch (\InvalidArgumentException) {
+            return $this->json(['ok' => false, 'erreur' => 'UUID invalide.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $originale = $ventes->findOneBy(['uuid' => $identifiant]);
+        if (null === $originale) {
+            return $this->json(['ok' => false, 'erreur' => 'Ticket introuvable — il n\'est peut-être pas encore transmis.'], Response::HTTP_NOT_FOUND);
+        }
+
+        // Rejeu d'une modification déjà faite (réponse perdue en route) :
+        // l'original est désormais annulé et l'habilitation le refuserait. On
+        // reconnaît le remplaçant avant de la consulter.
+        $uuidRemplacant = $donnees['uuid'] ?? null;
+        if (\is_string($uuidRemplacant) && Uuid::isValid($uuidRemplacant)) {
+            $remplacante = $ventes->findOneBy(['uuid' => Uuid::fromString($uuidRemplacant)]);
+            if (null !== $remplacante && $remplacante->getVenteRemplacee()?->getId() === $originale->getId()) {
+                $this->denyAccessUnlessGranted(Permission::VENTE_VOIR, $remplacante);
+
+                return $this->json($this->representer($remplacante, $remplacante->getRendu()), Response::HTTP_OK);
+            }
+        }
+
+        $this->denyAccessUnlessGranted(Permission::VENTE_MODIFIER, $originale);
+
+        try {
+            /** @var Utilisateur $auteur */
+            $auteur = $this->getUser();
+            $remiseMaxBp = $this->isGranted('ROLE_GERANT') ? 1000 : 0;
+            $resultat = $this->encaissement->modifier($originale, $auteur, $donnees, $remiseMaxBp);
+        } catch (EncaissementException $e) {
+            return $this->json(['ok' => false, 'erreur' => $e->getMessage()], $e->statut());
+        }
+
+        $code = $resultat->rejoue ? Response::HTTP_OK : Response::HTTP_CREATED;
+
+        return $this->json($this->representer($resultat->vente, $resultat->rendu), $code);
+    }
+
+    /**
+     * Annulation d'une vente encaissée : gérant et dirigeante seulement
+     * ({@see \App\Security\Voter\VenteVoter}). Le caissier n'annule plus, il
+     * modifie son dernier ticket ({@see self::modifier()}).
      * Toujours notifiée à la dirigeante, jamais de suppression.
      */
     #[Route('/vente/{uuid}/annuler', name: 'api_vente_annuler', methods: ['POST'])]
