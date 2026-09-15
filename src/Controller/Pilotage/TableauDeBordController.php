@@ -3,6 +3,7 @@
 namespace App\Controller\Pilotage;
 
 use App\Entity\Notification;
+use App\Entity\Vente;
 use App\Enum\RoleUtilisateur;
 use App\Repository\NotificationRepository;
 use App\Repository\VenteRepository;
@@ -45,6 +46,7 @@ class TableauDeBordController extends AbstractController
         return $this->render('pilotage/tableau_de_bord.html.twig', [
             'synthese' => $synthese,
             'notifications' => $notifications->nonLuesPour(RoleUtilisateur::DIRIGEANTE->value),
+            'nombreNotifications' => $notifications->nombreNonLues(RoleUtilisateur::DIRIGEANTE->value),
             'raccourcis' => $this->raccourcis(),
             'caissieres' => $this->donneesCaissieres($synthese),
             'courbe' => [
@@ -131,6 +133,20 @@ class TableauDeBordController extends AbstractController
     }
 
     /**
+     * Acquitte toutes les alertes d'un geste — une matinée de corrections en
+     * caisse ne se relève pas une par une.
+     */
+    #[Route('/notifications/lues', name: 'pilotage_notifications_lues', methods: ['POST'])]
+    public function marquerToutesLues(Request $request, NotificationRepository $notifications): Response
+    {
+        if ($this->isCsrfTokenValid('notifications_lues', (string) $request->request->get('_token'))) {
+            $notifications->marquerToutesLuesPour(RoleUtilisateur::DIRIGEANTE->value);
+        }
+
+        return $this->redirectToRoute('app_pilotage', [], Response::HTTP_SEE_OTHER);
+    }
+
+    /**
      * Tickets de la journée, du plus récent au plus ancien.
      */
     #[Route('/ventes', name: 'pilotage_ventes', methods: ['GET'])]
@@ -161,10 +177,40 @@ class TableauDeBordController extends AbstractController
             ?? throw $this->createNotFoundException('Ticket introuvable.');
         $this->denyAccessUnlessGranted(Permission::VENTE_VOIR, $vente);
 
+        $originale = $vente->getVenteRemplacee();
+
         return $this->render('pilotage/vente.html.twig', [
             'vente' => $vente,
             'ticket' => $builder->construire($vente),
+            // Le chemin inverse : un original modifié mène à son remplaçant.
+            'remplacante' => $ventes->findOneBy(['venteRemplacee' => $vente]),
+            'comparaison' => null !== $originale ? $this->comparer($originale, $vente) : null,
         ]);
+    }
+
+    /**
+     * Ce qu'une modification a changé, article par article : seules les lignes
+     * dont la quantité ou le montant a bougé. La dirigeante vient y lire les deux
+     * baguettes retirées, pas relire tout le ticket.
+     *
+     * @return list<array{nom: string, avant: int, apres: int, montantAvant: int, montantApres: int}>
+     */
+    private function comparer(Vente $avant, Vente $apres): array
+    {
+        $lignes = [];
+        foreach (['Avant' => $avant, 'Apres' => $apres] as $cote => $vente) {
+            foreach ($vente->getLignes() as $ligne) {
+                $article = $ligne->getArticle();
+                $lignes[$article->getId()] ??= ['nom' => $article->getNom(), 'avant' => 0, 'apres' => 0, 'montantAvant' => 0, 'montantApres' => 0];
+                $lignes[$article->getId()][strtolower($cote)] += $ligne->getQuantite();
+                $lignes[$article->getId()]['montant'.$cote] += $ligne->getMontantTtc();
+            }
+        }
+
+        return array_values(array_filter(
+            $lignes,
+            static fn (array $l): bool => $l['avant'] !== $l['apres'] || $l['montantAvant'] !== $l['montantApres'],
+        ));
     }
 
     /**

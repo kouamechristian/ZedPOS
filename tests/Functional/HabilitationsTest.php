@@ -314,8 +314,9 @@ class HabilitationsTest extends WebTestCase
         $this->client->request('GET', '/pilotage');
 
         $this->assertResponseIsSuccessful();
-        $this->assertSelectorTextContains('body', 'V-00001 annulée');
-        $this->assertSelectorTextContains('body', 'Erreur de saisie');
+        $this->assertSelectorTextContains('[aria-labelledby="titre-alertes"]', 'Ticket annulé');
+        $this->assertSelectorTextContains('[aria-labelledby="titre-alertes"]', 'V-00001');
+        $this->assertSelectorTextContains('[aria-labelledby="titre-alertes"]', 'Erreur de saisie');
     }
 
     public function testUneNotificationSAcquitte(): void
@@ -332,6 +333,30 @@ class HabilitationsTest extends WebTestCase
 
         $relue = $this->em->getRepository(Notification::class)->find($notification->getId());
         $this->assertTrue($relue->estLue());
+        $this->assertCount(0, static::getContainer()->get(NotificationRepository::class)->nonLuesPour('ROLE_DIRIGEANTE'));
+    }
+
+    /**
+     * Une matinée de corrections ne se relève pas une alerte à la fois. Au-delà
+     * de trois, les suivantes sont repliées pour laisser les chiffres à l'écran.
+     */
+    public function testLesNotificationsSAcquittentDUnGeste(): void
+    {
+        $notificateur = static::getContainer()->get(NotificateurDirigeante::class);
+        foreach (['Erreur', 'Doublon', 'Client parti', 'Mauvais article'] as $motif) {
+            $notificateur->venteAnnulee($this->venteDuCaissier, $motif, $this->gerant);
+        }
+
+        $this->client->loginUser($this->dirigeante);
+        $crawler = $this->client->request('GET', '/pilotage');
+
+        $this->assertSelectorTextContains('#titre-alertes', '4');
+        $this->assertCount(3, $crawler->filter('[aria-labelledby="titre-alertes"] > ul > li'), 'Trois alertes visibles.');
+        $this->assertCount(1, $crawler->filter('[aria-labelledby="titre-alertes"] details li'), 'La quatrième est repliée.');
+
+        $this->client->submit($crawler->selectButton('Tout marquer comme vu')->form());
+
+        $this->assertResponseRedirects('/pilotage');
         $this->assertCount(0, static::getContainer()->get(NotificationRepository::class)->nonLuesPour('ROLE_DIRIGEANTE'));
     }
 

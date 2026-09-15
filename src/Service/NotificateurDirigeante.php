@@ -10,7 +10,9 @@ use Doctrine\ORM\EntityManagerInterface;
 
 /**
  * Alerte la dirigeante des événements qu'elle doit connaître sans avoir à les
- * chercher — aujourd'hui, les annulations de ventes encaissées.
+ * chercher — les annulations et les modifications de tickets encaissés.
+ * Chaque notification est rattachée à sa vente : le pilotage en tire l'affichage
+ * « avant → après », le titre et le message ne servent plus que de repli.
  *
  * Notification **en base**, relevée dans l'espace de pilotage : la dirigeante le
  * consulte depuis son téléphone, c'est le canal qu'elle regarde réellement. Un
@@ -36,15 +38,17 @@ class NotificateurDirigeante
             roleDestinataire: RoleUtilisateur::DIRIGEANTE->value,
             type: self::TYPE_VENTE_ANNULEE,
             titre: \sprintf('Vente %s annulée (%s FCFA)', $vente->getNumero(), $montant),
+            // Le numéro et le montant sont affichés à part sur l'alerte : le
+            // message ne porte que ce que la vente ne dit pas d'elle-même.
             message: \sprintf(
-                'Ticket %s du %s, encaissé par %s, annulé par %s. Motif : %s',
-                $vente->getNumero(),
-                $vente->getCreatedAt()->format('d/m/Y à H:i'),
+                'Encaissé par %s le %s, annulé par %s. Motif : %s',
                 $vente->getSessionCaisse()->getUtilisateur()->getNom(),
+                $vente->getCreatedAt()->format('d/m/Y à H:i'),
                 $auteur?->getNom() ?? 'un gérant',
                 $motif,
             ),
             lien: '/pilotage/ventes/'.$vente->getUuid(),
+            vente: $vente,
         );
 
         $this->em->persist($notification);
@@ -80,6 +84,7 @@ class NotificateurDirigeante
                 $remplacante->getNumero(),
             ),
             lien: '/pilotage/ventes/'.$remplacante->getUuid(),
+            vente: $remplacante,
         );
 
         $this->em->persist($notification);

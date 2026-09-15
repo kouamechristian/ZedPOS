@@ -27,30 +27,8 @@
 {% import _self as vue %}
 <h1 class="sr-only">Pilotage de la journée du {{ synthese.jour|date('d/m/Y') }}</h1>
 
-{# ---- Alertes : annulations de ventes, à acquitter ---- #}
-{% if notifications is not empty %}
-    <section class="mb-5 space-y-3">
-        {% for notification in notifications %}
-            <div class="alerte alerte-rouge apparition shadow-sm" style="--i: {{ loop.index0 }}">
-                <span class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-red-100 text-red-700">{{ ui.icone('pertes') }}</span>
-                <div class="min-w-0 flex-1">
-                    <div class="font-bold text-red-900">{{ notification.titre }}</div>
-                    <p class="mt-0.5 text-red-800">{{ notification.message }}</p>
-                    <div class="mt-3 flex flex-wrap items-center gap-2">
-                        {% if notification.lien %}
-                            <a href="{{ notification.lien }}" class="btn btn-sm btn-danger-plein">Voir le ticket</a>
-                        {% endif %}
-                        <form method="post" action="{{ path('pilotage_notification_lue', {id: notification.id}) }}">
-                            <input type="hidden" name="_token" value="{{ csrf_token('notification_' ~ notification.id) }}">
-                            <button class="btn btn-sm btn-secondaire">J'ai vu</button>
-                        </form>
-                        <span class="text-xs text-red-700/80">{{ notification.createdAt|date('d/m/Y H:i') }}</span>
-                    </div>
-                </div>
-            </div>
-        {% endfor %}
-    </section>
-{% endif %}
+{# ---- Alertes : tickets modifiés et annulés, à acquitter ---- #}
+{{ include('pilotage/_notifications.html.twig') }}
 
 {# ---- Barre d'outils : journée consultée et téléchargements ----
    Les liens de téléchargement portent `data-turbo="false"` : Turbo intercepte

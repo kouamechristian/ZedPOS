@@ -7,6 +7,7 @@ use App\Entity\FamilleProduit;
 use App\Entity\Utilisateur;
 use App\Entity\Vente;
 use App\Enum\StatutVente;
+use App\Repository\NotificationRepository;
 use App\Repository\VenteRepository;
 use App\Service\SessionCaisseService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -331,6 +332,60 @@ class VenteApiTest extends WebTestCase
         $connexion = $this->em->getConnection();
         $this->assertSame(1, (int) $connexion->fetchOne("SELECT COUNT(*) FROM journal_audit WHERE action = 'VENTE_MODIFIEE'"));
         $this->assertSame(1, (int) $connexion->fetchOne("SELECT COUNT(*) FROM notification WHERE type = 'VENTE_MODIFIEE'"));
+    }
+
+    /**
+     * La dirigeante lit une modification en « avant → après » : les deux montants,
+     * l'écart, les deux numéros — et, sur la fiche, l'article retiré. Un ticket qui
+     * baisse est ce qu'elle vient chercher.
+     */
+    public function testLaDirigeanteLitLaModificationEnAvantApres(): void
+    {
+        $this->client->loginUser($this->caissier);
+        [, $data] = $this->poster('/api/vente', [
+            'uuid' => (string) Uuid::v4(),
+            'mode' => 'BOULANGERIE',
+            'lignes' => [
+                ['articleId' => $this->articleA, 'quantite' => 2],
+                ['articleId' => $this->articleB, 'quantite' => 1],
+            ],
+            'reglements' => [['mode' => 'ESPECES', 'montant' => 250000]],
+        ]);
+        [$code, $modifie] = $this->poster('/api/vente/'.$data['uuid'].'/modifier', [
+            'uuid' => (string) Uuid::v4(),
+            'mode' => 'BOULANGERIE',
+            'lignes' => [['articleId' => $this->articleA, 'quantite' => 1]],
+            'reglements' => [['mode' => 'ESPECES', 'montant' => 100000]],
+        ]);
+        $this->assertSame(201, $code);
+
+        $notification = static::getContainer()->get(NotificationRepository::class)->nonLuesPour('ROLE_DIRIGEANTE')[0];
+        $this->assertSame($modifie['uuid'], (string) $notification->getVente()?->getUuid(), 'Rattachée au remplaçant.');
+
+        $dirigeante = new Utilisateur('dirigeante@test.ci', 'Dirigeante');
+        $dirigeante->setRoles(['ROLE_DIRIGEANTE'])->setMotDePasse('x');
+        $this->em->persist($dirigeante);
+        $this->em->flush();
+        $this->client->loginUser($dirigeante);
+
+        $crawler = $this->client->request('GET', '/pilotage');
+        $this->assertResponseIsSuccessful();
+        $alerte = $crawler->filter('[aria-labelledby="titre-alertes"]')->text();
+        foreach (['Ticket modifié', '2 500 FCFA', '1 000 FCFA', '− 1 500 FCFA', $data['numero'], $modifie['numero'], 'Voir avant / après'] as $attendu) {
+            $this->assertStringContainsString($attendu, $alerte);
+        }
+        $this->assertCount(0, $crawler->filter('.alerte-rouge'), 'Une modification n\'est pas affichée comme une annulation.');
+
+        $crawler = $this->client->request('GET', '/pilotage/ventes/'.$modifie['uuid']);
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorTextContains('body', 'Ticket baissé de 1 500 FCFA');
+        $this->assertSelectorTextContains('body', 'retiré');
+        $this->assertCount(1, $crawler->filter('a[href="/pilotage/ventes/'.$data['uuid'].'"]'), 'L\'avant mène à l\'original.');
+
+        $crawler = $this->client->request('GET', '/pilotage/ventes/'.$data['uuid']);
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorTextContains('body', 'Remplacée');
+        $this->assertCount(1, $crawler->filter('a[href="/pilotage/ventes/'.$modifie['uuid'].'"]'), 'L\'original mène au remplaçant.');
     }
 
     /**

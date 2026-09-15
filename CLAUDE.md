@@ -346,7 +346,25 @@ les sorties de l'original tandis qu'il déstocke le remplaçant.
 - Pas de motif demandé : les deux versions sont au journal d'audit
   (`VENTE_MODIFIEE`, rattachée à l'original, lignes et règlements avant / après)
   et la dirigeante est notifiée (`NotificateurDirigeante::venteModifiee()`).
-  `/pilotage/ventes/{uuid}` relie le remplaçant à l'original.
+  `/pilotage/ventes/{uuid}` relie le remplaçant à l'original **dans les deux
+  sens** : le remplaçant affiche une carte « avant → après » (totaux, écart,
+  articles ajoutés / retirés / changés, règlement s'il a changé), l'original un
+  bandeau ambre et le badge « Remplacée » menant au remplaçant.
+
+**Affichage des alertes sur `/pilotage`** (`pilotage/_notifications.html.twig`) :
+une **carte « À vérifier »** et non une pile de bandeaux — dix corrections dans
+la matinée repoussaient les chiffres du jour hors de l'écran du téléphone.
+
+- `Notification::$vente` rattache l'alerte à sa vente (le **remplaçant** pour une
+  modification). L'écran en tire montants et numéros ; titre et message ne
+  servent plus que de repli pour une alerte non rattachée. La migration
+  `Version20260915140000` rattache l'existant d'après le lien.
+- **Modification en ambre, annulation en rouge.** Une modification se lit
+  « 2 500 → 1 000 FCFA » avec l'écart ; **une baisse est en rouge**, c'est là
+  qu'un écart de caisse se cache.
+- **Trois alertes visibles**, les suivantes repliées dans un `<details>` ;
+  « Tout marquer comme vu » (`POST /pilotage/notifications/lues`) dès qu'il y en
+  a deux. `nonLuesPour()` charge vente, original et caissier en une requête.
 - L'original reste une **annulation** pour le pilotage et le Z : c'en est une, et
   son motif dit pourquoi.
 

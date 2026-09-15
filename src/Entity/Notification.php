@@ -10,7 +10,7 @@ use Doctrine\ORM\Mapping as ORM;
 /**
  * Alerte destinée à un rôle, consultable dans l'espace de pilotage.
  *
- * Sert aujourd'hui à prévenir la dirigeante des annulations de ventes. La lecture
+ * Sert à prévenir la dirigeante des tickets annulés ou modifiés. La lecture
  * (`luA`) est la seule mutation possible : le contenu est figé à la création, comme
  * pour le journal d'audit.
  */
@@ -43,6 +43,17 @@ class Notification
     #[ORM\Column(length: 255, nullable: true)]
     private ?string $lien = null;
 
+    /**
+     * Vente concernée — pour une modification, le **remplaçant** (l'original se
+     * relit par `venteRemplacee`). Le titre et le message ne sont que du texte :
+     * sans ce lien, l'écran ne saurait pas mettre « avant → après » en regard.
+     * Nulle pour les notifications antérieures à la colonne qui n'ont pas pu être
+     * rattachées : l'écran retombe alors sur le texte.
+     */
+    #[ORM\ManyToOne(targetEntity: Vente::class)]
+    #[ORM\JoinColumn(nullable: true)]
+    private ?Vente $vente = null;
+
     #[ORM\Column(nullable: true)]
     private ?\DateTimeImmutable $luA = null;
 
@@ -52,12 +63,14 @@ class Notification
         string $titre,
         string $message,
         ?string $lien = null,
+        ?Vente $vente = null,
     ) {
         $this->roleDestinataire = $roleDestinataire;
         $this->type = $type;
         $this->titre = $titre;
         $this->message = $message;
         $this->lien = $lien;
+        $this->vente = $vente;
         $this->createdAt = new \DateTimeImmutable();
     }
 
@@ -89,6 +102,11 @@ class Notification
     public function getLien(): ?string
     {
         return $this->lien;
+    }
+
+    public function getVente(): ?Vente
+    {
+        return $this->vente;
     }
 
     public function getLuA(): ?\DateTimeImmutable

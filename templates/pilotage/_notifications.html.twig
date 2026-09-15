@@ -1,0 +1,129 @@
+{# Alertes de la dirigeante, en tête du tableau de bord.
+
+   Une **carte**, pas une pile de bandeaux : les corrections de ticket sont un
+   geste courant au comptoir, et dix bandeaux rouges repoussaient les chiffres du
+   jour hors de l'écran du téléphone. Trois alertes visibles, le reste replié.
+
+   **Modification ≠ annulation.** Une modification est ambre et se lit
+   « avant → après » avec l'écart ; une annulation reste rouge. Ce qui compte pour
+   la dirigeante tient dans le montant : un ticket qui baisse est signalé en rouge,
+   c'est là qu'un écart de caisse se cache.
+
+   Une notification sans vente rattachée (antérieure à la colonne) retombe sur son
+   titre et son message. #}
+{% import _self as alertes %}
+{% import 'admin/_icones.html.twig' as ui %}
+
+{% macro alerte(notification) %}
+    {% import 'admin/_macros.html.twig' as fmt %}
+    {% import 'admin/_icones.html.twig' as ui %}
+    {% set vente = notification.vente %}
+    {% set modifiee = notification.type == 'VENTE_MODIFIEE' %}
+    {% set originale = modifiee and vente ? vente.venteRemplacee : null %}
+    {% set moment = notification.createdAt|date('Y-m-d') == 'now'|date('Y-m-d')
+        ? notification.createdAt|date('H:i')
+        : notification.createdAt|date('d/m à H:i') %}
+    <li class="flex gap-3 px-4 py-4 sm:px-5">
+        <span class="grid h-9 w-9 shrink-0 place-items-center rounded-xl {{ modifiee ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700' }}">
+            {{ ui.icone(modifiee ? 'modifier' : 'erreur') }}
+        </span>
+        <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span class="badge {{ modifiee ? 'badge-ambre' : 'badge-rouge' }}">{{ modifiee ? 'Ticket modifié' : 'Ticket annulé' }}</span>
+                <span class="text-xs tabular-nums text-stone-400">{{ moment }}</span>
+            </div>
+
+            {% if originale %}
+                {% set ecart = vente.totalTtc - originale.totalTtc %}
+                <div class="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                    <span class="tabular-nums text-stone-400 line-through">{{ fmt.fcfa(originale.totalTtc) }}</span>
+                    <span class="text-stone-400" aria-label="devient">→</span>
+                    <span class="text-lg font-bold tabular-nums text-stone-900">{{ fmt.fcfa(vente.totalTtc) }}</span>
+                    {% if ecart < 0 %}
+                        <span class="badge badge-rouge">− {{ fmt.fcfa(-ecart) }}</span>
+                    {% elseif ecart > 0 %}
+                        <span class="badge badge-neutre">+ {{ fmt.fcfa(ecart) }}</span>
+                    {% else %}
+                        <span class="badge badge-neutre">même montant</span>
+                    {% endif %}
+                </div>
+                <p class="mt-1 text-sm text-stone-500">
+                    <span class="code">{{ originale.numero }}</span> remplacé par <span class="code">{{ vente.numero }}</span>
+                    · {{ vente.sessionCaisse.utilisateur.nom }}
+                </p>
+            {% elseif vente %}
+                <div class="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                    <span class="text-lg font-bold tabular-nums text-stone-900 line-through decoration-red-400">{{ fmt.fcfa(vente.totalTtc) }}</span>
+                    <span class="code text-stone-500">{{ vente.numero }}</span>
+                </div>
+                <p class="mt-1 text-sm text-stone-500">{{ notification.message }}</p>
+            {% else %}
+                <div class="mt-1.5 font-semibold text-stone-900">{{ notification.titre }}</div>
+                <p class="mt-0.5 text-sm text-stone-500">{{ notification.message }}</p>
+            {% endif %}
+
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+                {% if notification.lien %}
+                    <a href="{{ notification.lien }}" class="btn btn-sm btn-secondaire">
+                        {{ ui.icone('oeil', 'h-4 w-4') }} {{ originale ? 'Voir avant / après' : 'Voir le ticket' }}
+                    </a>
+                {% endif %}
+                <form method="post" action="{{ path('pilotage_notification_lue', {id: notification.id}) }}">
+                    <input type="hidden" name="_token" value="{{ csrf_token('notification_' ~ notification.id) }}">
+                    <button class="btn btn-sm btn-fantome">{{ ui.icone('valide', 'h-4 w-4') }} J'ai vu</button>
+                </form>
+            </div>
+        </div>
+    </li>
+{% endmacro %}
+
+{% if notifications is not empty %}
+    {% set modifications = notifications|filter(n => n.type == 'VENTE_MODIFIEE')|length %}
+    {% set annulations = notifications|length - modifications %}
+    {% set visibles = 3 %}
+    <section class="carte apparition mb-5 overflow-hidden ring-2 ring-amber-300/70" aria-labelledby="titre-alertes">
+        <div class="carte-entete bg-amber-50">
+            <div class="min-w-0">
+                <h2 id="titre-alertes" class="carte-titre flex items-center gap-2">
+                    <span class="text-amber-600">{{ ui.icone('pertes') }}</span>
+                    À vérifier
+                    <span class="badge badge-ambre tabular-nums">{{ nombreNotifications }}</span>
+                </h2>
+                <p class="carte-note mt-0.5">
+                    {%- if modifications > 0 %}{{ modifications }} ticket{{ modifications > 1 ? 's' }} modifié{{ modifications > 1 ? 's' }}{% endif -%}
+                    {%- if modifications > 0 and annulations > 0 %} · {% endif -%}
+                    {%- if annulations > 0 %}{{ annulations }} annulé{{ annulations > 1 ? 's' }}{% endif -%}
+                    {%- if nombreNotifications > notifications|length %} — les {{ notifications|length }} plus récentes{% endif -%}
+                </p>
+            </div>
+            {% if notifications|length > 1 %}
+                <form method="post" action="{{ path('pilotage_notifications_lues') }}">
+                    <input type="hidden" name="_token" value="{{ csrf_token('notifications_lues') }}">
+                    <button class="btn btn-sm btn-secondaire">{{ ui.icone('valide', 'h-4 w-4') }} Tout marquer comme vu</button>
+                </form>
+            {% endif %}
+        </div>
+
+        <ul class="divide-y divide-stone-100">
+            {% for notification in notifications|slice(0, visibles) %}
+                {{ alertes.alerte(notification) }}
+            {% endfor %}
+        </ul>
+
+        {% if notifications|length > visibles %}
+            <details class="group border-t border-stone-100">
+                <summary class="flex cursor-pointer list-none items-center justify-center gap-1.5 px-5 py-3 text-sm font-medium text-amber-700 hover:bg-stone-50">
+                    {% set reste = notifications|length - visibles %}
+                    <span class="group-open:hidden">{{ reste > 1 ? 'Voir les ' ~ reste ~ ' autres' : 'Voir la dernière' }}</span>
+                    <span class="hidden group-open:inline">Replier</span>
+                    <span class="rotate-90 transition-transform group-open:-rotate-90">{{ ui.icone('chevron', 'h-4 w-4') }}</span>
+                </summary>
+                <ul class="divide-y divide-stone-100 border-t border-stone-100">
+                    {% for notification in notifications|slice(visibles) %}
+                        {{ alertes.alerte(notification) }}
+                    {% endfor %}
+                </ul>
+            </details>
+        {% endif %}
+    </section>
+{% endif %}

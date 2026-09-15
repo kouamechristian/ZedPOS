@@ -12,20 +12,94 @@
 <a href="{{ path('pilotage_ventes', {jour: vente.createdAt|date('Y-m-d')}) }}"
    class="btn btn-fantome apparition -ml-3 mb-3">{{ ui.icone('retour') }} Tickets du {{ vente.createdAt|date('d/m/Y') }}</a>
 
-{% if not vente.estValidee %}
+{# Un original modifié est bien une annulation, mais pas une erreur à chercher :
+   ambre et un lien vers la version qui compte, plutôt que le bandeau rouge et un
+   motif où le numéro du remplaçant n'est que du texte. #}
+{% if remplacante %}
+    <div class="alerte alerte-ambre apparition mb-4">
+        {{ ui.icone('modifier') }}
+        <p><span class="font-semibold">Ticket modifié en caisse.</span> Il a été remplacé par le ticket
+            <a href="{{ path('pilotage_vente', {uuid: remplacante.uuid}) }}" class="lien code">{{ remplacante.numero }}</a>
+            — c'est lui qui compte dans la journée.</p>
+    </div>
+{% elseif not vente.estValidee %}
     <div class="alerte alerte-rouge apparition mb-4">
         {{ ui.icone('erreur') }}
         <p><span class="font-semibold">Ticket annulé.</span>{% if vente.motifAnnulation %} Motif : {{ vente.motifAnnulation }}{% endif %}</p>
     </div>
 {% endif %}
 
+{# ---- Avant / après : ce que la modification a changé ---- #}
 {% if vente.venteRemplacee %}
-    <div class="alerte alerte-ambre apparition mb-4">
-        {{ ui.icone('info') }}
-        <p><span class="font-semibold">Ticket modifié en caisse.</span> Il remplace le ticket
-            <a href="{{ path('pilotage_vente', {uuid: vente.venteRemplacee.uuid}) }}" class="lien code">{{ vente.venteRemplacee.numero }}</a>,
-            annulé du même geste.</p>
-    </div>
+    {% set avant = vente.venteRemplacee %}
+    {% set ecart = vente.totalTtc - avant.totalTtc %}
+    {% set reglementsAvant = avant.reglements|map(r => r.mode.libelle)|join(' + ') %}
+    {% set reglementsApres = vente.reglements|map(r => r.mode.libelle)|join(' + ') %}
+    <section class="carte apparition mb-4 overflow-hidden ring-2 ring-amber-300/70">
+        <div class="carte-entete bg-amber-50">
+            <h2 class="carte-titre flex items-center gap-2">
+                <span class="text-amber-600">{{ ui.icone('modifier') }}</span> Ticket modifié en caisse
+            </h2>
+            <span class="carte-note">par {{ vente.sessionCaisse.utilisateur.nom }}</span>
+        </div>
+
+        <div class="carte-corps">
+            <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-center sm:gap-4">
+                <a href="{{ path('pilotage_vente', {uuid: avant.uuid}) }}"
+                   class="rounded-xl bg-stone-50 p-3 ring-1 ring-inset ring-stone-200 transition hover:bg-stone-100">
+                    <div class="text-[11px] font-semibold uppercase tracking-wider text-stone-400">Avant</div>
+                    <div class="mt-0.5 text-lg font-bold tabular-nums text-stone-400 line-through sm:text-xl">{{ fmt.fcfa(avant.totalTtc) }}</div>
+                    <div class="code text-stone-500">{{ avant.numero }}</div>
+                    <div class="text-xs tabular-nums text-stone-400">{{ avant.createdAt|date('H:i:s') }}</div>
+                </a>
+                <span class="text-stone-400" aria-label="devient">{{ ui.icone('suivant', 'h-5 w-5') }}</span>
+                <div class="rounded-xl bg-white p-3 ring-2 ring-inset ring-amber-300">
+                    <div class="text-[11px] font-semibold uppercase tracking-wider text-amber-700">Après</div>
+                    <div class="mt-0.5 text-lg font-bold tabular-nums text-stone-900 sm:text-xl">{{ fmt.fcfa(vente.totalTtc) }}</div>
+                    <div class="code text-stone-500">{{ vente.numero }}</div>
+                    <div class="text-xs tabular-nums text-stone-400">{{ vente.createdAt|date('H:i:s') }}</div>
+                </div>
+            </div>
+
+            <p class="mt-3 text-center">
+                {% if ecart < 0 %}
+                    <span class="badge badge-rouge">Ticket baissé de {{ fmt.fcfa(-ecart) }}</span>
+                {% elseif ecart > 0 %}
+                    <span class="badge badge-neutre">Ticket augmenté de {{ fmt.fcfa(ecart) }}</span>
+                {% else %}
+                    <span class="badge badge-neutre">Même montant</span>
+                {% endif %}
+            </p>
+        </div>
+
+        {% if comparaison is empty %}
+            <p class="border-t border-stone-100 px-5 py-3 text-sm text-stone-500">Mêmes articles, mêmes quantités.</p>
+        {% else %}
+            <ul class="divide-y divide-stone-100 border-t border-stone-100 px-5">
+                {% for ligne in comparaison %}
+                    {% set difference = ligne.montantApres - ligne.montantAvant %}
+                    <li class="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 text-sm">
+                        <span class="min-w-0 flex-1 font-medium text-stone-800">
+                            {{ ligne.nom }}
+                            {% if ligne.avant == 0 %}<span class="badge badge-neutre ml-1">ajouté</span>{% elseif ligne.apres == 0 %}<span class="badge badge-rouge ml-1">retiré</span>{% endif %}
+                        </span>
+                        <span class="tabular-nums text-stone-500">
+                            {{ fmt.unites(ligne.avant) }} → <strong class="text-stone-900">{{ fmt.unites(ligne.apres) }}</strong>
+                        </span>
+                        <span class="w-24 text-right font-semibold tabular-nums {{ difference < 0 ? 'text-red-700' : 'text-stone-700' }}">
+                            {{ difference < 0 ? '−' : (difference > 0 ? '+' : '') }} {{ fmt.fcfa(difference|abs) }}
+                        </span>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+
+        {% if reglementsAvant != reglementsApres %}
+            <p class="border-t border-stone-100 px-5 py-3 text-sm text-stone-600">
+                Règlement : <span class="text-stone-400 line-through">{{ reglementsAvant }}</span> → <span class="font-semibold text-stone-900">{{ reglementsApres }}</span>
+            </p>
+        {% endif %}
+    </section>
 {% endif %}
 
 {# ---- Identité du ticket ---- #}
@@ -36,7 +110,11 @@
             <div class="mt-1 text-4xl font-black tabular-nums text-white {{ vente.estValidee ? '' : 'line-through opacity-60' }}">{{ fmt.fcfa(vente.totalTtc) }}</div>
             <div class="code mt-1 text-stone-400">{{ vente.numero }}</div>
         </div>
-        <span class="badge {{ vente.estValidee ? 'badge-vert' : 'badge-rouge' }} badge-point">{{ vente.estValidee ? 'Validée' : 'Annulée' }}</span>
+        {% if remplacante %}
+            <span class="badge badge-ambre badge-point">Remplacée</span>
+        {% else %}
+            <span class="badge {{ vente.estValidee ? 'badge-vert' : 'badge-rouge' }} badge-point">{{ vente.estValidee ? 'Validée' : 'Annulée' }}</span>
+        {% endif %}
     </div>
 
     <dl class="mt-5 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-white/10 pt-4 text-sm">
