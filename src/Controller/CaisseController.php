@@ -6,11 +6,13 @@ use App\Entity\Utilisateur;
 use App\Repository\ArticleRepository;
 use App\Repository\FamilleProduitRepository;
 use App\Repository\SessionCaisseRepository;
+use App\Repository\VenteRepository;
 use App\Service\ImageArticle;
 use App\Service\LogoThermique;
 use App\Service\ParametresBoutique;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
@@ -107,6 +109,30 @@ class CaisseController extends AbstractController
         return $this->json([
             'genereA' => (new \DateTimeImmutable())->format(\DateTimeInterface::ATOM),
             'familles' => $donnees,
+        ]);
+    }
+
+    /**
+     * Historique personnel de la caissière connectée — les ventes de sa session
+     * **en cours**, paginées, et non tout son historique : une session déjà
+     * clôturée a son propre rapport Z, ce n'est pas le rôle de cet écran.
+     *
+     * `VenteRepository::pourSession()` filtre déjà sur la session ouverte du
+     * caissier connecté : il ne peut donc jamais y voir le ticket d'un collègue,
+     * même en forgeant la page demandée. `VenteVoter::peutVoir()` couvre malgré
+     * tout le clic vers le détail d'un ticket (voir `TicketController`).
+     */
+    #[Route('/tickets', name: 'app_caisse_tickets', methods: ['GET'])]
+    public function tickets(Request $request, SessionCaisseRepository $sessions, VenteRepository $ventes): Response
+    {
+        $session = $sessions->ouvertePour($this->utilisateur());
+        if (null === $session) {
+            return $this->redirectToRoute('app_caisse_ouverture');
+        }
+
+        return $this->render('caisse/tickets.html.twig', [
+            'session' => $session,
+            'tickets' => $ventes->pourSession($session, $request->query->getInt('page', 1)),
         ]);
     }
 

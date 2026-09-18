@@ -23,12 +23,13 @@ class VenteRepository extends ServiceEntityRepository
     }
 
     /**
-     * Ventes paginées, toutes journées confondues, avec la session et le caissier.
+     * Ventes paginées, toutes journées confondues, avec la session, le caissier
+     * et les articles de chaque ligne.
      *
-     * La jointure anticipée est indispensable : la liste du back-office affiche le
-     * nom du caissier sur chaque ligne. Sans elle, Doctrine chargeait chaque
-     * session puis chaque utilisateur à la demande — jusqu'à deux requêtes
-     * supplémentaires par ligne affichée.
+     * Les jointures anticipées sont indispensables : la liste du back-office
+     * affiche le nom du caissier et le détail des articles sur chaque ligne.
+     * Sans elles, Doctrine chargerait chaque session puis chaque utilisateur à
+     * la demande, et une requête de plus par ligne pour son article.
      *
      * @return Pagination<Vente>
      */
@@ -37,6 +38,8 @@ class VenteRepository extends ServiceEntityRepository
         $qb = $this->createQueryBuilder('v')
             ->join('v.sessionCaisse', 's')->addSelect('s')
             ->join('s.utilisateur', 'u')->addSelect('u')
+            ->leftJoin('v.lignes', 'l')->addSelect('l')
+            ->leftJoin('l.article', 'a')->addSelect('a')
             ->orderBy('v.createdAt', 'DESC')
             ->addOrderBy('v.id', 'DESC');
 
@@ -46,9 +49,10 @@ class VenteRepository extends ServiceEntityRepository
         // clavier, et la vente sort.
         Recherche::appliquer($qb, $recherche, 'v.numero', 'u.nom');
 
-        // Seules des relations ToOne sont jointes : le comptage par sous-requête
-        // serait du travail en pure perte.
-        return Pagination::depuis($qb, $page);
+        // `v.lignes` est désormais jointe : sans `fetchJoinCollection`, Doctrine
+        // compterait les lignes du produit cartésien et non les tickets, et la
+        // dernière page serait fausse.
+        return Pagination::depuis($qb, $page, fetchJoinCollection: true);
     }
 
     /**
@@ -79,8 +83,15 @@ class VenteRepository extends ServiceEntityRepository
     }
 
     /**
-     * Tickets d'une journée, du plus récent au plus ancien, avec le caissier
-     * (jointure anticipée : la liste affiche son nom sur chaque ligne).
+     * Tickets d'une journée, du plus récent au plus ancien, avec le caissier et
+     * les articles de chaque ligne (jointures anticipées : la liste affiche le
+     * nom du caissier et le détail des articles sur chaque carte — sans elles,
+     * chaque ticket affiché déclencherait une requête supplémentaire pour ses
+     * lignes, puis une autre par ligne pour son article).
+     *
+     * `fetchJoinCollection: true` est indispensable dès qu'une collection
+     * (`v.lignes`) est jointe : sans lui, Doctrine compterait les lignes du
+     * produit cartésien et non les tickets, et la dernière page serait fausse.
      *
      * @return Pagination<Vente>
      */
@@ -91,12 +102,14 @@ class VenteRepository extends ServiceEntityRepository
         $qb = $this->createQueryBuilder('v')
             ->join('v.sessionCaisse', 's')->addSelect('s')
             ->join('s.utilisateur', 'u')->addSelect('u')
+            ->leftJoin('v.lignes', 'l')->addSelect('l')
+            ->leftJoin('l.article', 'a')->addSelect('a')
             ->andWhere('v.createdAt >= :debut')->setParameter('debut', $debut)
             ->andWhere('v.createdAt < :fin')->setParameter('fin', $debut->modify('+1 day'))
             ->orderBy('v.createdAt', 'DESC')
             ->addOrderBy('v.id', 'DESC');
 
-        return Pagination::depuis($qb, $page, self::PAR_PAGE);
+        return Pagination::depuis($qb, $page, self::PAR_PAGE, fetchJoinCollection: true);
     }
 
     /**
@@ -165,6 +178,33 @@ class VenteRepository extends ServiceEntityRepository
             ->orderBy('u.nom', 'ASC')
             ->getQuery()
             ->getResult();
+    }
+
+    /**
+     * Ventes d'une session de caisse, du plus récent au plus ancien —
+     * l'historique personnel consultable depuis `/caisse/tickets`, borné à ce
+     * qui a été encaissé **depuis l'ouverture** : une session antérieure déjà
+     * clôturée a son propre rapport Z, ce n'est pas le rôle de cet écran de le
+     * rejouer.
+     *
+     * Tri sur l'**identifiant**, pas sur `createdAt`, même raison que
+     * {@see self::derniereDe()} : deux ventes tombent couramment dans la même
+     * seconde en boulangerie rapide.
+     *
+     * Articles de chaque ligne joints d'avance (la carte affiche le détail du
+     * ticket), avec `fetchJoinCollection: true` — voir {@see self::journee()}.
+     *
+     * @return Pagination<Vente>
+     */
+    public function pourSession(SessionCaisse $session, int $page = 1): Pagination
+    {
+        $qb = $this->createQueryBuilder('v')
+            ->leftJoin('v.lignes', 'l')->addSelect('l')
+            ->leftJoin('l.article', 'a')->addSelect('a')
+            ->andWhere('v.sessionCaisse = :session')->setParameter('session', $session)
+            ->orderBy('v.id', 'DESC');
+
+        return Pagination::depuis($qb, $page, fetchJoinCollection: true);
     }
 
     /**

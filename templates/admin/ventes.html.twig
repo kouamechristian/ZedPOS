@@ -26,7 +26,7 @@
             <tr>
                 <th>N°</th>
                 <th>Date</th>
-                <th>Mode</th>
+                <th>Articles</th>
                 <th>Caissier</th>
                 <th class="num">Total TTC</th>
                 <th>Statut</th>
@@ -38,12 +38,8 @@
                 <tr>
                     <td><span class="code rounded-md bg-stone-100 px-1.5 py-0.5 text-stone-700">{{ vente.numero }}</span></td>
                     <td class="cellule-douce whitespace-nowrap tabular-nums">{{ vente.createdAt|date('d/m/Y H:i') }}</td>
-                    <td>
-                        {% if vente.mode.value == 'BOULANGERIE' %}
-                            <span class="badge badge-ambre">Boulangerie</span>
-                        {% else %}
-                            <span class="badge badge-orange">Fast-food</span>
-                        {% endif %}
+                    <td class="cellule-douce">
+                        <span class="block max-w-xs truncate">{{ fmt.articlesVente(vente) }}</span>
                     </td>
                     <td class="text-stone-700">{{ vente.sessionCaisse.utilisateur.nom }}</td>
                     <td class="num font-semibold {{ vente.statut.value == 'VALIDEE' ? 'text-stone-900' : 'text-stone-400 line-through' }}">{{ fmt.fcfa(vente.totalTtc) }}</td>

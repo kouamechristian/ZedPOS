@@ -13,3 +13,13 @@
         <span class="badge badge-neutre badge-point">Inactif</span>
     {% endif %}
 {% endmacro %}
+
+{# Détail d'un ticket en une ligne : « 2 × Croissant, 1 × Café » — même écriture
+   « quantité × nom » que le ticket imprimé (templates/ticket/_contenu.html.twig).
+   Appelle `vente.lignes` : la jointure anticipée appartient au repository, pas
+   à ce gabarit (voir VenteRepository::journee() et ::pourSession()). #}
+{% macro articlesVente(vente) %}
+    {%- for ligne in vente.lignes -%}
+        {{- not loop.first ? ', ' -}}{{ _self.unites(ligne.quantite) }} × {{ ligne.article.nom }}
+    {%- endfor -%}
+{% endmacro %}

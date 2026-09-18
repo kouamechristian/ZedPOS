@@ -1,41 +1,38 @@
-{% extends 'pilotage/base.html.twig' %}
+{% extends 'caisse/_session_base.html.twig' %}
 {% import 'admin/_macros.html.twig' as fmt %}
 {% import 'admin/_icones.html.twig' as ui %}
 {% import '_pagination.html.twig' as pagination %}
 
-{% block page_title %}Tickets du {{ jour|date('d/m/Y') }}{% endblock %}
+{% block page_title %}Mes tickets{% endblock %}
 
-{% block pilotage_content %}
-{# Changer de jour ou de page ne rafraîchit que cette liste. #}
-<turbo-frame id="liste-tickets" data-turbo-action="advance">
+{% block entete_actions %}
+    <a href="{{ path('app_caisse') }}" class="rounded-lg bg-white border border-gray-300 px-3 py-2 font-medium text-gray-700 hover:bg-gray-100">← Caisse</a>
+{% endblock %}
 
-<div class="apparition mb-5 flex flex-wrap items-end justify-between gap-3">
-    <div>
-        <div class="sur-titre">Tickets</div>
-        <h1 class="text-2xl font-bold tracking-tight text-stone-900">{{ jour|date('d/m/Y') }}</h1>
-    </div>
-    <form method="get" class="flex items-center gap-2">
-        <label for="jour" class="sr-only">Journée</label>
-        <div class="champ-avec-icone">
-            {{ ui.icone('calendrier') }}
-            <input type="date" id="jour" name="jour" value="{{ jour|date('Y-m-d') }}" class="champ w-auto">
-        </div>
-        <button class="btn btn-primaire">Voir</button>
-    </form>
+{% block caisse_content %}
+{# Composants `carte` / `badge` / pagination de l'espace de gestion — même
+   disposition que /pilotage/ventes, pour que la caissière retrouve le même
+   repère visuel qu'un ticket vu depuis le pilotage. #}
+<div class="espace-gestion -m-5 p-5">
+
+<div class="mb-5">
+    <div class="sur-titre">Mes tickets</div>
+    <h1 class="text-2xl font-bold tracking-tight text-stone-900">
+        Depuis l'ouverture — {{ session.ouvertureAt|date('d/m/Y à H:i') }}
+    </h1>
 </div>
 
 <div class="mb-3 flex items-baseline justify-between text-sm text-stone-500">
-    <span><strong class="font-semibold text-stone-800">{{ resultat.total }}</strong> ticket{{ resultat.total > 1 ? 's' }}</span>
-    <span class="tabular-nums">Page {{ resultat.page }} / {{ resultat.pages }}</span>
+    <span><strong class="font-semibold text-stone-800">{{ tickets.total }}</strong> ticket{{ tickets.total > 1 ? 's' }}</span>
+    <span class="tabular-nums">Page {{ tickets.page }} / {{ tickets.pages }}</span>
 </div>
 
-{# Cartes plutôt qu'un tableau : lisible sur un écran étroit. Elles se rangent en
-   colonnes quand la place le permet, plutôt que de s'étirer sur toute la largeur
-   d'un écran d'ordinateur pour trois informations. #}
+{# Cartes plutôt qu'un tableau, comme sur /pilotage/ventes : lisible sur un
+   écran étroit, et c'est un écran de caisse — tablette ou téléphone au comptoir. #}
 <ul class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-    {% for vente in resultat.items %}
+    {% for vente in tickets.items %}
         <li class="apparition" style="--i: {{ min(loop.index0, 12) }}">
-            <a href="{{ path('pilotage_vente', {uuid: vente.uuid}) }}" data-turbo-frame="_top"
+            <a href="{{ path('app_caisse_ticket', {uuid: vente.uuid}) }}"
                class="carte carte-interactive group relative block h-full overflow-hidden p-4 pl-5">
                 <span class="absolute inset-y-0 left-0 w-1 {{ vente.estValidee ? 'bg-gradient-to-b from-amber-400 to-amber-600' : 'bg-red-400' }}"></span>
                 <div class="flex items-baseline justify-between gap-3">
@@ -46,7 +43,6 @@
                 </div>
                 <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-stone-500">
                     <span class="inline-flex items-center gap-1 tabular-nums">{{ ui.icone('horloge', 'h-3.5 w-3.5') }} {{ vente.createdAt|date('H:i') }}</span>
-                    <span class="font-medium text-stone-700">{{ vente.sessionCaisse.utilisateur.nom }}</span>
                     {% if not vente.estValidee %}
                         <span class="badge badge-rouge badge-point">Annulée</span>
                     {% endif %}
@@ -61,11 +57,11 @@
             </a>
         </li>
     {% else %}
-        <li class="carte p-10 text-center text-stone-400 md:col-span-2 xl:col-span-3">Aucun ticket ce jour-là.</li>
+        <li class="carte p-10 text-center text-stone-400 md:col-span-2 xl:col-span-3">Aucun ticket pour l'instant.</li>
     {% endfor %}
 </ul>
 
-{{ pagination.barre(resultat, 'pilotage_ventes', {jour: jour|date('Y-m-d')}) }}
+{{ pagination.barre(tickets, 'app_caisse_tickets') }}
 
-</turbo-frame>
+</div>
 {% endblock %}

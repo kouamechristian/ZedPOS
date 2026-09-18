@@ -24,3 +24,6 @@
 
 # Binaire Symfony CLI local (ne pas versionner)
 /symfony.exe
+
+# Installeur Composer local (outillage, pas du code applicatif)
+/composer.phar
