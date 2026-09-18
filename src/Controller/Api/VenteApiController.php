@@ -4,9 +4,12 @@ namespace App\Controller\Api;
 
 use App\Entity\Utilisateur;
 use App\Entity\Vente;
+use App\Enum\ActionAudit;
 use App\Repository\VenteRepository;
 use App\Security\Permission;
+use App\Service\AuditLogger;
 use App\Service\EncaissementException;
+use Doctrine\DBAL\Connection;
 use App\Service\EncaissementService;
 use App\Service\TicketMateriel;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -45,6 +48,73 @@ class VenteApiController extends AbstractController
         $code = $resultat->rejoue ? Response::HTTP_OK : Response::HTTP_CREATED;
 
         return $this->json($this->representer($resultat->vente, $resultat->rendu), $code);
+    }
+
+    /**
+     * Déclare une vente que le serveur a refusée et que la caissière retire de sa
+     * tablette (écran « Ventes à vérifier »).
+     *
+     * Une vente refusée n'existe qu'en IndexedDB : la retirer sans rien dire
+     * ferait disparaître l'unique trace d'un argent entré dans le tiroir. Cette
+     * route la consigne au journal d'audit — surlignée — avant que la tablette ne
+     * l'efface ; c'est ce qui permet au Z, au gérant et à la dirigeante de
+     * comprendre l'excédent.
+     *
+     * Les données viennent du client : elles sont **bornées et jamais crues** comme
+     * des montants comptables, elles ne servent qu'à retrouver la vente.
+     */
+    #[Route('/vente-refusee', name: 'api_vente_refusee', methods: ['POST'])]
+    #[IsGranted('ROLE_CAISSIER')]
+    public function declarerRefusee(Request $request, VenteRepository $ventes, AuditLogger $audit, Connection $connexion): JsonResponse
+    {
+        /** @var array<string, mixed> $donnees */
+        $donnees = json_decode($request->getContent(), true) ?? [];
+
+        $uuid = $donnees['uuid'] ?? null;
+        if (!\is_string($uuid) || !Uuid::isValid($uuid)) {
+            return $this->json(['ok' => false, 'erreur' => 'UUID invalide.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        // Une vente que le serveur connaît n'est pas perdue : la tablette doit la
+        // rejouer, pas l'effacer.
+        if (null !== $ventes->findOneBy(['uuid' => Uuid::fromString($uuid)])) {
+            return $this->json(['ok' => false, 'erreur' => 'Cette vente est déjà enregistrée : elle ne se retire pas.'], Response::HTTP_CONFLICT);
+        }
+
+        // Idempotent : une réponse perdue ne double pas la trace.
+        $dejaTracee = $connexion->fetchOne(
+            'SELECT id FROM journal_audit WHERE action = ? AND apres LIKE ? LIMIT 1',
+            // Sans les guillemets ni les deux-points : MySQL 9 remet en forme le JSON
+            // (`"uuid": "…"`), MariaDB le garde tel quel. L'uuid suffit à désigner.
+            [ActionAudit::VENTE_NON_ENREGISTREE->value, '%'.$uuid.'%'],
+        );
+        if (false !== $dejaTracee) {
+            return $this->json(['ok' => true]);
+        }
+
+        $lignes = [];
+        foreach (\array_slice(\is_array($donnees['lignes'] ?? null) ? $donnees['lignes'] : [], 0, 50) as $ligne) {
+            if (!\is_array($ligne)) {
+                continue;
+            }
+            $lignes[] = [
+                'nom' => mb_substr((string) ($ligne['nom'] ?? ''), 0, 120),
+                'quantite' => (int) ($ligne['quantite'] ?? 0),
+                'montant' => (int) ($ligne['montant'] ?? 0),
+            ];
+        }
+
+        $audit->venteNonEnregistree([
+            'uuid' => $uuid,
+            'erreur' => mb_substr((string) ($donnees['erreur'] ?? ''), 0, 300),
+            'totalFcfa' => (int) ($donnees['totalFcfa'] ?? 0),
+            'reglementFcfa' => (int) ($donnees['reglementFcfa'] ?? 0),
+            'venduA' => mb_substr((string) ($donnees['venduA'] ?? ''), 0, 40),
+            'lignes' => $lignes,
+            'declarePar' => 'caissier',
+        ]);
+
+        return $this->json(['ok' => true]);
     }
 
     /**

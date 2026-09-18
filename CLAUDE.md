@@ -1294,6 +1294,61 @@ doublon — c'est le filet de sécurité, pas une optimisation.
   rejeu) ; la protection repose sur `SameSite=Lax` et l'exigence de
   `Content-Type: application/json`.
 
+**Garde-fous contre l'excédent de caisse.** Une vente perdue, refusée ou rangée dans
+la mauvaise caisse laisse de l'argent dans le tiroir que le Z ne voit pas : c'est un
+écart **muet**, découvert le soir. Six règles, chacune née d'un cas réel :
+
+- **Seule une réponse JSON `ok: true` vaut confirmation** (`assets/offline/interpreter_reponse.js`).
+  Sur une session expirée, le pare-feu répond **302 vers `/login`**, que `fetch` suit
+  en GET et reçoit en **200** : pris pour un succès, il **supprimait la vente de la
+  file**. D'où `redirect: 'manual'` et la lecture stricte du corps. Un 200 sans
+  accusé est traité comme temporaire (502) : l'idempotence sur l'uuid absorbe le
+  rejeu. Ne pas revenir à « statut 200 = succès ».
+- **Une vente repart sous le compte qui l'a encaissée.** La file est locale à la
+  tablette, le serveur enregistre dans la session de **celui qui est connecté** : sans
+  propriétaire, les ventes de Fatou envoyées après la connexion de Yao tombaient dans
+  la caisse de Yao. `<body data-utilisateur>` (posé par `base.html.twig`) → chaque
+  entrée porte `utilisateurId`, chaque compte ne vide que la sienne, le bandeau
+  signale les autres (« N ventes d'une autre caissière »). Une entrée sans
+  propriétaire (ancienne file) reste transmissible.
+- **Le Z attend la file** (`garde_cloture_controller.js`). Ventes en attente : bouton
+  bloqué, envoi lancé d'office. Ventes refusées : case à cocher obligatoire. Garde-fou
+  côté navigateur uniquement — le serveur ne voit pas la file locale. Si IndexedDB est
+  illisible, on laisse clôturer plutôt que d'enfermer la caissière.
+- **Le prix retenu est celui en vigueur à l'heure de la vente**, pas celui du jour
+  (`EncaissementService::prixEnVigueur()`). Le journal d'audit tient l'historique :
+  le prix à l'instant T est l'ancien prix du **premier `PRIX_MODIFIE` postérieur à T**,
+  sinon le prix actuel. La tablette envoie `venduA` et le `prix` affiché ; un prix
+  affiché différent de celui en vigueur est **refusé (422)** plutôt qu'enregistré à un
+  montant que le client n'a pas payé — il fabriquait un rendu de monnaie fantôme. Le
+  catalogue est relu **chaque minute** en ligne et les lignes du ticket en cours
+  s'alignent (`alignerPrix()`).
+- **Une vente est datée de son heure réelle** (`Vente::dater()`), pas de son arrivée :
+  sinon une vente du soir, envoyée le lendemain, tombe dans le mauvais jour des
+  rapports. `venduA` n'est crue que dans `[maintenant − 7 jours ; maintenant + 2 min]`,
+  sinon heure d'arrivée. Le numéro de ticket porte le jour de la vente.
+- **Un article désactivé depuis la vente est toléré au rejeu** (vente de plus d'une
+  minute, prix > 0) : le refuser laissait l'argent en tiroir sans vente. Toujours
+  refusé « en direct », et jamais sans prix (les articles créés sans prix sont forcés
+  inactifs).
+
+**Ventes à vérifier** (`/caisse/ventes-a-verifier`). Une vente refusée (400/404/422)
+est `BLOQUEE` et n'existe **que sur la tablette** : le bandeau « N ventes à vérifier »
+mène à cet écran, qui offre deux gestes et n'en offre pas d'autre :
+
+- **Réessayer** — la vente retourne dans la file (cause disparue : article réactivé,
+  connexion revenue) ;
+- **Retirer** — la vente est **d'abord déclarée** (`POST /api/vente-refusee` →
+  audit `VENTE_NON_ENREGISTREE`, surligné, idempotent, données bornées) et n'est
+  effacée de la tablette **que si le serveur a confirmé**. Réseau coupé : elle reste.
+  Une vente que le serveur connaît déjà (409) ne se retire pas, elle se rejoue.
+
+Au moment de l'encaissement, un refus immédiat est dit franchement (« VENTE NON
+ENREGISTRÉE … ») au lieu du faux « enregistrée hors ligne ».
+`TurboNavigationTest` fige la liste des méthodes asynchrones du contrôleur :
+`rafraichirPrix` et `venteRefusee` y figurent, les y ajouter était une décision.
+Couverture : `tests/js/hors_ligne_garde_fous.test.js`, `VenteHorsLigneTest`.
+
 **Tests JavaScript** (lanceur intégré de Node, aucune dépendance npm) :
 
 ```bash

@@ -21,6 +21,10 @@ enum ActionAudit: string
     // remplacé. Une seule entrée, qui porte les deux versions.
     case VENTE_MODIFIEE = 'VENTE_MODIFIEE';
     case REMISE_ACCORDEE = 'REMISE_ACCORDEE';
+    // Vente encaissée au comptoir que le serveur a refusée et que la caissière
+    // retire de sa tablette : l'argent est dans le tiroir, la vente n'existe pas.
+    // Cette entrée est ce qui la rend retrouvable.
+    case VENTE_NON_ENREGISTREE = 'VENTE_NON_ENREGISTREE';
 
     // Catalogue et stock
     case PRIX_MODIFIE = 'PRIX_MODIFIE';
@@ -65,6 +69,7 @@ enum ActionAudit: string
             self::VENTE_ANNULEE => 'Annulation de vente',
             self::VENTE_MODIFIEE => 'Modification de ticket',
             self::REMISE_ACCORDEE => 'Remise accordée',
+            self::VENTE_NON_ENREGISTREE => 'Vente encaissée mais non enregistrée',
             self::PRIX_MODIFIE => 'Modification de prix',
             self::PERTE_SAISIE => 'Saisie de perte',
             self::INVENTAIRE_VALIDE => "Validation d'inventaire",
@@ -98,6 +103,9 @@ enum ActionAudit: string
             // Un ticket repris après encaissement change ce que le Z attend.
             self::VENTE_MODIFIEE,
             self::REMISE_ACCORDEE,
+            // De l'argent est entré dans le tiroir sans que la caisse le sache :
+            // c'est l'excédent du Z, à relire ici.
+            self::VENTE_NON_ENREGISTREE,
             self::ECART_CAISSE,
             self::UTILISATEUR_DESACTIVE,
             // Un rôle changé ou un identifiant réinitialisé redistribue un accès :
@@ -119,7 +127,7 @@ enum ActionAudit: string
     {
         return match ($this) {
             self::CONNEXION, self::DECONNEXION, self::ECHEC_CONNEXION => 'Sécurité',
-            self::VENTE_ANNULEE, self::VENTE_MODIFIEE, self::REMISE_ACCORDEE => 'Ventes',
+            self::VENTE_ANNULEE, self::VENTE_MODIFIEE, self::REMISE_ACCORDEE, self::VENTE_NON_ENREGISTREE => 'Ventes',
             self::PRIX_MODIFIE, self::PERTE_SAISIE, self::INVENTAIRE_VALIDE => 'Catalogue et stock',
             self::CAISSE_CLOTUREE, self::ECART_CAISSE => 'Caisse',
             self::UTILISATEUR_CREE, self::UTILISATEUR_MODIFIE,

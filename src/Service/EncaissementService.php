@@ -7,13 +7,17 @@ use App\Entity\Reglement;
 use App\Entity\SessionCaisse;
 use App\Entity\Utilisateur;
 use App\Entity\Vente;
+use App\Entity\Article;
+use App\Enum\ActionAudit;
 use App\Enum\ModeReglement;
 use App\Enum\ModeVente;
 use App\Enum\StatutVente;
 use App\Repository\ArticleRepository;
 use App\Repository\SessionCaisseRepository;
 use App\Repository\VenteRepository;
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
+use Doctrine\DBAL\ParameterType;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Uid\Uuid;
 
@@ -27,6 +31,18 @@ class EncaissementService
 {
     /** Seuil au-delà duquel un motif de remise est obligatoire : 500 FCFA. */
     private const SEUIL_MOTIF_REMISE = 50000;
+
+    /** Une vente plus vieille que cela n'est plus datée par le client : elle prend l'heure d'arrivée. */
+    private const ANCIENNETE_MAX_VENTE = 'P7D';
+
+    /** Tolérance sur l'horloge d'une tablette qui avance de quelques minutes. */
+    private const DERIVE_HORLOGE = '+2 minutes';
+
+    /**
+     * En deçà, la vente est « en direct » : un article désactivé reste refusé.
+     * Au-delà, c'est un rejeu hors ligne.
+     */
+    private const DELAI_REJEU = '-1 minute';
 
     public function __construct(
         private readonly EntityManagerInterface $em,
@@ -55,7 +71,12 @@ class EncaissementService
         $mode = ModeVente::tryFrom((string) ($donnees['mode'] ?? ''))
             ?? throw new EncaissementException('Mode de vente invalide.');
 
-        [$preparees, $brutHt, $brutTva, $brutTtc] = $this->preparerLignes($donnees['lignes'] ?? []);
+        // Heure à laquelle la vente a réellement eu lieu au comptoir (la tablette
+        // l'écrit à l'encaissement). Elle diffère de l'heure d'arrivée dès que la
+        // vente a attendu le retour du réseau.
+        $venduA = $this->lireVenduA($donnees['venduA'] ?? null);
+
+        [$preparees, $brutHt, $brutTva, $brutTtc] = $this->preparerLignes($donnees['lignes'] ?? [], $venduA);
         [$remise, $motifRemise] = $this->calculerRemise($donnees['remise'] ?? null, $brutTtc, $remiseMaxBp);
 
         $netTtc = $brutTtc - $remise;
@@ -67,10 +88,13 @@ class EncaissementService
 
         try {
             $vente = $this->em->wrapInTransaction(function () use (
-                $utilisateur, $mode, $uuid, $netHt, $netTva, $netTtc, $remise, $motifRemise, $rendu, $preparees, $reglements
+                $utilisateur, $mode, $uuid, $netHt, $netTva, $netTtc, $remise, $motifRemise, $rendu, $preparees, $reglements, $venduA
             ): Vente {
-                $vente = new Vente($this->sessionOuverte($utilisateur), $mode, $this->genererNumero(), $netHt, $netTva, $netTtc, $uuid);
+                $vente = new Vente($this->sessionOuverte($utilisateur), $mode, $this->genererNumero($venduA), $netHt, $netTva, $netTtc, $uuid);
                 $vente->enregistrerRemiseEtRendu($remise, $motifRemise, $rendu);
+                if (null !== $venduA) {
+                    $vente->dater($venduA);
+                }
 
                 foreach ($preparees as $p) {
                     new LigneVente($vente, $p['article'], $p['quantiteMillimes'], $p['prix'], 0, $p['commentaire']);
@@ -224,28 +248,64 @@ class EncaissementService
     }
 
     /**
+     * Le prix retenu est celui **en vigueur à l'heure de la vente**, pas celui
+     * d'aujourd'hui : une vente encaissée hors ligne avant un changement de prix a
+     * été payée à l'ancien, et la rejouer au nouveau fausserait le rendu de
+     * monnaie — donc les espèces du Z.
+     *
+     * Quand la tablette dit quel prix elle a affiché (`prix`) et que ce n'est pas
+     * celui en vigueur, la vente est refusée franchement (422) plutôt qu'enregistrée
+     * à un montant que le client n'a pas payé : elle reste alors visible sur la
+     * tablette (« ventes à vérifier ») au lieu de faire un écart muet.
+     *
      * @param mixed $lignes
      *
      * @return array{0: list<array{article: \App\Entity\Article, quantiteMillimes: int, prix: int, commentaire: ?string}>, 1: int, 2: int, 3: int}
      */
-    private function preparerLignes(mixed $lignes): array
+    private function preparerLignes(mixed $lignes, ?\DateTimeImmutable $venduA = null): array
     {
         if (!\is_array($lignes) || [] === $lignes) {
             throw new EncaissementException('Le ticket est vide.');
         }
+
+        $articles = [];
+        foreach ($lignes as $ligne) {
+            $article = $this->articles->find((int) ($ligne['articleId'] ?? 0));
+            if (null === $article) {
+                throw new EncaissementException('Article indisponible.');
+            }
+            $articles[$article->getId()] = $article;
+        }
+        $prixEnVigueur = $this->prixEnVigueur($articles, $venduA);
+        $rejeu = null !== $venduA && $venduA < (new \DateTimeImmutable())->modify(self::DELAI_REJEU);
 
         $preparees = [];
         $brutTtc = 0;
         $brutTva = 0;
 
         foreach ($lignes as $ligne) {
-            $article = $this->articles->find((int) ($ligne['articleId'] ?? 0));
-            if (null === $article || !$article->isActif()) {
+            $article = $articles[(int) ($ligne['articleId'] ?? 0)];
+            $prix = $prixEnVigueur[$article->getId()];
+
+            // Un article désactivé depuis l'encaissement hors ligne a bel et bien
+            // été vendu : le refuser laisserait l'argent en tiroir sans vente.
+            // Toléré pour un vrai rejeu seulement, et jamais sans prix (les
+            // articles créés sans prix sont forcés inactifs).
+            if (!$article->isActif() && !($rejeu && $prix > 0)) {
                 throw new EncaissementException('Article indisponible.');
             }
 
+            $affiche = $ligne['prix'] ?? null;
+            if (null !== $affiche && (int) $affiche !== $prix) {
+                throw new EncaissementException(\sprintf(
+                    'Le prix de « %s » a changé : affiché %d FCFA, en vigueur %d FCFA.',
+                    $article->getNom(),
+                    intdiv((int) $affiche, 100),
+                    intdiv($prix, 100),
+                ), 422);
+            }
+
             $quantite = max(1, (int) ($ligne['quantite'] ?? 1));
-            $prix = $article->getPrixVenteTtc();
             $montantTtc = $quantite * $prix;
             $montantHt = intdiv($montantTtc * 10000, 10000 + $article->getTauxTva());
 
@@ -262,6 +322,78 @@ class EncaissementService
         }
 
         return [$preparees, $brutTtc - $brutTva, $brutTva, $brutTtc];
+    }
+
+    /**
+     * Heure de la vente déclarée par la tablette, ou null si elle n'est pas
+     * crédible (illisible, dans le futur, ou vieille de plus de sept jours) : la
+     * vente prend alors l'heure d'arrivée, comme avant.
+     */
+    private function lireVenduA(mixed $valeur): ?\DateTimeImmutable
+    {
+        if (!\is_string($valeur) || '' === $valeur) {
+            return null;
+        }
+
+        try {
+            $date = new \DateTimeImmutable($valeur);
+        } catch (\Exception) {
+            return null;
+        }
+
+        $maintenant = new \DateTimeImmutable();
+        if ($date > $maintenant->modify(self::DERIVE_HORLOGE)
+            || $date < $maintenant->sub(new \DateInterval(self::ANCIENNETE_MAX_VENTE))) {
+            return null;
+        }
+
+        return $date > $maintenant ? $maintenant : $date->setTimezone($maintenant->getTimezone());
+    }
+
+    /**
+     * Prix de vente de chaque article **à l'instant `$venduA`**, en centimes.
+     *
+     * Le journal d'audit tient l'historique : chaque changement de prix y figure
+     * avec l'ancien prix. Le prix à l'instant T est donc l'ancien prix du premier
+     * changement postérieur à T, ou le prix actuel s'il n'y en a aucun. Une seule
+     * requête pour tout le ticket, et aucune pour une vente « en direct ».
+     *
+     * @param array<int, Article> $articles
+     *
+     * @return array<int, int>
+     */
+    private function prixEnVigueur(array $articles, ?\DateTimeImmutable $venduA): array
+    {
+        $prix = [];
+        foreach ($articles as $id => $article) {
+            $prix[$id] = $article->getPrixVenteTtc();
+        }
+
+        if (null === $venduA || $venduA >= (new \DateTimeImmutable())->modify('-10 seconds')) {
+            return $prix;
+        }
+
+        $changements = $this->em->getConnection()->fetchAllAssociative(
+            "SELECT entite_id, avant FROM journal_audit
+             WHERE action = ? AND entite = 'Article' AND entite_id IN (?) AND created_at > ?
+             ORDER BY created_at ASC, id ASC",
+            [ActionAudit::PRIX_MODIFIE->value, array_keys($articles), $venduA->format('Y-m-d H:i:s')],
+            [ParameterType::STRING, ArrayParameterType::INTEGER, ParameterType::STRING],
+        );
+
+        $resolus = [];
+        foreach ($changements as $changement) {
+            $id = (int) $changement['entite_id'];
+            $avant = json_decode((string) $changement['avant'], true);
+            // Le prix de cession laisse la même trace : seul le prix de vente compte.
+            if (isset($resolus[$id]) || !\is_array($avant) || !\array_key_exists('prixVenteTtc', $avant)) {
+                continue;
+            }
+            $resolus[$id] = true;
+            $prix[$id] = (int) $avant['prixVenteTtc'];
+        }
+
+        return $prix;
     }
 
     /**
@@ -355,9 +487,10 @@ class EncaissementService
             ?? throw new EncaissementException('Aucune session de caisse ouverte : saisissez votre fond de caisse.', 409);
     }
 
-    private function genererNumero(): string
+    private function genererNumero(?\DateTimeImmutable $venduA = null): string
     {
-        $jour = (new \DateTimeImmutable())->format('ymd');
+        // Le numéro porte le jour de la vente, pas celui de son arrivée.
+        $jour = ($venduA ?? new \DateTimeImmutable())->format('ymd');
         $nombre = (int) $this->em->getConnection()->fetchOne(
             'SELECT COUNT(*) FROM vente WHERE numero LIKE ?',
             ['V'.$jour.'-%'],

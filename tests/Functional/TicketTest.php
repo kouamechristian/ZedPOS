@@ -73,7 +73,7 @@ class TicketTest extends WebTestCase
         $this->assertSelectorTextContains('body', 'ZedPOS');
         $this->assertSelectorTextContains('body', 'Abengourou');        // adresse
         $this->assertSelectorTextContains('body', 'V260725-00001');     // numéro
-        $this->assertSelectorTextContains('body', 'TVA 18');            // ventilation
+        $this->assertSelectorTextNotContains('body', 'TVA');           // plus de TVA sur le ticket
         $this->assertSelectorTextContains('body', 'Rendu');             // rendu de monnaie
     }
 
@@ -176,9 +176,9 @@ class TicketTest extends WebTestCase
         $this->assertStringContainsString('ZedPOS', implode(' ', $ticket['header']));
         $this->assertStringContainsString('Abengourou', implode(' ', $ticket['header']));
 
-        // Le pied reprend la ventilation de TVA, le règlement et la phrase de fin.
+        // Le pied reprend le règlement et la phrase de fin, sans TVA.
         $pied = implode(' | ', $ticket['footer']);
-        $this->assertStringContainsString('TVA 18%', $pied);
+        $this->assertStringNotContainsString('TVA', $pied);
         $this->assertStringContainsString('Especes : 2000 FCFA', $pied);
     }
 

@@ -45,6 +45,7 @@ export class FileSynchronisation {
      * @param {number}   [options.delaiBase]  délai de la première relance, en ms
      * @param {number}   [options.delaiMax]   plafond du délai de relance, en ms
      * @param {Function} [options.estEnLigne] () => bool
+     * @param {Function} [options.proprietaire] () => identifiant de la caissière connectée, ou null
      */
     constructor({
         depot,
@@ -54,6 +55,7 @@ export class FileSynchronisation {
         delaiBase = 2000,
         delaiMax = 300000,
         estEnLigne = () => true,
+        proprietaire = () => null,
     }) {
         this.depot = depot;
         this.envoyer = envoyer;
@@ -62,9 +64,31 @@ export class FileSynchronisation {
         this.delaiBase = delaiBase;
         this.delaiMax = delaiMax;
         this.estEnLigne = estEnLigne;
+        this.proprietaire = proprietaire;
 
         this.enCours = false;
         this.ecouteurs = new Set();
+    }
+
+    // ------------------------------------------------------------ Propriétaire
+
+    /**
+     * Une vente appartient à la caissière qui l'a encaissée. Le serveur, lui,
+     * l'enregistre dans la session de **celle qui est connectée** au moment de
+     * l'envoi : sur une tablette partagée, les ventes de Fatou envoyées après la
+     * connexion de Yao tomberaient dans la caisse de Yao — excédent chez l'une,
+     * manquant chez l'autre. Chaque compte ne vide donc que sa propre file.
+     *
+     * Une entrée sans propriétaire (écrite avant ce garde-fou) reste transmissible
+     * par tous : mieux vaut la voir partir que la laisser bloquée pour toujours.
+     * Si le compte connecté est inconnu (tests, page sans marqueur), rien n'est
+     * filtré : le comportement d'origine.
+     */
+    estAMoi(entree) {
+        const moi = this.proprietaire();
+
+        return null === moi || undefined === entree.utilisateurId || null === entree.utilisateurId
+            || String(entree.utilisateurId) === String(moi);
     }
 
     // ------------------------------------------------------------- Observation
@@ -77,9 +101,13 @@ export class FileSynchronisation {
 
     async notifier() {
         const entrees = await this.depot.toutes();
+        const miennes = entrees.filter((e) => this.estAMoi(e));
         const etat = {
-            enAttente: entrees.filter((e) => e.statut === EN_ATTENTE).length,
-            bloquees: entrees.filter((e) => e.statut === BLOQUEE).length,
+            enAttente: miennes.filter((e) => e.statut === EN_ATTENTE).length,
+            bloquees: miennes.filter((e) => e.statut === BLOQUEE).length,
+            // Ventes d'une autre caissière restées sur cette tablette : elles
+            // attendent son retour, elles ne partiront pas sous ce compte.
+            autres: entrees.length - miennes.length,
             synchronisation: this.enCours,
             enLigne: this.estEnLigne(),
         };
@@ -103,6 +131,7 @@ export class FileSynchronisation {
             uuid,
             charge,
             ticket,
+            utilisateurId: this.proprietaire(),
             statut: EN_ATTENTE,
             tentatives: 0,
             creeA: this.maintenant(),
@@ -136,7 +165,7 @@ export class FileSynchronisation {
 
         try {
             for (const entree of await this.depot.toutes()) {
-                if (entree.statut !== EN_ATTENTE || entree.prochaineTentativeA > this.maintenant()) {
+                if (!this.estAMoi(entree) || entree.statut !== EN_ATTENTE || entree.prochaineTentativeA > this.maintenant()) {
                     continue;
                 }
                 if (await this.transmettre(entree)) {
@@ -214,8 +243,72 @@ export class FileSynchronisation {
         return Math.round(brut + gigue);
     }
 
+    // ------------------------------------------------------- Ventes à vérifier
+
+    /** Ventes refusées par le serveur, de la caissière connectée. Jamais supprimées d'elles-mêmes. */
+    async bloquees() {
+        return (await this.depot.toutes()).filter((e) => e.statut === BLOQUEE && this.estAMoi(e));
+    }
+
+    /**
+     * Remet une vente refusée dans la file, pour un nouvel essai. Utile quand la
+     * cause a disparu : article réactivé, caisse rouverte, connexion rétablie.
+     *
+     * @returns {Promise<boolean>} faux si la vente n'existe pas ou n'est pas bloquée
+     */
+    async reessayer(uuid) {
+        const entree = (await this.bloquees()).find((e) => e.uuid === uuid);
+        if (!entree) {
+            return false;
+        }
+
+        await this.depot.mettreAJour({
+            ...entree,
+            statut: EN_ATTENTE,
+            tentatives: 0,
+            erreur: null,
+            prochaineTentativeA: this.maintenant(),
+        });
+        await this.notifier();
+
+        return true;
+    }
+
+    /**
+     * Retire une vente refusée de la tablette — **à condition que le serveur en ait
+     * pris acte**. Une vente bloquée n'existe qu'ici : l'effacer sans trace ferait
+     * disparaître l'unique preuve d'un argent entré dans le tiroir. `declarer`
+     * consigne la vente côté serveur ; s'il ne confirme pas (réseau coupé, refus),
+     * la vente reste en place.
+     *
+     * @param {string}   uuid
+     * @param {Function} declarer (entree) => Promise<boolean> ; vrai seulement si le serveur a enregistré la déclaration
+     * @returns {Promise<boolean>}
+     */
+    async retirerBloquee(uuid, declarer) {
+        const entree = (await this.bloquees()).find((e) => e.uuid === uuid);
+        if (!entree) {
+            return false;
+        }
+
+        let declaree = false;
+        try {
+            declaree = (await declarer(entree)) === true;
+        } catch {
+            declaree = false;
+        }
+        if (!declaree) {
+            return false;
+        }
+
+        await this.depot.supprimer(uuid);
+        await this.notifier();
+
+        return true;
+    }
+
     async resume() {
-        const entrees = await this.depot.toutes();
+        const entrees = (await this.depot.toutes()).filter((e) => this.estAMoi(e));
 
         return {
             transmises: 0,
@@ -253,7 +346,7 @@ export class FileSynchronisation {
     /** Millisecondes avant la prochaine entrée due, ou null s'il n'y en a plus. */
     async delaiAvantProchaineTentative() {
         const dus = (await this.depot.toutes())
-            .filter((e) => e.statut === EN_ATTENTE)
+            .filter((e) => this.estAMoi(e) && e.statut === EN_ATTENTE)
             .map((e) => e.prochaineTentativeA);
 
         if (dus.length === 0) {

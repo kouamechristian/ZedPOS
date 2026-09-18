@@ -156,16 +156,6 @@ class TicketMateriel
     {
         $lignes = [];
 
-        foreach ($ticket->ventilationTva as $tva) {
-            $taux = number_format($tva['tauxBp'] / 100, ($tva['tauxBp'] % 100) ? 2 : 0, ',', ' ');
-            $lignes[] = \sprintf(
-                'TVA %s%% : %d FCFA (base %d)',
-                $taux,
-                $this->fcfa($tva['montant']),
-                $this->fcfa($tva['base']),
-            );
-        }
-
         foreach ($ticket->reglements as $reglement) {
             $lignes[] = \sprintf('%s : %d FCFA', $this->ascii($reglement['libelle']), $this->fcfa($reglement['montant']));
         }

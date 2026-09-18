@@ -517,6 +517,7 @@
            chemin du pouce. #}
         <div class="flex flex-col gap-2 p-3 text-xs">
             <span data-controller="synchronisation"
+                  data-synchronisation-ventes-a-verifier-value="{{ path('app_caisse_ventes_a_verifier') }}"
                   data-base-classes="flex items-center justify-between gap-2 rounded-xl px-3 py-2"
                   class="flex items-center justify-between gap-2 rounded-xl px-3 py-2 plan-vif"
                   style="color: var(--texte-doux);"
@@ -697,11 +698,9 @@
                    le bas de l'écran, c'est cette zone qui défile — et le pied, lui,
                    reste épinglé. #}
                 <div class="paiement border-t trait px-4 py-3" data-ticket-target="paiement">
-                    {# Sous-total et TVA sur une seule ligne : ce sont des chiffres de
-                       contrôle, pas des montants qu'on annonce. #}
+                    {# Sous-total : chiffre de contrôle, pas un montant qu'on annonce. #}
                     <div class="flex items-baseline justify-between gap-3 text-xs" style="color: var(--texte-doux);">
                         <span>Sous-total <span class="chiffre" data-ticket-target="sousTotal">0 FCFA</span></span>
-                        <span><span data-ticket-target="tvaLibelle">Dont TVA</span> <span class="chiffre" data-ticket-target="tva">0 FCFA</span></span>
                     </div>
 
                     {# Le total est le chiffre que la caissière annonce : vert, en

@@ -323,9 +323,12 @@ class TurboNavigationTest extends WebTestCase
         // Rien de ce qui se passe **pendant la prise de commande** n'est
         // asynchrone : ajouter un article, +/−, retirer une ligne, vider le
         // ticket, saisir le montant reçu ou lire la monnaie à rendre restent en
-        // mémoire. Les sept méthodes ci-dessous sortent sur le réseau, et toutes
-        // après coup : le catalogue au chargement, l'encaissement, sa
-        // confirmation, l'affichage du reçu une fois la vente acquise, et
+        // mémoire. Les neuf méthodes ci-dessous sortent sur le réseau, et toutes
+        // hors de la saisie : le catalogue au chargement puis chaque minute
+        // (`rafraichirPrix` : un prix modifié au bureau doit atteindre le comptoir,
+        // le serveur refusant une vente au prix périmé), l'encaissement, sa
+        // confirmation, la lecture de son refus éventuel (`venteRefusee`, dans la
+        // file locale, sans réseau), l'affichage du reçu une fois la vente acquise, et
         // la validation d'un ticket modifié — qui, elle, exige le réseau et le
         // dit franchement plutôt que de partir dans la file de synchronisation.
         // Reprendre le ticket (`ouvrirModification`) reste en mémoire.
@@ -347,7 +350,8 @@ class TurboNavigationTest extends WebTestCase
         $this->assertSame(
             [
                 'actualiserCatalogue', 'afficherRecu', 'chargerTicketMateriel',
-                'encaisser', 'imprimerMateriel', 'validerModification', 'venteTransmise',
+                'encaisser', 'imprimerMateriel', 'rafraichirPrix', 'validerModification',
+                'venteRefusee', 'venteTransmise',
             ],
             $asynchrones,
             'Aucune autre méthode du contrôleur de ticket ne doit faire d\'aller-retour serveur.',
@@ -356,7 +360,7 @@ class TurboNavigationTest extends WebTestCase
         // La monnaie se calcule à l'écran, sans réseau : hors ligne, la réponse
         // du serveur n'arriverait qu'après le départ du client.
         foreach ([
-            'ajouter', 'incrementer', 'decrementer', 'vider', 'total', 'tva', 'saisirRecu', 'rendreRendu',
+            'ajouter', 'incrementer', 'decrementer', 'vider', 'total', 'saisirRecu', 'rendreRendu',
             // L'afficheur client est piloté depuis ces deux méthodes : elles
             // doivent rester synchrones. Un `await` sur un périphérique absent
             // — le cas de la plupart des postes — mettrait une attente entre

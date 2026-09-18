@@ -141,6 +141,18 @@ class AuditLogger
      * Remise accordée sur une vente. `avant` porte le montant plein, `apres` le
      * montant réellement encaissé — l'écart est la remise consentie.
      */
+    /**
+     * Vente que la tablette a encaissée et que le serveur a refusée, retirée de la
+     * file par la caissière. Sans vente en base : `$details` porte tout ce qu'il
+     * faut pour la retrouver (uuid, lignes, total, heure, motif du refus).
+     *
+     * @param array<string, mixed> $details
+     */
+    public function venteNonEnregistree(array $details): JournalAudit
+    {
+        return $this->enregistrer(ActionAudit::VENTE_NON_ENREGISTREE, 'Vente', null, null, $details);
+    }
+
     public function remiseAccordee(Vente $vente): JournalAudit
     {
         $remise = $vente->getRemise();

@@ -8,6 +8,7 @@
 import { DepotIndexedDb } from './depot_indexeddb.js';
 import { DepotMemoire } from './depot_memoire.js';
 import { FileSynchronisation } from './file_synchronisation.js';
+import { interpreterReponse } from './interpreter_reponse.js';
 
 /** Réveil de sécurité : rattrape les cas où l'événement `online` ne se déclenche pas. */
 const PERIODE_REVEIL = 15000;
@@ -27,17 +28,22 @@ async function envoyerVente(charge) {
         // Indispensable : la requête peut être rejouée longtemps après, il faut le
         // cookie de session. `same-origin` est le défaut, on l'explicite.
         credentials: 'same-origin',
+        // Sans cela, une session expirée (302 vers /login) est suivie par fetch et
+        // revient en 200 avec la page de connexion : la file y verrait un succès
+        // et supprimerait la vente. Voir interpreter_reponse.js.
+        redirect: 'manual',
     });
 
-    let corps = null;
-    try {
-        corps = await reponse.json();
-    } catch {
-        // Réponse non-JSON (page de login HTML après expiration de session, par
-        // exemple) : le statut suffit à décider quoi faire.
-    }
+    return interpreterReponse(reponse);
+}
 
-    return { statut: reponse.status, corps };
+/**
+ * Identifiant de la caissière connectée, posé par le serveur sur `<body>`.
+ * Lu à chaque appel : Turbo remplace le `<body>` à chaque navigation, et la file,
+ * elle, vit aussi longtemps que l'onglet.
+ */
+function utilisateurCourant() {
+    return document.body?.dataset?.utilisateur ?? null;
 }
 
 let instance = null;
@@ -53,6 +59,7 @@ export function caisseHorsLigne() {
         depot,
         envoyer: envoyerVente,
         estEnLigne: () => navigator.onLine,
+        proprietaire: utilisateurCourant,
     });
 
     instance = {

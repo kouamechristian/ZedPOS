@@ -3,7 +3,6 @@ import {
     ajouterUnite,
     ajusterQuantite,
     formaterFcfa,
-    libelleTva,
     lireMontantFcfa,
     manquant,
     renduMonnaie,
@@ -33,13 +32,20 @@ import { EFFACER, MONNAIE, PRIX, TOTAL, pos } from '../js/pos-agent.js';
  */
 const DUREE_MONNAIE = 15000;
 
+/**
+ * Fréquence de relecture du catalogue, tablette en ligne. Un prix modifié au
+ * bureau doit atteindre le comptoir sans attendre un rechargement : le client paie
+ * ce que l'écran affiche, et le serveur refuse (422) une vente au prix périmé.
+ */
+const PERIODE_CATALOGUE = 60000;
+
 /** Longueur maximale du montant reçu, en chiffres de FCFA (9 999 999). */
 const CHIFFRES_RECU_MAX = 7;
 
 export default class extends Controller {
     static targets = [
         'onglets', 'onglet', 'grilles', 'grille', 'atelier',
-        'lignes', 'compte', 'sousTotal', 'tva', 'tvaLibelle', 'total',
+        'lignes', 'compte', 'sousTotal', 'total',
         'reglement', 'encaisser', 'message', 'imprimer', 'impression',
         'paiement', 'especes', 'montantRecu', 'suggestions', 'renduLigne', 'renduLibelle', 'renduMontant',
         'recu', 'recuContenu', 'recuNumero', 'recuRendu', 'recuRenduMontant',
@@ -63,6 +69,11 @@ export default class extends Controller {
         // total du client de la veille.
         this.rendre();
         this.actualiserCatalogue();
+        this.rafraichissementPrix = setInterval(() => this.rafraichirPrix(), PERIODE_CATALOGUE);
+    }
+
+    disconnect() {
+        clearInterval(this.rafraichissementPrix);
     }
 
     // ---------------------------------------------------------------- Familles
@@ -120,11 +131,6 @@ export default class extends Controller {
     /** Total TTC, en centimes. Les calculs vivent dans `caisse/calculs.js`. */
     total() {
         return totalTtc(this.lignes);
-    }
-
-    /** TVA incluse, en centimes, au taux réel de chaque ligne. */
-    tva() {
-        return tvaIncluse(this.lignes);
     }
 
     // -------------------------------------------------------------- Règlement
@@ -338,9 +344,16 @@ export default class extends Controller {
         const charge = {
             uuid,
             mode: 'BOULANGERIE',
+            // Heure réelle de la vente : sans elle, une vente encaissée hors ligne
+            // serait datée de son arrivée au serveur, parfois le lendemain.
+            venduA: new Date().toISOString(),
             lignes: this.lignes.map((l) => ({
                 articleId: l.articleId,
                 quantite: l.quantite,
+                // Le prix que le client a vu et payé. Le serveur ne s'y fie pas pour
+                // calculer — il le compare à celui en vigueur, et refuse l'écart
+                // plutôt que d'enregistrer un montant que personne n'a réglé.
+                prix: l.prix,
                 commentaire: '',
             })),
             reglements: [{ mode: this.reglement, montant: encaisse }],
@@ -382,6 +395,21 @@ export default class extends Controller {
         // compris : elle se rend maintenant, au comptoir, et ne dépend d'aucune
         // réponse du serveur.
         this.annoncerMonnaie(rendu);
+
+        // Refusée par le serveur (prix périmé, article retiré…) : la vente n'est PAS
+        // enregistrée alors que le client a payé. Le dire franchement — l'ancien
+        // message « enregistrée hors ligne » aurait été faux, et l'écart n'aurait
+        // été découvert qu'au Z.
+        const refusee = await this.venteRefusee(uuid);
+        if (refusee) {
+            this.notifier(
+                `VENTE NON ENREGISTRÉE — ${refusee.erreur ?? 'refusée par le serveur'}. Prévenez le gérant : elle est à traiter dans « ventes à vérifier ».`,
+                true,
+                15000,
+            );
+
+            return;
+        }
 
         if (await this.venteTransmise(uuid)) {
             // Le reçu s'affiche à l'écran, au format qui sortira de l'imprimante.
@@ -487,12 +515,6 @@ export default class extends Controller {
             </div>
             ${ligne.comment ? `<div class="commentaire">${this.esc(ligne.comment)}</div>` : ''}
         `).join('');
-        const ventilation = (ticket.tva ?? []).map((tva) => `
-            <div class="row">
-                <span class="g">TVA ${this.taux(tva.taux)} % — base ${this.fcfa(tva.base * 100)}</span>
-                <span class="d">${this.fcfa(tva.montant * 100)}</span>
-            </div>
-        `).join('');
         const reglements = (ticket.reglements ?? []).map((reglement) => `
             <div class="row"><span class="g">${this.esc(reglement.label)}</span><span class="d">${this.fcfa(reglement.montant * 100)}</span></div>
         `).join('');
@@ -520,11 +542,6 @@ export default class extends Controller {
                 ${lignes}
                 <div class="sep"></div>
                 <div class="row total"><span class="g">TOTAL</span><span class="d">${this.fcfa(ticket.total * 100)}</span></div>
-                <div class="sep"></div>
-                <div class="muted">Ventilation TVA</div>
-                ${ventilation}
-                <div class="row"><span class="g">Total HT</span><span class="d">${this.fcfa(ticket.totalHt * 100)}</span></div>
-                <div class="row"><span class="g">Total TVA</span><span class="d">${this.fcfa(ticket.totalTva * 100)}</span></div>
                 <div class="sep"></div>
                 ${reglements}
                 ${ticket.change > 0 ? `<div class="row rendu"><span class="g">Rendu</span><span class="d">${this.fcfa(ticket.change * 100)}</span></div>` : ''}
@@ -743,6 +760,13 @@ export default class extends Controller {
         this.notifier(`Ticket ${numero} modifié`, false);
     }
 
+    /** L'entrée de la file si le serveur a refusé cette vente, sinon `undefined`. */
+    async venteRefusee(uuid) {
+        const entrees = await this.horsLigne.depot.toutes();
+
+        return entrees.find((entree) => entree.uuid === uuid && entree.statut === 'BLOQUEE');
+    }
+
     async venteTransmise(uuid) {
         const entrees = await this.horsLigne.depot.toutes();
 
@@ -896,6 +920,58 @@ export default class extends Controller {
         const frais = await this.horsLigne.rafraichirCatalogue();
         if (frais?.familles?.length) {
             this.rendreCatalogue(frais);
+            this.alignerPrix(frais);
+        }
+    }
+
+    /**
+     * Relecture périodique du catalogue. Ne redessine la grille que si quelque
+     * chose a changé : un rendu par minute ferait sautiller les touches sous le
+     * pouce pour rien.
+     */
+    async rafraichirPrix() {
+        if (!navigator.onLine) {
+            return;
+        }
+
+        const frais = await this.horsLigne.rafraichirCatalogue();
+        if (!frais?.familles?.length) {
+            return;
+        }
+
+        const signature = JSON.stringify(frais.familles);
+        if (signature === this.signatureCatalogue) {
+            return;
+        }
+
+        this.rendreCatalogue(frais);
+        this.alignerPrix(frais);
+    }
+
+    /**
+     * Le ticket en cours garde le prix des articles au moment où ils ont été
+     * ajoutés. Si le catalogue vient de changer, il est remis à jour — et la
+     * caissière prévenue avant d'annoncer un total périmé au client.
+     */
+    alignerPrix(catalogue) {
+        this.signatureCatalogue = JSON.stringify(catalogue.familles);
+
+        const actuels = new Map(catalogue.familles.flatMap((f) => f.articles).map((a) => [String(a.id), a]));
+        let modifie = false;
+
+        this.lignes = this.lignes.map((ligne) => {
+            const article = actuels.get(String(ligne.articleId));
+            if (!article || (article.prix === ligne.prix && article.tva === ligne.tva)) {
+                return ligne;
+            }
+            modifie = true;
+
+            return { ...ligne, prix: article.prix, tva: article.tva };
+        });
+
+        if (modifie) {
+            this.rendre();
+            this.notifier('Un prix a changé : le total du ticket a été mis à jour', true, 6000);
         }
     }
 
@@ -1076,11 +1152,7 @@ export default class extends Controller {
         const total = this.total();
 
         this.sousTotalTarget.textContent = this.fcfa(total);
-        this.tvaTarget.textContent = this.fcfa(this.tva());
         this.totalTarget.textContent = this.fcfa(total);
-
-        // Le libellé dit la vérité du ticket : exonéré, un taux, ou plusieurs.
-        this.tvaLibelleTarget.textContent = libelleTva(this.lignes);
     }
 
     majEncaisser() {
@@ -1102,7 +1174,7 @@ export default class extends Controller {
         }
     }
 
-    notifier(message, erreur) {
+    notifier(message, erreur, duree = 2500) {
         const zone = this.messageTarget;
         zone.textContent = message;
         // z-40 : au-dessus du panneau de reçu (z-30), sinon un message de repli
@@ -1115,7 +1187,7 @@ export default class extends Controller {
         }`;
 
         clearTimeout(this.timer);
-        this.timer = setTimeout(() => { zone.className = 'hidden'; }, 2500);
+        this.timer = setTimeout(() => { zone.className = 'hidden'; }, duree);
     }
 
     // ------------------------------------------------------- Afficheur client

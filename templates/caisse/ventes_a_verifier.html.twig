@@ -1,0 +1,36 @@
+{% extends 'caisse/_session_base.html.twig' %}
+
+{% block page_title %}Ventes à vérifier{% endblock %}
+
+{% block entete_actions %}
+    <a href="{{ path('app_caisse') }}" class="rounded-lg bg-white border border-gray-300 px-3 py-2 font-medium text-gray-700 hover:bg-gray-100">← Caisse</a>
+{% endblock %}
+
+{% block caisse_content %}
+<div class="mx-auto max-w-3xl"
+     data-controller="ventes-a-verifier"
+     data-ventes-a-verifier-declaration-value="{{ path('api_vente_refusee') }}">
+
+    <div class="mb-5 rounded-2xl bg-white p-6 text-stone-800 shadow-xl">
+        <h1 class="text-xl font-black text-stone-900">Ventes à vérifier</h1>
+        <p class="mt-2 text-sm text-stone-600">
+            Ces ventes ont été encaissées au comptoir mais <strong>le serveur les a refusées</strong> :
+            elles ne sont pas dans la caisse, alors que l'argent est dans le tiroir. Elles restent sur
+            cette tablette tant que vous ne les avez pas traitées.
+        </p>
+        <ul class="mt-3 list-disc space-y-1 pl-5 text-sm text-stone-600">
+            <li><strong>Réessayer</strong> : quand la cause a disparu (article réactivé, connexion revenue).</li>
+            <li><strong>Retirer</strong> : consigne la vente au journal d'audit, puis l'efface de la tablette.
+                Le gérant la voit, et pourra la ressaisir si besoin.</li>
+        </ul>
+    </div>
+
+    <div data-ventes-a-verifier-target="liste" class="space-y-4"></div>
+
+    <p data-ventes-a-verifier-target="vide" class="hidden rounded-2xl bg-white p-6 text-center text-stone-500 shadow-xl">
+        Aucune vente à vérifier sur cette tablette.
+    </p>
+
+    <p data-ventes-a-verifier-target="message" class="mt-4 hidden rounded-xl px-4 py-3 text-sm font-medium" role="status"></p>
+</div>
+{% endblock %}

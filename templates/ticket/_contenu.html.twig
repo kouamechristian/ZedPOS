@@ -46,16 +46,6 @@
     {% endif %}
     <div class="row total"><span class="g">TOTAL</span><span class="d">{{ fmt.fcfa(ticket.totalTtc) }}</span></div>
 
-    <div class="sep"></div>
-    <div class="muted">Ventilation TVA</div>
-    {% for tva in ticket.ventilationTva %}
-        <div class="row">
-            <span class="g">TVA {{ (tva.tauxBp / 100)|number_format((tva.tauxBp % 100) ? 2 : 0, ',', ' ') }} % — base {{ fmt.fcfa(tva.base) }}</span>
-            <span class="d">{{ fmt.fcfa(tva.montant) }}</span>
-        </div>
-    {% endfor %}
-    <div class="row"><span class="g">Total HT</span><span class="d">{{ fmt.fcfa(ticket.totalHt) }}</span></div>
-    <div class="row"><span class="g">Total TVA</span><span class="d">{{ fmt.fcfa(ticket.totalTva) }}</span></div>
 
     {# Règlements : le montant porté ici est ce que le client a **tendu**, pas le
        total du ticket. C'est de l'écart entre les deux que vient le rendu — et

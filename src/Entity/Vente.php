@@ -126,6 +126,18 @@ class Vente
     }
 
     /**
+     * Date réelle de la vente, quand elle diffère de celle de son enregistrement :
+     * une vente encaissée hors ligne n'arrive au serveur qu'au retour du réseau,
+     * parfois le lendemain. Sans cela elle serait comptée dans le mauvais jour.
+     */
+    public function dater(\DateTimeImmutable $venduA): self
+    {
+        $this->createdAt = $venduA;
+
+        return $this;
+    }
+
+    /**
      * Renseigne remise et rendu au moment de la création de la vente.
      */
     public function enregistrerRemiseEtRendu(int $remise, ?string $motifRemise, int $rendu): self

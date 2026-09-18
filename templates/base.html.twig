@@ -32,7 +32,9 @@
         <script src="https://cdn.jsdelivr.net/npm/frankenphp-hot-reload/+esm" type="module"></script>
         {% endif %}
     </head>
-    <body>
+    {# Compte connecté, lu par la file hors ligne : une vente encaissée hors ligne
+       ne doit repartir que sous le compte qui l'a encaissée. #}
+    <body{% if app.user %} data-utilisateur="{{ app.user.id }}"{% endif %}>
         {% block body %}{% endblock %}
     </body>
 </html>

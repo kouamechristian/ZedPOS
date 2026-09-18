@@ -70,6 +70,21 @@ class CaisseController extends AbstractController
     }
 
     /**
+     * Ventes que le serveur a refusées et que la tablette garde. Elles n'existent
+     * que dans la file locale (IndexedDB) : l'écran est donc rendu par le
+     * navigateur, la route ne fait qu'en fournir le cadre.
+     *
+     * Sans lui, le bandeau annonçait « N ventes à vérifier » et rien ne permettait
+     * de les voir, les rejouer ni les traiter : l'argent restait dans le tiroir et
+     * la vente nulle part.
+     */
+    #[Route('/ventes-a-verifier', name: 'app_caisse_ventes_a_verifier', methods: ['GET'])]
+    public function ventesAVerifier(): Response
+    {
+        return $this->render('caisse/ventes_a_verifier.html.twig');
+    }
+
+    /**
      * Catalogue complet servi au format JSON, destiné à être stocké en IndexedDB
      * par l'écran de caisse : c'est lui qui permet d'afficher les touches produits
      * quand la connexion est coupée.

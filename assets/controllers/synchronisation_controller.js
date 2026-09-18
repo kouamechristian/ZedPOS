@@ -14,6 +14,7 @@ import { caisseHorsLigne } from '../offline/caisse_hors_ligne.js';
  */
 export default class extends Controller {
     static targets = ['libelle', 'detail'];
+    static values = { ventesAVerifier: String };
 
     connect() {
         this.horsLigne = caisseHorsLigne();
@@ -31,12 +32,23 @@ export default class extends Controller {
         this.desabonner?.();
     }
 
-    /** Vidage manuel : utile quand le caissier voit revenir le réseau avant nous. */
+    /**
+     * Vidage manuel : utile quand le caissier voit revenir le réseau avant nous.
+     * Quand des ventes sont refusées, le même clic mène à leur écran : c'est le
+     * seul endroit d'où on peut les voir et les traiter.
+     */
     synchroniser() {
+        if (this.dernierEtat?.bloquees > 0 && this.ventesAVerifierValue) {
+            window.location.assign(this.ventesAVerifierValue);
+
+            return;
+        }
+
         this.horsLigne.synchroniser();
     }
 
     rendre(etat) {
+        this.dernierEtat = etat;
         const { classes, libelle, detail } = this.decrire(etat);
 
         this.element.className = `${this.element.dataset.baseClasses} ${classes}`;
@@ -54,7 +66,7 @@ export default class extends Controller {
             return {
                 classes: 'bg-red-50 text-red-700 ring-1 ring-red-200',
                 libelle: `${etat.bloquees} vente${etat.bloquees > 1 ? 's' : ''} à vérifier`,
-                detail: '',
+                detail: '· voir',
             };
         }
 
@@ -74,6 +86,16 @@ export default class extends Controller {
             return {
                 classes: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
                 libelle: `${etat.enAttente} en attente`,
+                detail: '',
+            };
+        }
+
+        // Ventes d'une autre caissière restées sur la tablette : elles ne partent
+        // que sous son compte, on le dit plutôt que d'afficher « Synchronisé ».
+        if (etat.autres > 0) {
+            return {
+                classes: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
+                libelle: `${etat.autres} vente${etat.autres > 1 ? 's' : ''} d'une autre caissière`,
                 detail: '',
             };
         }

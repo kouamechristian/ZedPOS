@@ -44,14 +44,30 @@
             Une fois clôturée, la journée n'est plus modifiable.
         </p>
 
-        {{ form_start(form) }}
-            {% include 'caisse/_pave_montant.html.twig' with {champ: form.montantCompte} only %}
-            {{ form_row(form.commentaire) }}
+        {# Garde-fou : le Z ne voit que les ventes que le serveur connaît. Tant que
+           la file hors ligne de cette tablette n'est pas vide, on ne clôture pas
+           (voir garde_cloture_controller.js). #}
+        <div data-controller="garde-cloture"
+             data-garde-cloture-ventes-a-verifier-value="{{ path('app_caisse_ventes_a_verifier') }}">
+            <div data-garde-cloture-target="alerte"></div>
 
-            <button class="w-full rounded-xl bg-red-600 text-white text-lg font-bold py-4 hover:bg-red-500">
-                Clôturer la caisse (Z)
-            </button>
-        {{ form_end(form) }}
+            {{ form_start(form, {attr: {'data-action': 'submit->garde-cloture#verifier'}}) }}
+                {% include 'caisse/_pave_montant.html.twig' with {champ: form.montantCompte} only %}
+                {{ form_row(form.commentaire) }}
+
+                <label class="hidden mb-4 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+                       data-garde-cloture-target="confirmation">
+                    <input type="checkbox" class="mt-1 h-5 w-5 shrink-0"
+                           data-garde-cloture-target="case" data-action="change->garde-cloture#basculer">
+                    <span>Je clôture en sachant que ces ventes refusées ne sont pas comptées dans la caisse.</span>
+                </label>
+
+                <button data-garde-cloture-target="bouton"
+                        class="w-full rounded-xl bg-red-600 text-white text-lg font-bold py-4 hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed">
+                    Clôturer la caisse (Z)
+                </button>
+            {{ form_end(form) }}
+        </div>
     </div>
 </div>
 {% endblock %}

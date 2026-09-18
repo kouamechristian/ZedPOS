@@ -65,15 +65,6 @@ class ImpressionService
         $sortie .= $this->deuxColonnes('TOTAL', $this->fcfa($ticket->totalTtc), intdiv(self::LARGEUR, 2));
         $sortie .= $this->grand(false).$this->gras(false);
 
-        // Ventilation de TVA.
-        foreach ($ticket->ventilationTva as $tva) {
-            $taux = number_format($tva['tauxBp'] / 100, ($tva['tauxBp'] % 100) ? 2 : 0, ',', ' ');
-            $sortie .= $this->deuxColonnes(
-                'TVA '.$taux.'% (base '.$this->fcfa($tva['base']).')',
-                $this->fcfa($tva['montant']),
-            );
-        }
-
         // Règlements et rendu.
         $sortie .= $this->separateur();
         foreach ($ticket->reglements as $reglement) {
