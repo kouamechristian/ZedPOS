@@ -887,6 +887,9 @@
     </div>
 
     <div data-ticket-target="message" class="hidden"></div>
-    <iframe data-ticket-target="impression" title="Impression du ticket" class="hidden" aria-hidden="true"></iframe>
+    {# Hors écran et non `display: none` : un iframe sans boîte de rendu n'imprime rien
+       (Chrome, Firefox), la boîte de dialogue d'impression ne s'ouvre alors jamais. #}
+    <iframe data-ticket-target="impression" title="Impression du ticket" aria-hidden="true" tabindex="-1"
+            style="position: fixed; right: 0; bottom: 0; width: 58mm; height: 200px; border: 0; opacity: 0; pointer-events: none;"></iframe>
 </div>
 {% endblock %}

@@ -48,7 +48,7 @@
     {{ include("ticket/_contenu.html.twig") }}
     {% if auto %}
     <script>
-        window.addEventListener('load', function () { window.print(); });
+        window.addEventListener('load', function () { window.focus(); window.print(); });
     </script>
     {% endif %}
 </body>
