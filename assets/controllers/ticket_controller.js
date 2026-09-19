@@ -847,14 +847,6 @@ export default class extends Controller {
             return false;
         }
 
-        // Surtout pas `noopener` : avec lui, `window.open()` renvoie toujours
-        // `null`, on ne peut rien écrire dans la fenêtre et le ticket hors ligne
-        // ne sortait jamais. La fenêtre est vierge et remplie par nos soins.
-        const win = window.open('', '_blank');
-        if (!win) {
-            return false;
-        }
-
         const contenu = `
             <html>
                 <head>
@@ -880,13 +872,25 @@ export default class extends Controller {
                         @page { size: 58mm auto; margin: 0; }
                     </style>
                 </head>
-                <body onload="window.print(); setTimeout(() => window.close(), 500);">${this.htmlRecuLocal(ticket, true)}</body>
+                <body>${this.htmlRecuLocal(ticket, true)}</body>
             </html>
         `;
 
-        win.document.write(contenu);
-        win.document.close();
-        win.focus();
+        // Iframe caché plutôt que `window.open()` : l'impression part après
+        // plusieurs `await`, hors du geste de la caissière, et le navigateur
+        // bloque alors la fenêtre — le ticket ne sortait « pas toujours ».
+        // Hors écran et non `display: none` (voir le gabarit de caisse).
+        const cadre = document.createElement('iframe');
+        cadre.setAttribute('aria-hidden', 'true');
+        cadre.tabIndex = -1;
+        cadre.style.cssText = 'position: fixed; right: 0; bottom: 0; width: 58mm; height: 200px; border: 0; opacity: 0; pointer-events: none;';
+        cadre.addEventListener('load', () => {
+            cadre.contentWindow.focus();
+            cadre.contentWindow.print();
+            setTimeout(() => cadre.remove(), 60000);
+        }, { once: true });
+        cadre.srcdoc = contenu;
+        document.body.appendChild(cadre);
 
         return true;
     }
