@@ -19,7 +19,7 @@
  * Écrit sans import : un Service Worker classique ne bénéficie pas de l'importmap.
  */
 
-const VERSION = 'zedpos-v2';
+const VERSION = 'zedpos-v3';
 const CACHE_COQUILLE = `${VERSION}-coquille`;
 const CACHE_ASSETS = `${VERSION}-assets`;
 const CACHE_IMAGES = `${VERSION}-images`;

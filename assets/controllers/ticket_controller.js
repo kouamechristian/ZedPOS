@@ -418,7 +418,11 @@ export default class extends Controller {
                 // Tiroir déjà ouvert à l'appui sur « Encaisser » : le rouvrir avec
                 // le ticket n'ajouterait qu'une seconde impulsion sur un tiroir
                 // qui est déjà sorti.
-                await this.imprimerMateriel(uuid, false);
+                //
+                // Le ticket local est passé explicitement : la file l'a déjà
+                // oublié une fois la vente transmise, et le repli chargeait alors
+                // la page serveur dans un iframe — chemin qui n'imprimait pas.
+                await this.imprimerMateriel(uuid, false, ticketLocal);
             }
         } else {
             // Hors ligne : on garde un reçu local prêt à l'impression, au même titre
