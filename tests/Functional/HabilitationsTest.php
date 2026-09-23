@@ -72,7 +72,17 @@ class HabilitationsTest extends WebTestCase
 
         $sessions = static::getContainer()->get(SessionCaisseService::class);
         $this->venteDuCaissier = $this->vendre($sessions->ouvrir($this->caissier, 0), 'V-00001');
-        $this->venteDeLAutreCaissier = $this->vendre($sessions->ouvrir($this->autreCaissier, 0), 'V-00002');
+        $this->venteDeLAutreCaissier = $this->vendre($this->sessionDirecte($this->autreCaissier), 'V-00002');
+    }
+
+    /** Session créée hors service : le service n'en laisse ouvrir qu'une à la fois. */
+    private function sessionDirecte(Utilisateur $caissier): SessionCaisse
+    {
+        $session = new SessionCaisse($caissier, 0);
+        $this->em->persist($session);
+        $this->em->flush();
+
+        return $session;
     }
 
     private function creer(string $email, string $nom, array $roles): Utilisateur

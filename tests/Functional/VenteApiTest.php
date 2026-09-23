@@ -62,7 +62,9 @@ class VenteApiTest extends WebTestCase
         // Une vente exige une session ouverte pour l'encaisseur (caissier ou gérant).
         $sessions = static::getContainer()->get(SessionCaisseService::class);
         $sessions->ouvrir($this->caissier, 3000000);
-        $sessions->ouvrir($this->gerant, 3000000);
+        // Hors service : le service n'en laisse ouvrir qu'une à la fois.
+        $this->em->persist(new \App\Entity\SessionCaisse($this->gerant, 3000000));
+        $this->em->flush();
     }
 
     /**

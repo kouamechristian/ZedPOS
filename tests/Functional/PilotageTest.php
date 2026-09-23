@@ -250,14 +250,14 @@ class PilotageTest extends WebTestCase
         $crawler = $this->client->request('GET', '/pilotage');
 
         $this->assertResponseIsSuccessful();
-        $this->assertSelectorTextContains('body', '1 500');          // CA du jour, en gros
+        $this->assertSelectorTextContains('body', '2 500');          // CA de la caisse ouverte, en gros (les deux tickets y sont rangés)
         $this->assertSelectorTextContains('body', 'Panier moyen');
         $this->assertSelectorTextContains('body', 'Espèces');
         $this->assertSelectorTextContains('body', 'Points de vigilance');
         $this->assertSelectorTextContains('body', 'Top 10 des produits');
         $this->assertSelectorTextContains('body', 'Baguette');
-        $this->assertSelectorTextContains('body', 'Cumul du');       // le jour reste en repère sous le chiffre de la caisse
-        $this->assertSelectorTextContains('body', '1 500 FCFA');     // top produit cohérent avec le CA
+        $this->assertSelectorTextContains('body', 'Fond de caisse');  // le chiffre se lit par caisse
+        $this->assertSelectorTextContains('body', '2 500 FCFA');     // top produit cohérent avec le CA
 
         // La courbe reçoit bien 30 points, en FCFA entiers.
         $graphique = $crawler->filter('[data-controller="graphique-ca"]');
@@ -398,7 +398,12 @@ class PilotageTest extends WebTestCase
         $this->em->persist($caissier);
         $this->em->flush();
 
-        return static::getContainer()->get(SessionCaisseService::class)->ouvrir($caissier, 0);
+        // Créée hors service : la règle « une seule caisse ouverte » interdit de la faire ouvrir par le service.
+        $session = new SessionCaisse($caissier, 0);
+        $this->em->persist($session);
+        $this->em->flush();
+
+        return $session;
     }
 
     public function testVentesVentileesParCaissiere(): void

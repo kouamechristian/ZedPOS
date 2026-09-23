@@ -85,7 +85,10 @@ class RapportVentesTest extends WebTestCase
 
         $sessions = static::getContainer()->get(SessionCaisseService::class);
         $this->sessionFatou = $sessions->ouvrir($this->fatou, 0);
-        $this->sessionYao = $sessions->ouvrir($this->yao, 0);
+        // Hors service : le service n'en laisse ouvrir qu'une à la fois.
+        $this->sessionYao = new SessionCaisse($this->yao, 0);
+        $this->em->persist($this->sessionYao);
+        $this->em->flush();
 
         $this->client->loginUser($this->gerant);
     }
