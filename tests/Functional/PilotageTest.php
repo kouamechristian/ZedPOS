@@ -256,7 +256,7 @@ class PilotageTest extends WebTestCase
         $this->assertSelectorTextContains('body', 'Points de vigilance');
         $this->assertSelectorTextContains('body', 'Top 10 des produits');
         $this->assertSelectorTextContains('body', 'Baguette');
-        $this->assertSelectorTextContains('body', '+50,0 %');        // variation vs veille
+        $this->assertSelectorTextContains('body', 'Cumul du');       // le jour reste en repère sous le chiffre de la caisse
         $this->assertSelectorTextContains('body', '1 500 FCFA');     // top produit cohérent avec le CA
 
         // La courbe reçoit bien 30 points, en FCFA entiers.

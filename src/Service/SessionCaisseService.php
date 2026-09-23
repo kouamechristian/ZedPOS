@@ -32,7 +32,7 @@ class SessionCaisseService
      *
      * @param int $fondCaisse en centimes de FCFA
      *
-     * @throws \DomainException si une session est déjà ouverte pour ce caissier
+     * @throws \DomainException si une session est déjà ouverte, pour ce caissier ou un autre
      */
     public function ouvrir(Utilisateur $utilisateur, int $fondCaisse): SessionCaisse
     {
@@ -40,11 +40,26 @@ class SessionCaisseService
             throw new \DomainException('Une session de caisse est déjà ouverte pour ce caissier : clôturez-la avant d\'en ouvrir une nouvelle.');
         }
 
+        // Une seule caisse ouverte à la fois pour tout l'établissement : une caisse
+        // laissée sans clôture masquerait son écart derrière la suivante.
+        if (null !== ($autre = $this->sessions->ouverteQuelconque())) {
+            throw new \DomainException(sprintf(
+                'La caisse de %s n\'est pas clôturée : elle doit l\'être avant d\'en ouvrir une nouvelle.',
+                $autre->getUtilisateur()->getNom(),
+            ));
+        }
+
         $session = new SessionCaisse($utilisateur, $fondCaisse);
         $this->em->persist($session);
         $this->em->flush();
 
         return $session;
+    }
+
+    /** Session ouverte (par n'importe qui) qui empêche d'ouvrir une nouvelle caisse. */
+    public function caisseOuverteParUnAutre(): ?SessionCaisse
+    {
+        return $this->sessions->ouverteQuelconque();
     }
 
     public function sessionOuverte(Utilisateur $utilisateur): ?SessionCaisse

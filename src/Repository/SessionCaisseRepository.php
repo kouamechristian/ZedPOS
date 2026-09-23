@@ -47,4 +47,16 @@ class SessionCaisseRepository extends ServiceEntityRepository
             ['ouvertureAt' => 'DESC'],
         );
     }
+
+    /**
+     * Une session ouverte, quel qu'en soit le caissier (la plus ancienne d'abord) :
+     * tant qu'elle existe, aucune autre caisse ne s'ouvre.
+     */
+    public function ouverteQuelconque(): ?SessionCaisse
+    {
+        return $this->findOneBy(
+            ['statut' => StatutSessionCaisse::OUVERTE],
+            ['ouvertureAt' => 'ASC'],
+        );
+    }
 }

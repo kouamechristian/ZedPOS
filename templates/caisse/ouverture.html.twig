@@ -18,10 +18,17 @@
         le montant. Aucune vente n'est possible tant que la session n'est pas ouverte.
     </p>
 
+    {% if autreCaisse %}
+        <div role="alert" class="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
+            La caisse de {{ autreCaisse.utilisateur.nom }} est encore ouverte. Elle doit être
+            clôturée avant que vous puissiez ouvrir la vôtre.
+        </div>
+    {% endif %}
+
     {{ form_start(form) }}
         {% include 'caisse/_pave_montant.html.twig' with {champ: form.fondCaisse} only %}
 
-        <button class="w-full rounded-xl bg-green-600 text-white text-lg font-bold py-4 hover:bg-green-500">
+        <button {% if autreCaisse %}disabled{% endif %} class="disabled:opacity-40 disabled:cursor-not-allowed w-full rounded-xl bg-green-600 text-white text-lg font-bold py-4 hover:bg-green-500">
             Ouvrir la caisse
         </button>
     {{ form_end(form) }}

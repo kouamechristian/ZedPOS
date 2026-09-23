@@ -11,6 +11,7 @@ use App\Repository\UtilisateurRepository;
 use App\Repository\VenteRepository;
 use App\Security\Permission;
 use App\Service\AuditLogger;
+use App\Service\ChiffreCaisseService;
 use App\Service\SessionCaisseService;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
@@ -26,16 +27,10 @@ class DashboardController extends AbstractController
 {
     #[Route('', name: 'admin_dashboard', methods: ['GET'])]
     #[IsGranted(Permission::VOIR_CA_GLOBAL)]
-    public function index(Connection $connexion, ArticleRepository $articles): Response
+    public function index(Connection $connexion, ArticleRepository $articles, ChiffreCaisseService $chiffreCaisse): Response
     {
-        $jour = (new \DateTimeImmutable('today'))->format('Y-m-d');
         $debut30j = (new \DateTimeImmutable('today'))->modify('-29 days')->format('Y-m-d 00:00:00');
 
-        $caJour = (int) $connexion->fetchOne(
-            "SELECT COALESCE(SUM(total_ttc), 0) FROM vente WHERE statut = 'VALIDEE' AND DATE(created_at) = ?",
-            [$jour],
-        );
-        $ventesJour = (int) $connexion->fetchOne('SELECT COUNT(*) FROM vente WHERE DATE(created_at) = ?', [$jour]);
         $ca30j = (int) $connexion->fetchOne(
             "SELECT COALESCE(SUM(total_ttc), 0) FROM vente WHERE statut = 'VALIDEE' AND created_at >= ?",
             [$debut30j],
@@ -54,8 +49,7 @@ class DashboardController extends AbstractController
         );
 
         return $this->render('admin/dashboard.html.twig', [
-            'ca_jour' => $caJour,
-            'ventes_jour' => $ventesJour,
+            'caisse' => $chiffreCaisse->courant(),
             'ca_30j' => $ca30j,
             'panier_moyen' => $ventes30j > 0 ? intdiv($ca30j, $ventes30j) : 0,
             'articles_actifs' => $articles->compterActifs(),

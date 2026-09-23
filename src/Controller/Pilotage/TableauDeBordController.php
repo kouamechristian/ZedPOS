@@ -8,6 +8,7 @@ use App\Enum\RoleUtilisateur;
 use App\Repository\NotificationRepository;
 use App\Repository\VenteRepository;
 use App\Security\Permission;
+use App\Service\ChiffreCaisseService;
 use App\Service\RapportQuotidienTexte;
 use App\Service\RapportVentesCsv;
 use App\Service\SyntheseJournee;
@@ -39,15 +40,21 @@ class TableauDeBordController extends AbstractController
         Request $request,
         SyntheseJourneeService $syntheses,
         NotificationRepository $notifications,
+        ChiffreCaisseService $chiffreCaisse,
     ): Response {
-        $jour = $this->lireJour($request->query->get('jour'));
-        $synthese = $syntheses->construire($jour);
+        // L'écran se lit par caisse : celle qui est ouverte, à défaut la dernière
+        // clôturée, ou celle qu'on choisit dans la liste (`?session=`).
+        $demandee = $request->query->getInt('session') ?: null;
+        $caisse = $chiffreCaisse->courant($demandee);
+        $synthese = (null !== $caisse ? $syntheses->construireCaisse($caisse->sessionId) : null)
+            ?? $syntheses->construire();
 
         return $this->render('pilotage/tableau_de_bord.html.twig', [
             'synthese' => $synthese,
+            'caisse' => $caisse,
+            'sessions' => $chiffreCaisse->recentes(),
             'notifications' => $notifications->nonLuesPour(RoleUtilisateur::DIRIGEANTE->value),
             'nombreNotifications' => $notifications->nombreNonLues(RoleUtilisateur::DIRIGEANTE->value),
-            'raccourcis' => $this->raccourcis(),
             'caissieres' => $this->donneesCaissieres($synthese),
             'courbe' => [
                 'libelles' => array_map(
@@ -211,23 +218,6 @@ class TableauDeBordController extends AbstractController
             $lignes,
             static fn (array $l): bool => $l['avant'] !== $l['apres'] || $l['montantAvant'] !== $l['montantApres'],
         ));
-    }
-
-    /**
-     * Journées consultées en pratique. Sur un téléphone, trois pastilles valent
-     * mieux qu'un calendrier à dérouler.
-     *
-     * @return list<array{label: string, jour: string}>
-     */
-    private function raccourcis(): array
-    {
-        $aujourdhui = new \DateTimeImmutable('today');
-
-        return [
-            ['label' => "Aujourd'hui", 'jour' => $aujourdhui->format('Y-m-d')],
-            ['label' => 'Hier', 'jour' => $aujourdhui->modify('-1 day')->format('Y-m-d')],
-            ['label' => 'Il y a 7 jours', 'jour' => $aujourdhui->modify('-7 days')->format('Y-m-d')],
-        ];
     }
 
     /**

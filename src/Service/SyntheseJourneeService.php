@@ -7,10 +7,15 @@ use App\Enum\ModeReglement;
 use Doctrine\DBAL\Connection;
 
 /**
- * Construit la {@see SyntheseJournee} d'une date donnée.
+ * Construit la {@see SyntheseJournee} d'une journée ou d'une caisse (session).
  *
  * Toutes les agrégations excluent les ventes annulées des montants (elles sont
  * comptées à part, dans les points de vigilance).
+ *
+ * Deux portées, un seul calcul : `construire()` lit une journée civile (rapport
+ * quotidien), `construireCaisse()` lit une session de caisse (écran de pilotage).
+ * Chaque requête reçoit sa portée sous la forme d'une condition sur `vente v` et
+ * de ses paramètres, si bien que les deux ne peuvent pas diverger.
  */
 class SyntheseJourneeService
 {
@@ -26,33 +31,106 @@ class SyntheseJourneeService
     public function construire(?\DateTimeImmutable $jour = null): SyntheseJournee
     {
         $jour = ($jour ?? new \DateTimeImmutable('today'))->setTime(0, 0);
-
-        $caJour = $this->caDuJour($jour);
-        $caVeille = $this->caDuJour($jour->modify('-1 day'));
-        $caSemaine = $this->caDuJour($jour->modify('-7 days'));
-
-        $ventes = $this->ventesDuJour($jour);
-        $nombreTickets = (int) ($ventes['nombre'] ?? 0);
-
-        $annulations = $this->connexion->fetchAssociative(
-            "SELECT COUNT(*) AS nombre, COALESCE(SUM(total_ttc), 0) AS montant
-             FROM vente WHERE DATE(created_at) = ? AND statut = 'ANNULEE'",
-            [$jour->format('Y-m-d')],
-        ) ?: [];
-
-        $pertes = $this->connexion->fetchAssociative(
-            'SELECT COUNT(*) AS nombre, COALESCE(SUM(valorisation), 0) AS montant
-             FROM perte WHERE DATE(created_at) = ?',
-            [$jour->format('Y-m-d')],
-        ) ?: [];
+        $date = $jour->format('Y-m-d');
 
         $caisse = $this->connexion->fetchAssociative(
             "SELECT COUNT(*) AS nombre, COALESCE(SUM(ecart), 0) AS ecart
              FROM session_caisse WHERE statut = 'CLOTUREE' AND DATE(cloture_at) = ?",
-            [$jour->format('Y-m-d')],
+            [$date],
         ) ?: [];
 
-        $sessionsCloturees = (int) ($caisse['nombre'] ?? 0);
+        return $this->assembler(
+            jour: $jour,
+            portee: ['DATE(v.created_at) = ?', [$date]],
+            sessionsSql: 'DATE(s.ouverture_at) = ?',
+            sessionsParams: [$date],
+            pertesSql: 'DATE(created_at) = ?',
+            pertesParams: [$date],
+            caJour: $this->caDuJour($jour),
+            caVeille: $this->caDuJour($jour->modify('-1 day')),
+            caSemaine: $this->caDuJour($jour->modify('-7 days')),
+            sessionsCloturees: (int) ($caisse['nombre'] ?? 0),
+            ecart: (int) ($caisse['ecart'] ?? 0),
+        );
+    }
+
+    /**
+     * Synthèse d'**une caisse** (une session), et non d'une journée : chiffre,
+     * caissière, règlements, points de vigilance et top produits se lisent pour la
+     * caisse ouverte. Deux caisses dans la même journée ne se mélangent pas.
+     *
+     * La comparaison à la veille n'a pas de sens pour une caisse : elle reste
+     * vide. La courbe sur 30 jours reste, elle, une tendance par jour.
+     */
+    public function construireCaisse(int $sessionId): ?SyntheseJournee
+    {
+        $session = $this->connexion->fetchAssociative(
+            'SELECT statut, ouverture_at, cloture_at, ecart FROM session_caisse WHERE id = ?',
+            [$sessionId],
+        );
+        if (!$session) {
+            return null;
+        }
+
+        $ouverture = new \DateTimeImmutable($session['ouverture_at']);
+        $cloturee = 'CLOTUREE' === $session['statut'];
+        $fin = $cloturee && $session['cloture_at']
+            ? new \DateTimeImmutable($session['cloture_at'])
+            : new \DateTimeImmutable('now');
+
+        $ca = (int) $this->connexion->fetchOne(
+            "SELECT COALESCE(SUM(v.total_ttc), 0) FROM vente v WHERE v.session_caisse_id = ? AND v.statut = 'VALIDEE'",
+            [$sessionId],
+        );
+
+        return $this->assembler(
+            jour: $ouverture->setTime(0, 0),
+            portee: ['v.session_caisse_id = ?', [$sessionId]],
+            sessionsSql: 's.id = ?',
+            sessionsParams: [$sessionId],
+            // Les pertes n'ont pas de session : on prend celles saisies pendant qu'elle était ouverte.
+            pertesSql: 'created_at BETWEEN ? AND ?',
+            pertesParams: [$ouverture->format('Y-m-d H:i:s'), $fin->format('Y-m-d H:i:s')],
+            caJour: $ca,
+            caVeille: 0,
+            caSemaine: 0,
+            sessionsCloturees: $cloturee ? 1 : 0,
+            ecart: (int) ($session['ecart'] ?? 0),
+        );
+    }
+
+    /**
+     * @param array{0: string, 1: list<string|int>} $portee condition sur `vente v` et ses paramètres
+     * @param list<string|int>                      $sessionsParams
+     * @param list<string|int>                      $pertesParams
+     */
+    private function assembler(
+        \DateTimeImmutable $jour,
+        array $portee,
+        string $sessionsSql,
+        array $sessionsParams,
+        string $pertesSql,
+        array $pertesParams,
+        int $caJour,
+        int $caVeille,
+        int $caSemaine,
+        int $sessionsCloturees,
+        int $ecart,
+    ): SyntheseJournee {
+        $ventes = $this->ventes($portee);
+        $nombreTickets = (int) ($ventes['nombre'] ?? 0);
+
+        $annulations = $this->connexion->fetchAssociative(
+            "SELECT COUNT(*) AS nombre, COALESCE(SUM(v.total_ttc), 0) AS montant
+             FROM vente v WHERE {$portee[0]} AND v.statut = 'ANNULEE'",
+            $portee[1],
+        ) ?: [];
+
+        $pertes = $this->connexion->fetchAssociative(
+            "SELECT COUNT(*) AS nombre, COALESCE(SUM(valorisation), 0) AS montant
+             FROM perte WHERE {$pertesSql}",
+            $pertesParams,
+        ) ?: [];
 
         return new SyntheseJournee(
             jour: $jour,
@@ -63,13 +141,13 @@ class SyntheseJourneeService
             variationSemaineBp: $this->variationBp($caJour, $caSemaine),
             nombreTickets: $nombreTickets,
             panierMoyen: $nombreTickets > 0 ? intdiv($caJour, $nombreTickets) : 0,
-            parReglement: $this->ventilerReglements($jour, (int) ($ventes['rendu'] ?? 0)),
+            parReglement: $this->ventilerReglements($portee, (int) ($ventes['rendu'] ?? 0)),
             annulationsNombre: (int) ($annulations['nombre'] ?? 0),
             annulationsMontant: (int) ($annulations['montant'] ?? 0),
             remisesNombre: (int) ($ventes['nb_remises'] ?? 0),
             remisesMontant: (int) ($ventes['remise'] ?? 0),
             // Null s'il n'y a eu aucune clôture : « 0 » laisserait croire à une caisse juste.
-            ecartCaisse: $sessionsCloturees > 0 ? (int) $caisse['ecart'] : null,
+            ecartCaisse: $sessionsCloturees > 0 ? $ecart : null,
             sessionsCloturees: $sessionsCloturees,
             rupturesStock: array_map(
                 static fn (MatierePremiere $m): string => $m->getNom(),
@@ -77,21 +155,23 @@ class SyntheseJourneeService
             ),
             pertesMontant: (int) ($pertes['montant'] ?? 0),
             pertesNombre: (int) ($pertes['nombre'] ?? 0),
-            topProduits: $this->topProduits($jour),
+            topProduits: $this->topProduits($portee),
             serie30Jours: $this->serie($jour),
-            parCaissiere: $this->parCaissiere($jour, $caJour),
+            parCaissiere: $this->parCaissiere($portee, $sessionsSql, $sessionsParams, $caJour),
         );
     }
 
     /**
-     * Ventes de la journée ventilées par caissière.
+     * Ventes de la portée ventilées par caissière.
      *
      * Quatre requêtes plutôt qu'une seule à rallonge : ventes validées,
      * annulations et sessions de caisse ne se comptent pas sur les mêmes lignes,
      * et les joindre d'un bloc multiplierait les lignes entre elles — une
      * caissière avec deux sessions verrait son chiffre doublé.
      *
-     * @param int $caJour chiffre d'affaires total, pour calculer les parts
+     * @param array{0: string, 1: list<string|int>} $portee
+     * @param list<string|int>                      $sessionsParams
+     * @param int                                   $caJour         chiffre d'affaires total, pour calculer les parts
      *
      * @return list<array{
      *     id: int, nom: string, tickets: int, ca: int, panierMoyen: int, partBp: int,
@@ -99,9 +179,8 @@ class SyntheseJourneeService
      *     ecart: ?int, sessionOuverte: bool
      * }>
      */
-    private function parCaissiere(\DateTimeImmutable $jour, int $caJour): array
+    private function parCaissiere(array $portee, string $sessionsSql, array $sessionsParams, int $caJour): array
     {
-        $date = $jour->format('Y-m-d');
         $caissieres = [];
 
         foreach ($this->connexion->fetchAllAssociative(
@@ -113,9 +192,9 @@ class SyntheseJourneeService
              FROM vente v
              JOIN session_caisse s ON s.id = v.session_caisse_id
              JOIN utilisateur u ON u.id = s.utilisateur_id
-             WHERE DATE(v.created_at) = ? AND v.statut = 'VALIDEE'
+             WHERE {$portee[0]} AND v.statut = 'VALIDEE'
              GROUP BY u.id, u.nom",
-            [$date],
+            $portee[1],
         ) as $ligne) {
             $tickets = (int) $ligne['tickets'];
             $ca = (int) $ligne['ca'];
@@ -143,9 +222,9 @@ class SyntheseJourneeService
              FROM vente v
              JOIN session_caisse s ON s.id = v.session_caisse_id
              JOIN utilisateur u ON u.id = s.utilisateur_id
-             WHERE DATE(v.created_at) = ? AND v.statut = 'ANNULEE'
+             WHERE {$portee[0]} AND v.statut = 'ANNULEE'
              GROUP BY u.id",
-            [$date],
+            $portee[1],
         ) as $ligne) {
             $id = (int) $ligne['id'];
             if (!isset($caissieres[$id])) {
@@ -164,9 +243,9 @@ class SyntheseJourneeService
                     COALESCE(SUM(CASE WHEN s.statut = 'CLOTUREE' THEN 1 ELSE 0 END), 0) AS cloturees,
                     COALESCE(SUM(CASE WHEN s.statut = 'OUVERTE' THEN 1 ELSE 0 END), 0) AS ouvertes
              FROM session_caisse s
-             WHERE DATE(s.ouverture_at) = ?
+             WHERE {$sessionsSql}
              GROUP BY s.utilisateur_id",
-            [$date],
+            $sessionsParams,
         ) as $ligne) {
             $id = (int) $ligne['id'];
             if (!isset($caissieres[$id])) {
@@ -191,17 +270,19 @@ class SyntheseJourneeService
     }
 
     /**
+     * @param array{0: string, 1: list<string|int>} $portee
+     *
      * @return array<string, mixed>
      */
-    private function ventesDuJour(\DateTimeImmutable $jour): array
+    private function ventes(array $portee): array
     {
         return $this->connexion->fetchAssociative(
             "SELECT COUNT(*) AS nombre,
-                    COALESCE(SUM(remise), 0) AS remise,
-                    COALESCE(SUM(rendu), 0) AS rendu,
-                    COALESCE(SUM(CASE WHEN remise > 0 THEN 1 ELSE 0 END), 0) AS nb_remises
-             FROM vente WHERE DATE(created_at) = ? AND statut = 'VALIDEE'",
-            [$jour->format('Y-m-d')],
+                    COALESCE(SUM(v.remise), 0) AS remise,
+                    COALESCE(SUM(v.rendu), 0) AS rendu,
+                    COALESCE(SUM(CASE WHEN v.remise > 0 THEN 1 ELSE 0 END), 0) AS nb_remises
+             FROM vente v WHERE {$portee[0]} AND v.statut = 'VALIDEE'",
+            $portee[1],
         ) ?: [];
     }
 
@@ -222,9 +303,11 @@ class SyntheseJourneeService
      * Ventilation par moyen de paiement, rendu de monnaie déduit des espèces
      * (même convention que le rapport Z).
      *
+     * @param array{0: string, 1: list<string|int>} $portee
+     *
      * @return list<array{mode: string, libelle: string, nombre: int, montant: int}>
      */
-    private function ventilerReglements(\DateTimeImmutable $jour, int $renduTotal): array
+    private function ventilerReglements(array $portee, int $renduTotal): array
     {
         $lignes = [];
 
@@ -232,9 +315,9 @@ class SyntheseJourneeService
             "SELECT r.mode, COUNT(*) AS nombre, COALESCE(SUM(r.montant), 0) AS montant
              FROM reglement r
              JOIN vente v ON v.id = r.vente_id
-             WHERE DATE(v.created_at) = ? AND v.statut = 'VALIDEE'
+             WHERE {$portee[0]} AND v.statut = 'VALIDEE'
              GROUP BY r.mode",
-            [$jour->format('Y-m-d')],
+            $portee[1],
         ) as $ligne) {
             $mode = ModeReglement::from($ligne['mode']);
             $montant = (int) $ligne['montant'];
@@ -257,9 +340,11 @@ class SyntheseJourneeService
     }
 
     /**
+     * @param array{0: string, 1: list<string|int>} $portee
+     *
      * @return list<array{nom: string, quantite: int, montant: int}>
      */
-    private function topProduits(\DateTimeImmutable $jour): array
+    private function topProduits(array $portee): array
     {
         $lignes = [];
 
@@ -270,11 +355,11 @@ class SyntheseJourneeService
              FROM ligne_vente lv
              JOIN vente v ON v.id = lv.vente_id
              JOIN article a ON a.id = lv.article_id
-             WHERE DATE(v.created_at) = ? AND v.statut = 'VALIDEE'
+             WHERE {$portee[0]} AND v.statut = 'VALIDEE'
              GROUP BY a.id, a.nom
              ORDER BY quantite DESC, montant DESC
              LIMIT 10",
-            [$jour->format('Y-m-d')],
+            $portee[1],
         ) as $ligne) {
             $lignes[] = [
                 'nom' => (string) $ligne['nom'],

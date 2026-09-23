@@ -40,6 +40,10 @@ class SessionCaisseController extends AbstractController
         $form = $this->createForm(OuvertureCaisseType::class);
         $form->handleRequest($request);
 
+        // Prévenue dès l'arrivée sur l'écran, sans attendre d'avoir saisi un fond.
+        $autreCaisse = $service->caisseOuverteParUnAutre();
+        $refus = false;
+
         if ($form->isSubmitted() && $form->isValid()) {
             try {
                 $service->ouvrir($this->utilisateur(), (int) $form->getData()['fondCaisse']);
@@ -47,10 +51,17 @@ class SessionCaisseController extends AbstractController
                 return $this->redirectToRoute('app_caisse');
             } catch (\DomainException $e) {
                 $this->addFlash('error', $e->getMessage());
+                $refus = true;
             }
         }
 
-        return $this->rendreFormulaire('caisse/ouverture.html.twig', $form);
+        $reponse = $this->rendreFormulaire('caisse/ouverture.html.twig', $form, ['autreCaisse' => $autreCaisse]);
+        // Turbo refuse de remplacer la page sur une soumission qui répond 200.
+        if ($refus) {
+            $reponse->setStatusCode(Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        return $reponse;
     }
 
     /**
