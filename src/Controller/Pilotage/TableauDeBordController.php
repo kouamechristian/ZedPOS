@@ -4,6 +4,7 @@ namespace App\Controller\Pilotage;
 
 use App\Entity\Notification;
 use App\Entity\Vente;
+use App\Enum\ModeReglement;
 use App\Enum\RoleUtilisateur;
 use App\Repository\NotificationRepository;
 use App\Repository\VenteRepository;
@@ -154,7 +155,8 @@ class TableauDeBordController extends AbstractController
     }
 
     /**
-     * Tickets de la journée, du plus récent au plus ancien.
+     * Tickets de la journée, du plus récent au plus ancien, rangés en onglets
+     * par mode de règlement (`?reglement=WAVE`…).
      */
     #[Route('/ventes', name: 'pilotage_ventes', methods: ['GET'])]
     #[IsGranted(Permission::VOIR_TOUTES_VENTES)]
@@ -162,9 +164,14 @@ class TableauDeBordController extends AbstractController
     {
         $jour = $this->lireJour($request->query->get('jour')) ?? new \DateTimeImmutable('today');
 
+        // Onglet de règlement : une valeur inconnue retombe sur « Tous ».
+        $reglement = ModeReglement::tryFrom((string) $request->query->get('reglement'));
+
         return $this->render('pilotage/ventes.html.twig', [
             'jour' => $jour,
-            'resultat' => $ventes->journee($jour, $request->query->getInt('page', 1)),
+            'reglement' => $reglement,
+            'comptes' => $ventes->compteJourneeParReglement($jour),
+            'resultat' => $ventes->journee($jour, $request->query->getInt('page', 1), $reglement),
         ]);
     }
 

@@ -302,6 +302,62 @@ class PilotageTest extends WebTestCase
         $this->assertSelectorTextContains('body', '1 500 FCFA');
     }
 
+    public function testLesTicketsSeRangentEnOngletsParModeDeReglement(): void
+    {
+        $especes = $this->vendre(new \DateTimeImmutable('today 09:00'), 100000);
+
+        $wave = new Vente($this->session, ModeVente::BOULANGERIE, 'VT-WAVE1', 50000, 0, 50000);
+        new LigneVente($wave, $this->baguette, 1000, 50000);
+        new Reglement($wave, ModeReglement::WAVE, 50000);
+        // Paiement mixte : il figure sous ses deux modes.
+        $mixte = new Vente($this->session, ModeVente::BOULANGERIE, 'VT-MIXTE', 80000, 0, 80000);
+        new LigneVente($mixte, $this->baguette, 1000, 80000);
+        new Reglement($mixte, ModeReglement::WAVE, 30000);
+        new Reglement($mixte, ModeReglement::ESPECES, 50000);
+        $this->em->persist($wave);
+        $this->em->persist($mixte);
+        $this->em->flush();
+
+        $this->client->loginUser($this->dirigeante);
+
+        $crawler = $this->client->request('GET', '/pilotage/ventes');
+        $this->assertResponseIsSuccessful();
+        $onglets = $crawler->filter('nav[aria-label="Modes de règlement"] a');
+        $this->assertStringContainsString('Tous 3', preg_replace('/\s+/', ' ', $onglets->eq(0)->text()));
+        $this->assertSame('page', $onglets->eq(0)->attr('aria-current'));
+        $this->assertCount(0, $crawler->filter('nav[aria-label="Modes de règlement"] a:contains("Crédit")'), 'Le crédit n\'a pas d\'onglet sans ticket.');
+
+        $crawler = $this->client->request('GET', '/pilotage/ventes?reglement=WAVE');
+        $this->assertResponseIsSuccessful();
+        $corps = $crawler->filter('turbo-frame#liste-tickets ul')->text();
+        $this->assertStringContainsString('VT-WAVE1', $corps);
+        $this->assertStringContainsString('VT-MIXTE', $corps);
+        $this->assertStringNotContainsString($especes->getNumero(), $corps);
+        $actif = $crawler->filter('nav[aria-label="Modes de règlement"] a[aria-current="page"]');
+        $this->assertStringContainsString('Wave', $actif->text());
+
+        $corps = $this->client->request('GET', '/pilotage/ventes?reglement=ESPECES')->filter('turbo-frame#liste-tickets ul')->text();
+        $this->assertStringContainsString($especes->getNumero(), $corps);
+        $this->assertStringContainsString('VT-MIXTE', $corps);
+        $this->assertStringNotContainsString('VT-WAVE1', $corps);
+
+        // Un mode inconnu retombe sur « Tous » plutôt que d'échouer.
+        $corps = $this->client->request('GET', '/pilotage/ventes?reglement=BITCOIN')->filter('turbo-frame#liste-tickets ul')->text();
+        $this->assertResponseIsSuccessful();
+        $this->assertStringContainsString('VT-WAVE1', $corps);
+        $this->assertStringContainsString($especes->getNumero(), $corps);
+
+        // Mêmes onglets sur l'historique de la caissière.
+        $this->client->loginUser($this->caissier);
+        $crawler = $this->client->request('GET', '/caisse/tickets?reglement=WAVE');
+        $this->assertResponseIsSuccessful();
+        $corps = $crawler->filter('ul.grid')->text();
+        $this->assertStringContainsString('VT-WAVE1', $corps);
+        $this->assertStringContainsString('VT-MIXTE', $corps);
+        $this->assertStringNotContainsString($especes->getNumero(), $corps);
+        $this->assertStringContainsString('Tous 3', preg_replace('/\s+/', ' ', $crawler->filter('nav[aria-label="Modes de règlement"] a')->eq(0)->text()));
+    }
+
     public function testDetailDunTicketAnnule(): void
     {
         $vente = $this->vendre(new \DateTimeImmutable('today 10:00'), 100000);

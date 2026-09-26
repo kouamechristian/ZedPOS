@@ -3,6 +3,7 @@
 namespace App\Controller;
 
 use App\Entity\Utilisateur;
+use App\Enum\ModeReglement;
 use App\Repository\ArticleRepository;
 use App\Repository\FamilleProduitRepository;
 use App\Repository\SessionCaisseRepository;
@@ -145,9 +146,15 @@ class CaisseController extends AbstractController
             return $this->redirectToRoute('app_caisse_ouverture');
         }
 
+        // Onglet de règlement : une valeur inconnue retombe sur « Tous », un
+        // lien périmé n'immobilise pas l'écran.
+        $reglement = ModeReglement::tryFrom((string) $request->query->get('reglement'));
+
         return $this->render('caisse/tickets.html.twig', [
             'session' => $session,
-            'tickets' => $ventes->pourSession($session, $request->query->getInt('page', 1)),
+            'reglement' => $reglement,
+            'comptes' => $ventes->compteSessionParReglement($session),
+            'tickets' => $ventes->pourSession($session, $request->query->getInt('page', 1), $reglement),
         ]);
     }
 

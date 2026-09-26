@@ -1,0 +1,39 @@
+{#
+    Onglets « par mode de règlement » des listes de tickets
+    (/pilotage/ventes, /caisse/tickets).
+
+    - `comptes` : VenteRepository::compte…ParReglement() — valeur du mode =>
+      nombre de tickets, plus `TOUS`.
+    - `actif`   : le ModeReglement retenu, ou null pour « Tous ».
+
+    Les autres paramètres de l'URL (le jour) sont reconduits ; `page` est
+    abandonné, sinon on atterrirait sur une page qui n'existe pas dans l'onglet.
+    Les liens vivent dans le frame de la liste, comme la pagination : seul le
+    tableau se redessine.
+
+    Un paiement mixte figure sous chacun de ses modes — les onglets ne
+    s'additionnent donc pas forcément jusqu'à « Tous ».
+#}
+{% macro barre(route, comptes, actif, parametres = {}) %}
+    {% set base = app.request.query.all|filter((v, k) => k not in ['page', 'reglement'])|merge(parametres) %}
+    {# Pastille aux couleurs du réseau, comme les boutons de règlement de la caisse. #}
+    {% set teintes = {ESPECES: '#44403c', WAVE: '#1dc8ff', ORANGE_MONEY: '#ff7900', MTN_MOMO: '#ffcc00', MOOV_MONEY: '#0a4ea3', CREDIT: '#a8a29e'} %}
+
+    <nav class="onglets mb-4" aria-label="Modes de règlement" data-turbo-prefetch="true">
+        <a href="{{ path(route, base) }}" class="onglet" {% if actif is null %}aria-current="page"{% endif %}>
+            Tous <span class="ml-1 tabular-nums text-stone-400">{{ comptes.TOUS ?? 0 }}</span>
+        </a>
+        {% for mode in enum_cases('App\\Enum\\ModeReglement') %}
+            {# Le crédit n'est pas proposé en caisse : son onglet n'apparaît que
+               s'il existe réellement des tickets à y ranger. #}
+            {% if mode.value != 'CREDIT' or (comptes[mode.value] ?? 0) > 0 or actif == mode %}
+                <a href="{{ path(route, base|merge({reglement: mode.value})) }}" class="onglet inline-flex items-center gap-1.5"
+                   {% if actif == mode %}aria-current="page"{% endif %}>
+                    <span class="inline-block h-2 w-2 rounded-full" style="background: {{ teintes[mode.value] }}"></span>
+                    {{ mode.libelle }}
+                    <span class="tabular-nums text-stone-400">{{ comptes[mode.value] ?? 0 }}</span>
+                </a>
+            {% endif %}
+        {% endfor %}
+    </nav>
+{% endmacro %}

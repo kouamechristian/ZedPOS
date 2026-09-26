@@ -2,6 +2,7 @@
 {% import 'admin/_macros.html.twig' as fmt %}
 {% import 'admin/_icones.html.twig' as ui %}
 {% import '_pagination.html.twig' as pagination %}
+{% import '_onglets_reglement.html.twig' as onglets %}
 
 {% block page_title %}Tickets du {{ jour|date('d/m/Y') }}{% endblock %}
 
@@ -20,9 +21,13 @@
             {{ ui.icone('calendrier') }}
             <input type="date" id="jour" name="jour" value="{{ jour|date('Y-m-d') }}" class="champ w-auto">
         </div>
+        {# Changer de jour garde l'onglet de règlement ouvert. #}
+        {% if reglement %}<input type="hidden" name="reglement" value="{{ reglement.value }}">{% endif %}
         <button class="btn btn-primaire">Voir</button>
     </form>
 </div>
+
+{{ onglets.barre('pilotage_ventes', comptes, reglement, {jour: jour|date('Y-m-d')}) }}
 
 <div class="mb-3 flex items-baseline justify-between text-sm text-stone-500">
     <span><strong class="font-semibold text-stone-800">{{ resultat.total }}</strong> ticket{{ resultat.total > 1 ? 's' }}</span>
@@ -61,7 +66,7 @@
             </a>
         </li>
     {% else %}
-        <li class="carte p-10 text-center text-stone-400 md:col-span-2 xl:col-span-3">Aucun ticket ce jour-là.</li>
+        <li class="carte p-10 text-center text-stone-400 md:col-span-2 xl:col-span-3">{{ reglement ? 'Aucun ticket réglé en ' ~ reglement.libelle ~ ' ce jour-là.' : 'Aucun ticket ce jour-là.' }}</li>
     {% endfor %}
 </ul>
 

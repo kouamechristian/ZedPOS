@@ -2,11 +2,14 @@
 
 namespace App\Repository;
 
+use App\Entity\Reglement;
 use App\Entity\SessionCaisse;
 use App\Entity\Utilisateur;
 use App\Entity\Vente;
+use App\Enum\ModeReglement;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\ORM\Query\Expr\Join;
+use Doctrine\ORM\QueryBuilder;
 use Doctrine\Persistence\ManagerRegistry;
 
 /**
@@ -93,9 +96,13 @@ class VenteRepository extends ServiceEntityRepository
      * (`v.lignes`) est jointe : sans lui, Doctrine compterait les lignes du
      * produit cartésien et non les tickets, et la dernière page serait fausse.
      *
+     * `$mode` restreint aux tickets réglés — au moins en partie — par ce moyen :
+     * c'est l'onglet choisi à l'écran. Un paiement mixte figure donc sous
+     * chacun de ses modes.
+     *
      * @return Pagination<Vente>
      */
-    public function journee(\DateTimeImmutable $jour, int $page = 1): Pagination
+    public function journee(\DateTimeImmutable $jour, int $page = 1, ?ModeReglement $mode = null): Pagination
     {
         $debut = $jour->setTime(0, 0);
 
@@ -108,8 +115,84 @@ class VenteRepository extends ServiceEntityRepository
             ->andWhere('v.createdAt < :fin')->setParameter('fin', $debut->modify('+1 day'))
             ->orderBy('v.createdAt', 'DESC')
             ->addOrderBy('v.id', 'DESC');
+        $this->filtrerParReglement($qb, $mode);
 
         return Pagination::depuis($qb, $page, self::PAR_PAGE, fetchJoinCollection: true);
+    }
+
+    /**
+     * Nombre de tickets de la journée par mode de règlement — les pastilles
+     * des onglets de `/pilotage/ventes`.
+     *
+     * @return array<string, int> valeur du mode => nombre de tickets
+     */
+    public function compteJourneeParReglement(\DateTimeImmutable $jour): array
+    {
+        $debut = $jour->setTime(0, 0);
+
+        return $this->compterParReglement(
+            $this->createQueryBuilder('v')
+                ->andWhere('v.createdAt >= :debut')->setParameter('debut', $debut)
+                ->andWhere('v.createdAt < :fin')->setParameter('fin', $debut->modify('+1 day')),
+        );
+    }
+
+    /**
+     * Nombre de tickets d'une session par mode de règlement — les pastilles
+     * des onglets de `/caisse/tickets`.
+     *
+     * @return array<string, int> valeur du mode => nombre de tickets
+     */
+    public function compteSessionParReglement(SessionCaisse $session): array
+    {
+        return $this->compterParReglement(
+            $this->createQueryBuilder('v')
+                ->andWhere('v.sessionCaisse = :session')->setParameter('session', $session),
+        );
+    }
+
+    /**
+     * Compté en base, `DISTINCT` : un ticket réglé en deux fois par le même
+     * moyen ne compte qu'une fois sous ce moyen.
+     *
+     * La clé `TOUS` porte le nombre de tickets sans filtre : un paiement mixte
+     * compte sous chacun de ses modes, la somme des onglets ne le donnerait pas.
+     *
+     * @return array<string, int>
+     */
+    private function compterParReglement(QueryBuilder $qb): array
+    {
+        $tous = (int) (clone $qb)->select('COUNT(v.id)')->getQuery()->getSingleScalarResult();
+
+        $lignes = $qb
+            ->select('r.mode AS mode', 'COUNT(DISTINCT v.id) AS nombre')
+            ->join('v.reglements', 'r')
+            ->groupBy('r.mode')
+            ->getQuery()
+            ->getArrayResult();
+
+        $comptes = ['TOUS' => $tous];
+        foreach ($lignes as $ligne) {
+            $mode = $ligne['mode'] instanceof ModeReglement ? $ligne['mode']->value : (string) $ligne['mode'];
+            $comptes[$mode] = (int) $ligne['nombre'];
+        }
+
+        return $comptes;
+    }
+
+    /**
+     * Sous-requête `EXISTS` plutôt qu'une jointure sur `v.reglements` : une
+     * jointure filtrée restreindrait la collection hydratée, et un paiement
+     * mixte n'aurait plus que la moitié de ses règlements.
+     */
+    private function filtrerParReglement(QueryBuilder $qb, ?ModeReglement $mode): void
+    {
+        if (null === $mode) {
+            return;
+        }
+
+        $qb->andWhere(\sprintf('EXISTS (SELECT 1 FROM %s rf WHERE rf.vente = v AND rf.mode = :modeReglement)', Reglement::class))
+            ->setParameter('modeReglement', $mode);
     }
 
     /**
@@ -193,16 +276,18 @@ class VenteRepository extends ServiceEntityRepository
      *
      * Articles de chaque ligne joints d'avance (la carte affiche le détail du
      * ticket), avec `fetchJoinCollection: true` — voir {@see self::journee()}.
+     * `$mode` : l'onglet de règlement choisi, même règle que {@see self::journee()}.
      *
      * @return Pagination<Vente>
      */
-    public function pourSession(SessionCaisse $session, int $page = 1): Pagination
+    public function pourSession(SessionCaisse $session, int $page = 1, ?ModeReglement $mode = null): Pagination
     {
         $qb = $this->createQueryBuilder('v')
             ->leftJoin('v.lignes', 'l')->addSelect('l')
             ->leftJoin('l.article', 'a')->addSelect('a')
             ->andWhere('v.sessionCaisse = :session')->setParameter('session', $session)
             ->orderBy('v.id', 'DESC');
+        $this->filtrerParReglement($qb, $mode);
 
         return Pagination::depuis($qb, $page, fetchJoinCollection: true);
     }
