@@ -16,6 +16,7 @@ import {
     libelleTva,
     lireMontantFcfa,
     manquant,
+    reglementsAEncaisser,
     renduMonnaie,
     suggestionsEspeces,
     tauxPresents,
@@ -233,5 +234,54 @@ describe('Ticket — formatage FCFA', () => {
             assert.equal(formaterFcfa(centimes).includes(','), false);
             assert.equal(formaterFcfa(centimes).includes('.'), false);
         }
+    });
+});
+
+describe('reglementsAEncaisser — paiement simple ou mixte', () => {
+    it('règle un ticket mobile money pour son total', () => {
+        assert.deepEqual(reglementsAEncaisser({ total: 150000, reglement: 'WAVE', recu: null, complement: null }), {
+            reglements: [{ mode: 'WAVE', montant: 150000 }],
+            encaisse: 150000,
+            rendu: 0,
+        });
+    });
+
+    it('transmet la somme tendue en espèces et en déduit le rendu', () => {
+        const resultat = reglementsAEncaisser({ total: 150000, reglement: 'ESPECES', recu: 200000, complement: null });
+
+        assert.deepEqual(resultat.reglements, [{ mode: 'ESPECES', montant: 200000 }]);
+        assert.equal(resultat.rendu, 50000);
+    });
+
+    it('champ vide en espèces = compte juste', () => {
+        const resultat = reglementsAEncaisser({ total: 150000, reglement: 'ESPECES', recu: null, complement: null });
+
+        assert.deepEqual(resultat.reglements, [{ mode: 'ESPECES', montant: 150000 }]);
+    });
+
+    it('bloque des espèces insuffisantes sans complément', () => {
+        assert.equal(reglementsAEncaisser({ total: 150000, reglement: 'ESPECES', recu: 100000, complement: null }), null);
+    });
+
+    it('1 500 FCFA = 1 000 en espèces + 500 sur Wave, sans rendu', () => {
+        assert.deepEqual(reglementsAEncaisser({ total: 150000, reglement: 'ESPECES', recu: 100000, complement: 'WAVE' }), {
+            reglements: [
+                { mode: 'ESPECES', montant: 100000 },
+                { mode: 'WAVE', montant: 50000 },
+            ],
+            encaisse: 150000,
+            rendu: 0,
+        });
+    });
+
+    it('ignore le complément dès que les espèces couvrent le total', () => {
+        const resultat = reglementsAEncaisser({ total: 150000, reglement: 'ESPECES', recu: 200000, complement: 'WAVE' });
+
+        assert.deepEqual(resultat.reglements, [{ mode: 'ESPECES', montant: 200000 }]);
+        assert.equal(resultat.rendu, 50000);
+    });
+
+    it('sans règlement choisi, rien à encaisser', () => {
+        assert.equal(reglementsAEncaisser({ total: 150000, reglement: null, recu: null, complement: null }), null);
     });
 });

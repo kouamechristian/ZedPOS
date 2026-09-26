@@ -758,6 +758,29 @@
                                     class="clavier-montant clavier-secondaire shrink-0 px-2.5">Effacer</button>
                         </div>
 
+                        {# ---------- Paiement mixte : le reste sur un réseau ----------
+
+                           Le client tend 1 000 en espèces pour un ticket de 1 500 et
+                           règle les 500 restants sur Wave. N'apparaît que lorsqu'il
+                           manque de l'argent : le cas ordinaire garde son écran.
+                           Un second appui sur le réseau retenu le retire. Les
+                           espèces partent pour ce qui a été tendu, le réseau pour le
+                           reste exact — pas de monnaie à rendre. #}
+                        <div data-ticket-target="complement" class="hidden mt-2">
+                            <p class="mb-1.5 text-sm" style="color: var(--texte-doux);">
+                                Le reste, <span class="chiffre font-semibold" style="color: var(--texte);" data-ticket-target="complementReste"></span>, payé par :
+                            </p>
+                            <div class="grid grid-cols-2 gap-1.5">
+                                {% for reglement in reglements|filter(r => r.mode != 'ESPECES') %}
+                                    <button type="button" data-action="ticket#choisirComplement"
+                                            data-mode="{{ reglement.mode }}" data-ticket-target="complementMode"
+                                            class="reglement flex items-center justify-center gap-1.5 rounded-[10px] px-2 py-2 text-sm font-medium leading-tight transition-colors">
+                                        <span class="pastille" aria-hidden="true"></span>{{ reglement.label }}
+                                    </button>
+                                {% endfor %}
+                            </div>
+                        </div>
+
                         {# Coupures courantes, recalculées d'après le total : un appui
                            suffit dans le cas ordinaire, où le client tend un billet
                            rond. Placées **avant** le pavé : c'est le geste le plus

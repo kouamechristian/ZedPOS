@@ -5,6 +5,7 @@ import {
     formaterFcfa,
     lireMontantFcfa,
     manquant,
+    reglementsAEncaisser,
     renduMonnaie,
     suggestionsEspeces,
     totalTtc,
@@ -47,7 +48,7 @@ export default class extends Controller {
         'onglets', 'onglet', 'grilles', 'grille', 'atelier',
         'lignes', 'compte', 'sousTotal', 'total',
         'reglement', 'encaisser', 'message', 'imprimer', 'impression',
-        'paiement', 'especes', 'montantRecu', 'suggestions', 'renduLigne', 'renduLibelle', 'renduMontant',
+        'paiement', 'especes', 'montantRecu', 'suggestions', 'complement', 'complementReste', 'complementMode', 'renduLigne', 'renduLibelle', 'renduMontant',
         'recu', 'recuContenu', 'recuNumero', 'recuRendu', 'recuRenduMontant',
         'modifierRecu', 'modification', 'modificationNumero',
     ];
@@ -58,6 +59,11 @@ export default class extends Controller {
         this.reglement = null;
         /** Ce que le client a tendu, en centimes. `null` = non saisi, donc compte juste. */
         this.recu = null;
+        /**
+         * Paiement mixte : réseau qui règle ce que les espèces ne couvrent pas
+         * (1 000 en espèces + 500 sur Wave pour 1 500). `null` = espèces seules.
+         */
+        this.complement = null;
         /** Vrai juste après un appui sur une coupure : le chiffre suivant repart de zéro. */
         this.coupureRetenue = false;
         /** Ticket encaissé en cours de modification : `{ uuid, numero, uuidRemplacant }`, ou `null`. */
@@ -257,13 +263,66 @@ export default class extends Controller {
         // au moment de rendre la monnaie, « 20 000 » se lit d'un coup d'œil.
         this.montantRecuTarget.value = nettoyes.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
         this.recu = lireMontantFcfa(nettoyes);
+        this.majComplement();
         this.rendreRendu();
         this.majEncaisser();
+    }
+
+    // ------------------------------------------------------ Paiement mixte
+
+    /**
+     * Le reste d'un ticket que les espèces ne couvrent pas, réglé par un réseau.
+     * Un second appui sur le même réseau le retire.
+     */
+    choisirComplement(event) {
+        const mode = event.currentTarget.dataset.mode;
+
+        this.complement = this.complement === mode ? null : mode;
+        this.majComplement();
+        this.rendreRendu();
+        this.majEncaisser();
+    }
+
+    /**
+     * La rangée « le reste par… » n'apparaît que lorsqu'il manque réellement de
+     * l'argent : dans le cas ordinaire (compte juste ou billet rond), l'écran
+     * reste celui d'avant, sans un bouton de plus.
+     */
+    majComplement() {
+        if (!this.hasComplementTarget) {
+            return;
+        }
+
+        const reste = this.especes && null !== this.recu ? manquant(this.recu, this.total()) : 0;
+
+        if (0 === reste) {
+            // Le compte y est de nouveau : le réseau retenu n'a plus rien à régler.
+            this.complement = null;
+        }
+
+        this.complementTarget.classList.toggle('hidden', 0 === reste);
+        this.complementResteTarget.textContent = this.fcfa(reste);
+        this.complementModeTargets.forEach((b) => this.marquer(b, b.dataset.mode === this.complement));
+    }
+
+    /** Règlements à transmettre, ou `null` tant que le compte n'y est pas. */
+    reglementsAEncaisser() {
+        return reglementsAEncaisser({
+            total: this.total(),
+            reglement: this.reglement,
+            recu: this.especes ? this.recu : null,
+            complement: this.complement,
+        });
     }
 
     oublierRecu() {
         this.recu = null;
         this.coupureRetenue = false;
+        this.complement = null;
+        if (this.hasComplementTarget) {
+            this.complementTarget.classList.add('hidden');
+            this.complementModeTargets.forEach((b) => this.marquer(b, false));
+        }
         if (this.hasMontantRecuTarget) {
             this.montantRecuTarget.value = '';
         }
@@ -290,6 +349,17 @@ export default class extends Controller {
         const manque = manquant(this.recu, total);
 
         this.renduLigneTarget.classList.remove('hidden');
+
+        // Paiement mixte : ce qui manquait est réglé par le réseau retenu. On
+        // annonce ce qu'il faut encaisser sur le téléphone, pas un manque.
+        if (manque > 0 && this.complement) {
+            this.renduLibelleTarget.textContent = `Reste en ${this.libelleReglement(this.complement)}`;
+            this.renduMontantTarget.textContent = this.fcfa(manque);
+            this.renduMontantTarget.classList.remove('montant-manque');
+            this.renduMontantTarget.classList.add('montant-du');
+
+            return;
+        }
         this.renduLibelleTarget.textContent = manque > 0 ? 'Manque' : 'Monnaie à rendre';
         this.renduMontantTarget.textContent = this.fcfa(manque > 0 ? manque : renduMonnaie(this.recu, total));
         // Rouge tant que le compte n'y est pas : l'encaissement est bloqué, il
@@ -328,17 +398,16 @@ export default class extends Controller {
             return;
         }
 
-        const total = this.total();
-
         // Le règlement transmis est ce que le client a **réellement tendu**, pas le
         // total : c'est de cet écart que le serveur déduit le rendu, et c'est ce
         // montant-là que le Z retranche pour retrouver les espèces nettes en tiroir.
         // Champ laissé vide = compte juste, la vitesse d'origine est préservée.
-        const encaisse = this.especes && null !== this.recu ? this.recu : total;
-        if (encaisse < total) {
+        // Paiement mixte : les espèces tendues, plus le reste sur un réseau.
+        const paiement = this.reglementsAEncaisser();
+        if (!paiement) {
             return;
         }
-        const rendu = renduMonnaie(encaisse, total);
+        const { reglements, encaisse, rendu } = paiement;
 
         const uuid = this.genererUuid();
         const charge = {
@@ -356,13 +425,13 @@ export default class extends Controller {
                 prix: l.prix,
                 commentaire: '',
             })),
-            reglements: [{ mode: this.reglement, montant: encaisse }],
+            reglements,
         };
 
         this.encaisserTarget.disabled = true;
 
         // 1. Durabilité avant tout appel réseau.
-        const ticketLocal = this.ticketLocal(uuid, encaisse, rendu);
+        const ticketLocal = this.ticketLocal(uuid, encaisse, rendu, reglements);
 
         try {
             await this.horsLigne.file.enfiler(uuid, charge, ticketLocal);
@@ -554,17 +623,10 @@ export default class extends Controller {
         `;
     }
 
-    ticketLocal(uuid, encaisse, rendu) {
+    ticketLocal(uuid, encaisse, rendu, reglements) {
         const total = this.total();
         const totalTva = tvaIncluse(this.lignes);
         const taux = [...new Set(this.lignes.filter((ligne) => ligne.tva > 0).map((ligne) => ligne.tva))].sort((a, b) => a - b);
-        const reglementLabels = {
-            ESPECES: 'Espèces',
-            WAVE: 'Wave',
-            ORANGE_MONEY: 'Orange Money',
-            MTN_MOMO: 'MTN MoMo',
-            MOOV_MONEY: 'Moov Money',
-        };
         const date = new Date().toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
 
         return {
@@ -608,10 +670,11 @@ export default class extends Controller {
             }),
             paid: Math.trunc(encaisse / 100),
             change: Math.trunc(rendu / 100),
-            reglements: [{
-                label: reglementLabels[this.reglement] ?? this.reglement,
-                montant: Math.trunc(encaisse / 100),
-            }],
+            // Un paiement mixte sort en deux lignes, comme sur le ticket serveur.
+            reglements: reglements.map((r) => ({
+                label: this.libelleReglement(r.mode),
+                montant: Math.trunc(r.montant / 100),
+            })),
             footer: [this.parametresValue.pied],
             openDrawer: this.especes,
         };
@@ -693,12 +756,11 @@ export default class extends Controller {
             return;
         }
 
-        const total = this.total();
-        const encaisse = this.especes && null !== this.recu ? this.recu : total;
-        if (encaisse < total) {
+        const paiement = this.reglementsAEncaisser();
+        if (!paiement) {
             return;
         }
-        const rendu = renduMonnaie(encaisse, total);
+        const { reglements, rendu } = paiement;
 
         // Uuid du remplaçant tiré une fois par modification : si la réponse se
         // perd, le nouvel essai est reconnu par le serveur au lieu de se heurter
@@ -718,7 +780,7 @@ export default class extends Controller {
                     uuid,
                     mode: 'BOULANGERIE',
                     lignes: this.lignes.map((l) => ({ articleId: l.articleId, quantite: l.quantite, commentaire: '' })),
-                    reglements: [{ mode: this.reglement, montant: encaisse }],
+                    reglements,
                 }),
             });
         } catch {
@@ -1088,6 +1150,7 @@ export default class extends Controller {
         // sur un ticket qui n'existe plus.
         if (this.especes) {
             this.rendreSuggestions();
+            this.majComplement();
             this.rendreRendu();
         }
         this.majEncaisser();
@@ -1167,12 +1230,22 @@ export default class extends Controller {
         // Un reçu inférieur au total bloque l'encaissement : le serveur le
         // refuserait de toute façon (« Paiement insuffisant »), autant le dire
         // avant que la caissière n'appuie.
-        const insuffisant = this.especes && null !== this.recu && this.recu < this.total();
-
-        this.encaisserTarget.disabled = this.lignes.length === 0 || !this.reglement || insuffisant;
+        // Un paiement mixte complet (espèces + réseau) n'est pas insuffisant.
+        this.encaisserTarget.disabled = this.lignes.length === 0 || null === this.reglementsAEncaisser();
     }
 
     // -------------------------------------------------------------- Utilitaires
+
+    /** Libellé d'un mode de règlement, tel qu'il s'imprime sur le ticket. */
+    libelleReglement(mode) {
+        return {
+            ESPECES: 'Espèces',
+            WAVE: 'Wave',
+            ORANGE_MONEY: 'Orange Money',
+            MTN_MOMO: 'MTN MoMo',
+            MOOV_MONEY: 'Moov Money',
+        }[mode] ?? mode;
+    }
 
     marquer(element, actif) {
         if (actif) {

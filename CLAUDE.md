@@ -1241,6 +1241,15 @@ l'absence de nom codé en dur dans les deux espaces de gestion.
     en déduit le rendu (excédent, espèces seulement — un paiement électronique ne
     peut pas dépasser le total), et le Z retranche ce rendu pour retrouver les
     espèces réellement en tiroir. L'écran ne fait donc foi pour personne.
+  - **Paiement mixte espèces + réseau** (1 000 en espèces + 500 sur Wave pour
+    1 500) : dès que le reçu est inférieur au total, le bloc des espèces montre
+    « Le reste, 500 FCFA, payé par : » et les quatre réseaux. Un appui retient le
+    réseau, le pied affiche « Reste en Wave » et Encaisser se débloque. Deux
+    règlements partent : espèces = somme tendue, réseau = reste exact — pas de
+    rendu, l'électronique ne dépasse jamais le total. Calcul pur
+    `reglementsAEncaisser()` (`assets/caisse/calculs.js`), partagé par
+    l'encaissement, la modification du ticket et le ticket hors ligne. Deux
+    réseaux sans espèces ne se combinent pas.
   - Restitution : ligne **Rendu** sur le ticket 58 mm et en ESC/POS (mise en avant
     comme le total, `.ticket .rendu`), plus un rappel en grand au-dessus du reçu
     affiché après encaissement.
@@ -1484,6 +1493,13 @@ des écritures équilibrées au cabinet.
 - **Tickets** `/pilotage/ventes?jour=…` (paginé, 30/page) et détail
   `/pilotage/ventes/{uuid}` : lignes, règlements, remise, motif d'annulation et
   **nom du caissier**.
+- **Onglets par mode de règlement** sur `/pilotage/ventes` **et** `/caisse/tickets`
+  (`?reglement=WAVE`…, macro `_onglets_reglement.html.twig`, décomptes
+  `VenteRepository::compte…ParReglement()`). Un **paiement mixte figure sous
+  chacun de ses modes** — les onglets ne s'additionnent donc pas jusqu'à « Tous ».
+  Filtre en `EXISTS`, pas en jointure : une jointure filtrée tronquerait la
+  collection des règlements hydratée. Onglet « Crédit » affiché seulement s'il
+  a des tickets ; mode inconnu → « Tous ».
 - **Service** `App\Service\SyntheseJourneeService` → DTO `SyntheseJournee`
   (montants en centimes, **variations en points de base**, jamais de float pour
   l'argent). L'écran et la commande consomment le **même** objet : les chiffres ne

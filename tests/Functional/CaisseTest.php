@@ -266,6 +266,23 @@ class CaisseTest extends WebTestCase
         $this->assertStringContainsString('background: var(--teinte);', $corps);
     }
 
+    /**
+     * Paiement mixte : 1 000 en espèces + 500 sur Wave pour un ticket de 1 500.
+     * Le reste se règle par un réseau choisi dans le bloc des espèces — jamais
+     * par les espèces elles-mêmes, qui sont déjà la part tendue.
+     */
+    public function testLeResteDesEspecesSeRegleParUnReseau(): void
+    {
+        $crawler = $this->client->request('GET', '/caisse');
+
+        $bloc = $crawler->filter('[data-ticket-target="especes"] [data-ticket-target="complement"]');
+        $this->assertCount(1, $bloc, 'Le bloc des espèces offre de régler le reste par un réseau.');
+        $this->assertStringContainsString('hidden', $bloc->attr('class'), 'Masqué tant que rien ne manque.');
+
+        $modes = $bloc->filter('button[data-action="ticket#choisirComplement"]')->each(fn ($b) => $b->attr('data-mode'));
+        $this->assertSame(['WAVE', 'ORANGE_MONEY', 'MTN_MOMO', 'MOOV_MONEY'], $modes);
+    }
+
     public function testBandeauDeSynchronisationPresent(): void
     {
         $this->client->request('GET', '/caisse');

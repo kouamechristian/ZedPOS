@@ -107,6 +107,52 @@ export function manquant(recu, total) {
 }
 
 /**
+ * Règlements à transmettre pour un ticket, paiement mixte compris.
+ *
+ * - Un seul mode : le montant est ce que le client a tendu en espèces (le
+ *   serveur en déduit le rendu), sinon le total — champ vide = compte juste.
+ * - **Espèces + mobile money** : le client tend moins que le total en espèces
+ *   et règle le reste par un réseau (`complement`). Les espèces valent alors
+ *   exactement ce qui a été tendu, le réseau exactement le reste : pas de rendu,
+ *   et l'électronique ne dépasse jamais le total — la règle du serveur.
+ *
+ * @param {{ total: number, reglement: ?string, recu: ?number, complement: ?string }} etat
+ *        montants en centimes ; `recu` n'a de sens qu'en espèces
+ * @returns {?{ reglements: {mode: string, montant: number}[], encaisse: number, rendu: number }}
+ *          `null` tant que le compte n'y est pas (encaissement impossible)
+ */
+export function reglementsAEncaisser({ total, reglement, recu, complement }) {
+    if (!reglement || total <= 0) {
+        return null;
+    }
+
+    const especes = 'ESPECES' === reglement;
+
+    if (especes && null !== recu && recu < total) {
+        if (!complement || recu <= 0) {
+            return null;
+        }
+
+        return {
+            reglements: [
+                { mode: 'ESPECES', montant: recu },
+                { mode: complement, montant: total - recu },
+            ],
+            encaisse: total,
+            rendu: 0,
+        };
+    }
+
+    const encaisse = especes && null !== recu ? recu : total;
+
+    return {
+        reglements: [{ mode: reglement, montant: encaisse }],
+        encaisse,
+        rendu: renduMonnaie(encaisse, total),
+    };
+}
+
+/**
  * Lit un montant saisi **en FCFA** et le convertit en centimes.
  *
  * La caissière tape des francs entiers : il n'existe pas de pièce en dessous du
