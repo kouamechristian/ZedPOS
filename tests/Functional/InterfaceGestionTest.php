@@ -103,13 +103,21 @@ class InterfaceGestionTest extends WebTestCase
         $barre = $crawler->filter('aside nav a')->each(static fn ($lien) => $lien->attr('href'));
 
         $this->assertSame($barre, $palette, 'La palette propose exactement les écrans de la barre latérale.');
-        $this->assertContains('/admin/articles', $palette);
-        $this->assertContains('/comptabilite', $palette);
+        $this->assertContains('/admin/ventes', $palette);
         $this->assertNotContains('/pilotage', $palette, 'Le gérant n\'a pas accès au pilotage.');
+        // « Catalogue et stock » et « Administration » sont réservés à la dirigeante.
+        foreach (['/admin/articles', '/admin/stock', '/admin/inventaires', '/admin/pertes', '/comptabilite', '/admin/utilisateurs', '/admin/parametres'] as $url) {
+            $this->assertNotContains($url, $palette, 'Hors du menu de la gérante : '.$url);
+        }
+        $this->assertStringNotContainsString('Catalogue et stock', $crawler->filter('aside nav')->text());
+        $this->assertStringNotContainsString('Administration', $crawler->filter('aside nav')->text());
 
         $this->client->loginUser($this->dirigeante);
         $crawler = $this->client->request('GET', '/admin');
-        $this->assertContains('/pilotage', $crawler->filter('dialog.palette a')->each(static fn ($lien) => $lien->attr('href')));
+        $palette = $crawler->filter('dialog.palette a')->each(static fn ($lien) => $lien->attr('href'));
+        foreach (['/pilotage', '/admin/articles', '/comptabilite', '/admin/utilisateurs', '/admin/parametres'] as $url) {
+            $this->assertContains($url, $palette, 'La dirigeante garde '.$url);
+        }
     }
 
     /**
@@ -120,7 +128,8 @@ class InterfaceGestionTest extends WebTestCase
      */
     public function testLEntreeActiveEstSignaleeParAriaCurrent(): void
     {
-        $this->client->loginUser($this->gerant);
+        // La dirigeante : le stock n'est plus dans le menu de la gérante.
+        $this->client->loginUser($this->dirigeante);
         $crawler = $this->client->request('GET', '/admin/fournisseurs');
 
         $actives = $crawler->filter('aside nav a[aria-current="page"]');
@@ -152,7 +161,7 @@ class InterfaceGestionTest extends WebTestCase
     /** Un message flash arrive en toast, et reste lisible dans la page. */
     public function testLesMessagesFlashSontAffichesEnToast(): void
     {
-        $this->client->loginUser($this->gerant);
+        $this->client->loginUser($this->dirigeante);
         $crawler = $this->client->request('GET', '/admin/articles');
 
         $this->client->submit($crawler->filter('turbo-frame#liste-articles form[method="post"]')->first()->form());

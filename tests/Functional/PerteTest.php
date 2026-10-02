@@ -35,7 +35,9 @@ class PerteTest extends WebTestCase
         $connexion->executeStatement('SET FOREIGN_KEY_CHECKS = 1');
 
         $gerant = new Utilisateur('gerant@test.ci', 'Gérant');
-        $gerant->setRoles(['ROLE_GERANT'])->setMotDePasse('x');
+        // Dirigeante : inventaires, stock, pertes et catalogue sont fermés à la
+        // gérante (security.yaml). Le nom de la propriété est resté.
+        $gerant->setRoles(['ROLE_DIRIGEANTE'])->setMotDePasse('x');
         $this->em->persist($gerant);
 
         $this->farine = (new MatierePremiere('Farine', 'kg'))->setCoutMoyenPondere(45000)->setStockActuel(100000);

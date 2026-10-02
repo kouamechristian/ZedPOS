@@ -1,0 +1,146 @@
+{% extends 'atelier/base.html.twig' %}
+{% import 'admin/_icones.html.twig' as ui %}
+{% import 'admin/_macros.html.twig' as fmt %}
+
+{# Déclaration d'une fournée ou d'une mise en vitrine, au doigt : vignettes et
+   pavé, comme l'écran de dotation (`declaration_controller.js`).
+
+   Chaque vignette porte son champ caché `quantites[id]` : une erreur réaffiche
+   l'écran (422) avec ce qui avait été tapé. La quantité saisie **s'ajoute** à la
+   fiche de production de la caisse ; la vignette rappelle où en est la fiche.
+   En vitrine, `data-fournil` porte ce qui reste au fournil (produit − vitrine) :
+   un repère, pas un plafond — des invendus d'hier remis en vitrine n'ont pas été
+   produits aujourd'hui.
+
+   Aucun prix : l'atelier et la vitrine ne lisent que des quantités. #}
+
+{% set vitrine = type.value == 'VITRINE' %}
+{% block page_title %}{{ vitrine ? 'Mise en vitrine' : atelier.titreDeclaration ~ ' · ' ~ atelier.libelle }}{% endblock %}
+
+{% block atelier_content %}
+{% set familles = {} %}
+{% for article in articles %}
+    {% if familles['f' ~ article.familleProduit.id] is not defined %}
+        {% set familles = familles|merge({('f' ~ article.familleProduit.id): article.familleProduit}) %}
+    {% endif %}
+{% endfor %}
+
+<div class="entete-page apparition">
+    <div>
+        <div class="sur-titre">Caisse de {{ session.utilisateur.nom }} · {{ session.ouvertureAt|date('d/m/Y') }}</div>
+        <h1>{{ block('page_title') }}</h1>
+        <p class="mt-1.5 text-sm text-stone-500">
+            {% if vitrine %}
+                Touchez un produit, tapez ce que vous ajoutez en vitrine. La quantité s'ajoute à la fiche de la caisse.
+            {% else %}
+                Touchez un produit, tapez combien {{ atelier.titreDeclaration == 'Fournée' ? 'il en sort du four' : 'il en a été préparé' }}. La quantité s'ajoute à la fiche de la caisse.
+            {% endif %}
+        </p>
+    </div>
+    <a href="{{ path('app_atelier') }}" class="btn btn-fantome">{{ ui.icone('retour') }} Retour</a>
+</div>
+
+<form method="post" data-controller="declaration">
+    <input type="hidden" name="_token" value="{{ csrf_token(jeton) }}">
+
+    {% if erreur %}
+        <div class="alerte alerte-rouge apparition mb-4" role="alert">
+            {{ ui.icone('erreur') }}
+            <p>{{ erreur }}</p>
+        </div>
+    {% endif %}
+
+    <p data-declaration-target="message" class="mb-2 min-h-5 text-sm font-medium text-amber-700" aria-live="polite"></p>
+
+    {% if articles is empty %}
+        <div class="alerte alerte-ambre" role="alert">
+            {{ ui.icone('info') }}
+            <p>
+                {% if vitrine %}
+                    Aucun article actif n'est rattaché à un atelier.
+                {% else %}
+                    Aucun article actif dans les familles de l'atelier « {{ atelier.libelle }} ».
+                {% endif %}
+            </p>
+        </div>
+    {% else %}
+    <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_19rem]">
+        <div class="min-w-0">
+            {% if familles|length > 1 %}
+                <div class="mb-3 flex flex-wrap gap-2" role="group" aria-label="Filtrer par famille">
+                    <button type="button" data-declaration-target="famille" data-action="declaration#filtrer" data-famille="" aria-pressed="true"
+                            class="h-10 rounded-full border border-stone-300 bg-white px-4 text-sm font-semibold text-stone-700 aria-pressed:border-amber-700 aria-pressed:bg-amber-700 aria-pressed:text-white">Tout</button>
+                    {% for famille in familles %}
+                        <button type="button" data-declaration-target="famille" data-action="declaration#filtrer" data-famille="{{ famille.id }}" aria-pressed="false"
+                                class="h-10 rounded-full border border-stone-300 bg-white px-4 text-sm font-semibold text-stone-700 aria-pressed:border-amber-700 aria-pressed:bg-amber-700 aria-pressed:text-white">{{ famille.nom }}</button>
+                    {% endfor %}
+                </div>
+            {% endif %}
+
+            <div class="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-4">
+                {% for article in articles %}
+                    {% set etat = fiche[article.id] ?? null %}
+                    <div role="button" tabindex="0" aria-pressed="false"
+                         data-declaration-target="tuile"
+                         data-action="click->declaration#selectionner keydown->declaration#selectionnerAuClavier"
+                         data-nom="{{ article.nom }}"
+                         data-famille="{{ article.familleProduit.id }}"
+                         {% if vitrine %}data-fournil="{{ etat ? etat.auFournil : 0 }}"{% endif %}
+                         class="relative flex min-h-28 cursor-pointer select-none flex-col overflow-hidden rounded-2xl border-2 border-stone-200 bg-white text-left transition hover:border-stone-300 focus-visible:outline-2 focus-visible:outline-amber-600 data-[saisie]:bg-amber-50 data-[active]:border-amber-600 data-[active]:ring-4 data-[active]:ring-amber-500/25">
+                        {% if article.image %}
+                            <img src="{{ image_article(article.image) }}" alt="" loading="lazy" onerror="this.remove()" class="h-16 w-full object-cover">
+                        {% endif %}
+                        <div class="flex flex-1 flex-col p-2.5">
+                            <span class="pr-9 font-semibold leading-tight text-stone-900">{{ article.nom }}</span>
+                            <span class="mt-auto pt-1 text-xs font-medium text-stone-600">
+                                {%- if vitrine -%}
+                                    En vitrine : {{ fmt.unites(etat ? etat.vitrine : 0) }} · au fournil : {{ fmt.unites(etat and etat.auFournil > 0 ? etat.auFournil : 0) }}
+                                {%- else -%}
+                                    Déjà produit : {{ fmt.unites(etat ? etat.produite : 0) }}
+                                {%- endif -%}
+                            </span>
+                        </div>
+                        <span data-declaration-target="badge"
+                              class="absolute right-2 top-2 min-w-9 rounded-full bg-amber-700 px-2 py-0.5 text-center text-lg font-bold tabular-nums text-white shadow empty:hidden"></span>
+                        <input type="hidden" name="quantites[{{ article.id }}]" value="{{ quantites[article.id] ?? '' }}" data-declaration-target="saisie">
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <aside class="carte self-start lg:sticky lg:top-20">
+            <div class="carte-corps">
+                <div class="text-xs font-medium uppercase tracking-wide text-stone-500">Quantité de</div>
+                <div data-declaration-target="actif" class="truncate text-base font-semibold text-stone-900">Touchez un produit</div>
+                <div data-declaration-target="afficheur"
+                     class="my-3 rounded-xl bg-stone-100 py-3 text-center text-4xl font-bold tabular-nums text-stone-900">—</div>
+                <div class="grid grid-cols-3 gap-2" role="group" aria-label="Clavier numérique de la quantité">
+                    {% for touche in ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'effacer', '0', 'retour'] %}
+                        {% if touche == 'effacer' %}
+                            <button type="button" data-action="declaration#effacer"
+                                    class="h-14 touch-manipulation rounded-xl border border-stone-300 bg-stone-200 text-sm font-semibold text-stone-700 hover:bg-stone-300 active:bg-stone-400">Effacer</button>
+                        {% elseif touche == 'retour' %}
+                            <button type="button" data-action="declaration#reculer" aria-label="Effacer le dernier chiffre"
+                                    class="h-14 touch-manipulation rounded-xl border border-stone-300 bg-stone-200 text-2xl font-bold text-stone-700 hover:bg-stone-300 active:bg-stone-400">⌫</button>
+                        {% else %}
+                            <button type="button" data-action="declaration#appuyer" data-chiffre="{{ touche }}"
+                                    class="h-14 touch-manipulation rounded-xl border border-stone-200 bg-stone-50 text-2xl font-bold tabular-nums text-stone-900 hover:bg-stone-100 active:bg-amber-100">{{ touche }}</button>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+                {% if vitrine %}
+                    <button type="button" data-action="declaration#toutLeReste" class="btn btn-secondaire mt-2 w-full">Tout ce qui est au fournil</button>
+                {% endif %}
+            </div>
+        </aside>
+    </div>
+
+    <div class="sticky bottom-3 z-10 mt-4 flex flex-wrap items-center gap-3 rounded-2xl border border-stone-200 bg-white/95 p-3 shadow-lg backdrop-blur">
+        <div class="min-w-0 flex-1">
+            <div data-declaration-target="total" class="text-base font-semibold text-stone-900"></div>
+        </div>
+        <button type="submit" class="btn btn-primaire btn-lg">{{ ui.icone('valide') }} Enregistrer</button>
+    </div>
+    {% endif %}
+</form>
+{% endblock %}

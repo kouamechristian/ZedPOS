@@ -9,7 +9,12 @@
    l'entrée : les familles appartiennent aux articles, les fournisseurs au stock —
    sans quoi la barre n'indiquerait plus où l'on est dès qu'on descend d'un niveau.
    `role` restreint une entrée ; la barre et la palette ⌘K lisent la même liste,
-   ce qu'on ne peut pas ouvrir n'apparaît donc nulle part. #}
+   ce qu'on ne peut pas ouvrir n'apparaît donc nulle part. Un groupe dont aucune
+   entrée n'est visible disparaît avec son titre.
+
+   « Catalogue et stock » et « Administration » sont réservés à la dirigeante, à
+   la demande de l'exploitante : la gérante ne les voit plus dans le menu, et
+   `access_control` (security.yaml) lui en ferme aussi les URL. #}
 {% set groupes = [
     { titre: 'Activité', entrees: [
         { label: 'Tableau de bord', route: 'admin_dashboard',     match: ['admin_dashboard'],                   icone: 'accueil' },
@@ -17,11 +22,14 @@
         { label: 'Clôtures',        route: 'admin_clotures',      match: ['admin_cloture'],                     icone: 'clotures' },
     ]},
     { titre: 'Catalogue et stock', entrees: [
-        { label: 'Articles',        route: 'admin_article_index', match: ['admin_article', 'admin_famille'],    icone: 'articles' },
-        { label: 'Stock',           route: 'admin_matiere_index', match: ['admin_matiere', 'admin_fournisseur'], icone: 'stock' },
-        { label: 'Inventaire',      route: 'admin_inventaires',   match: ['admin_inventaire'],                  icone: 'inventaire' },
-        { label: 'Production',      route: 'admin_production',    match: ['admin_production'],                  icone: 'production' },
-        { label: 'Pertes',          route: 'admin_pertes',        match: ['admin_perte'],                       icone: 'pertes' },
+        { label: 'Articles',        route: 'admin_article_index', match: ['admin_article', 'admin_famille'],    icone: 'articles', role: 'ROLE_DIRIGEANTE' },
+        { label: 'Stock',           route: 'admin_matiere_index', match: ['admin_matiere', 'admin_fournisseur'], icone: 'stock', role: 'ROLE_DIRIGEANTE' },
+        { label: 'Inventaire',      route: 'admin_inventaires',   match: ['admin_inventaire'],                  icone: 'inventaire', role: 'ROLE_DIRIGEANTE' },
+        { label: 'Production',      route: 'admin_production',    match: ['admin_production'],                  icone: 'production', role: 'ROLE_DIRIGEANTE' },
+        { label: 'Pertes',          route: 'admin_pertes',        match: ['admin_perte'],                       icone: 'pertes', role: 'ROLE_DIRIGEANTE' },
+    ]},
+    { titre: 'Production et vitrine', entrees: [
+        { label: 'Fiche de production', route: 'app_atelier',          match: ['app_atelier'],                      icone: 'production' },
     ]},
     { titre: 'Revendeurs', entrees: [
         { label: 'Dotations',       route: 'admin_dotation_index', match: ['admin_dotation'],                   icone: 'fournisseurs' },
@@ -30,9 +38,9 @@
         { label: 'Stands',          route: 'admin_stand_index',    match: ['admin_stand', 'admin_vendeur'],      icone: 'accueil' },
     ]},
     { titre: 'Administration', entrees: [
-        { label: 'Comptabilité',    route: 'app_comptabilite',    match: ['app_comptabilite'],                  icone: 'comptabilite' },
-        { label: 'Utilisateurs',    route: 'admin_utilisateurs',  match: ['admin_utilisateur'],                 icone: 'utilisateurs' },
-        { label: 'Paramètres',      route: 'admin_parametres',    match: ['admin_parametres'],                  icone: 'parametres' },
+        { label: 'Comptabilité',    route: 'app_comptabilite',    match: ['app_comptabilite'],                  icone: 'comptabilite', role: 'ROLE_DIRIGEANTE' },
+        { label: 'Utilisateurs',    route: 'admin_utilisateurs',  match: ['admin_utilisateur'],                 icone: 'utilisateurs', role: 'ROLE_DIRIGEANTE' },
+        { label: 'Paramètres',      route: 'admin_parametres',    match: ['admin_parametres'],                  icone: 'parametres', role: 'ROLE_DIRIGEANTE' },
         { label: 'Pilotage',        route: 'app_pilotage',        match: ['app_pilotage'],                      icone: 'pilotage', role: 'ROLE_DIRIGEANTE' },
     ]},
 ] %}
@@ -201,7 +209,10 @@
                         {{ sousSeuil|length }} matière(s) sous le seuil —
                         {% for matiere in sousSeuil|slice(0, 4) %}{{ matiere.nom }}{{ not loop.last ? ', ' }}{% endfor %}{% if sousSeuil|length > 4 %}…{% endif %}
                     </div>
-                    <a href="{{ path('admin_matiere_index') }}" class="lien shrink-0 text-amber-900">Voir le stock</a>
+                    {# Le stock est réservé à la dirigeante : la gérante voit l'alerte, pas un lien vers un 403. #}
+                    {% if is_granted('ROLE_DIRIGEANTE') %}
+                        <a href="{{ path('admin_matiere_index') }}" class="lien shrink-0 text-amber-900">Voir le stock</a>
+                    {% endif %}
                 </div>
             {% endif %}
 

@@ -108,7 +108,9 @@ class CaisseAuthenticator extends AbstractAuthenticator
         $hasher = $this->hasherFactory->getPasswordHasher(Utilisateur::class);
 
         foreach ($this->utilisateurs->findActifsAvecCodePin() as $utilisateur) {
-            if (!\in_array(RoleUtilisateur::CAISSIER->value, $utilisateur->getRoles(), true)) {
+            // Caissier, boulanger, pâtissier, vendeuse : tout rôle qui se connecte
+            // au pavé. Un gérant qui garderait un PIN d'un ancien rôle ne passe pas.
+            if (!$this->seConnecteAuPave($utilisateur)) {
                 continue;
             }
 
@@ -119,6 +121,17 @@ class CaisseAuthenticator extends AbstractAuthenticator
         }
 
         return null;
+    }
+
+    private function seConnecteAuPave(Utilisateur $utilisateur): bool
+    {
+        foreach ($utilisateur->getRoles() as $role) {
+            if (RoleUtilisateur::tryFrom($role)?->utiliseCodePin()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function onAuthenticationSuccess(Request $request, TokenInterface $token, string $firewallName): ?Response

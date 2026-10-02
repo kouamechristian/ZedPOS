@@ -27,35 +27,89 @@ class DashboardController extends AbstractController
 {
     #[Route('', name: 'admin_dashboard', methods: ['GET'])]
     #[IsGranted(Permission::VOIR_CA_GLOBAL)]
+    /**
+     * Deux lectures selon qui regarde :
+     *
+     * - **la dirigeante** : la caisse ouverte (à défaut la dernière clôturée), le
+     *   **chiffre du mois en cours** (panier moyen et meilleures ventes du mois) et
+     *   le **chiffre d'affaires global**, toutes les ventes validées depuis la mise
+     *   en service ;
+     * - **la gérante** : **la caisse ouverte seulement**, à la demande de
+     *   l'exploitante. Aucun chiffre sur trente jours ne lui est calculé ni
+     *   envoyé ; sans caisse ouverte, il n'y a rien à lire.
+     */
     public function index(Connection $connexion, ArticleRepository $articles, ChiffreCaisseService $chiffreCaisse): Response
     {
-        $debut30j = (new \DateTimeImmutable('today'))->modify('-29 days')->format('Y-m-d 00:00:00');
-
-        $ca30j = (int) $connexion->fetchOne(
-            "SELECT COALESCE(SUM(total_ttc), 0) FROM vente WHERE statut = 'VALIDEE' AND created_at >= ?",
-            [$debut30j],
-        );
-        $ventes30j = (int) $connexion->fetchOne('SELECT COUNT(*) FROM vente WHERE created_at >= ?', [$debut30j]);
+        $dirigeante = $this->isGranted('ROLE_DIRIGEANTE');
         $matieresAlerte = (int) $connexion->fetchOne('SELECT COUNT(*) FROM matiere_premiere WHERE stock_actuel < stock_mini');
 
-        $topArticles = $connexion->fetchAllAssociative(
-            'SELECT a.nom, SUM(lv.quantite) / 1000 AS quantite, SUM(lv.quantite * lv.prix_unitaire) / 1000 AS ca
+        $caisse = $chiffreCaisse->courant();
+        if (!$dirigeante && null !== $caisse && !$caisse->ouverte) {
+            $caisse = null;
+        }
+
+        $donnees = [
+            'dirigeante' => $dirigeante,
+            'caisse' => $caisse,
+            'articles_actifs' => $articles->compterActifs(),
+            'matieres_alerte' => $matieresAlerte,
+        ];
+
+        if (!$dirigeante) {
+            return $this->render('admin/dashboard.html.twig', $donnees + [
+                'panier_moyen' => null !== $caisse && $caisse->tickets > 0 ? intdiv($caisse->ca, $caisse->tickets) : 0,
+                'top_articles' => null !== $caisse ? $this->meilleuresVentes($connexion, 'v.session_caisse_id = ?', [$caisse->sessionId]) : [],
+            ]);
+        }
+
+        // Le mois civil en cours, du 1er à 00:00 au 1er du mois suivant (exclu).
+        $debutMois = (new \DateTimeImmutable('first day of this month'))->setTime(0, 0);
+        $finMois = $debutMois->modify('+1 month');
+        $mois = [$debutMois->format('Y-m-d H:i:s'), $finMois->format('Y-m-d H:i:s')];
+
+        $ventesMois = $connexion->fetchAssociative(
+            "SELECT COALESCE(SUM(total_ttc), 0) AS ca, COUNT(*) AS tickets
+             FROM vente WHERE statut = 'VALIDEE' AND created_at >= ? AND created_at < ?",
+            $mois,
+        ) ?: [];
+        $caMois = (int) ($ventesMois['ca'] ?? 0);
+        $ticketsMois = (int) ($ventesMois['tickets'] ?? 0);
+
+        // Tout ce que la caisse a encaissé depuis sa mise en service.
+        $global = $connexion->fetchAssociative(
+            "SELECT COALESCE(SUM(total_ttc), 0) AS ca, MIN(created_at) AS premiere
+             FROM vente WHERE statut = 'VALIDEE'",
+        ) ?: [];
+
+        return $this->render('admin/dashboard.html.twig', $donnees + [
+            'ca_mois' => $caMois,
+            // Sans extension intl sur ce poste : les mois en français, écrits ici.
+            'libelle_mois' => ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'][(int) $debutMois->format('n') - 1].' '.$debutMois->format('Y'),
+            'panier_moyen' => $ticketsMois > 0 ? intdiv($caMois, $ticketsMois) : 0,
+            'ca_global' => (int) ($global['ca'] ?? 0),
+            'premiere_vente' => null !== ($global['premiere'] ?? null) ? new \DateTimeImmutable($global['premiere']) : null,
+            'top_articles' => $this->meilleuresVentes($connexion, 'v.created_at >= ? AND v.created_at < ?', $mois),
+        ]);
+    }
+
+    /**
+     * Les huit articles les plus vendus sur la portée donnée, ventes validées.
+     *
+     * @param list<string|int> $parametres
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function meilleuresVentes(Connection $connexion, string $portee, array $parametres): array
+    {
+        return $connexion->fetchAllAssociative(
+            "SELECT a.nom, SUM(lv.quantite) / 1000 AS quantite, SUM(lv.quantite * lv.prix_unitaire) / 1000 AS ca
              FROM ligne_vente lv
              JOIN article a ON a.id = lv.article_id
              JOIN vente v ON v.id = lv.vente_id
-             WHERE v.created_at >= ? AND v.statut = \'VALIDEE\'
-             GROUP BY a.id ORDER BY quantite DESC LIMIT 8',
-            [$debut30j],
+             WHERE {$portee} AND v.statut = 'VALIDEE'
+             GROUP BY a.id ORDER BY quantite DESC LIMIT 8",
+            $parametres,
         );
-
-        return $this->render('admin/dashboard.html.twig', [
-            'caisse' => $chiffreCaisse->courant(),
-            'ca_30j' => $ca30j,
-            'panier_moyen' => $ventes30j > 0 ? intdiv($ca30j, $ventes30j) : 0,
-            'articles_actifs' => $articles->compterActifs(),
-            'matieres_alerte' => $matieresAlerte,
-            'top_articles' => $topArticles,
-        ]);
     }
 
     #[Route('/ventes', name: 'admin_ventes', methods: ['GET'])]

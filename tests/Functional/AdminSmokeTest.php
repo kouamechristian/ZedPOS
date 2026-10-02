@@ -33,8 +33,11 @@ class AdminSmokeTest extends WebTestCase
         }
         $connexion->executeStatement('SET FOREIGN_KEY_CHECKS = 1');
 
-        $gerant = new Utilisateur('gerant@test.ci', 'Gérant Test');
-        $gerant->setRoles(['ROLE_GERANT'])->setMotDePasse('x');
+        // La dirigeante : catalogue, stock, inventaires, pertes, utilisateurs et
+        // paramètres sont fermés à la gérante (security.yaml). Elle seule voit
+        // toutes les pages du back-office.
+        $gerant = new Utilisateur('gerant@test.ci', 'Dirigeante Test');
+        $gerant->setRoles(['ROLE_DIRIGEANTE'])->setMotDePasse('x');
         $this->em->persist($gerant);
 
         $famille = new FamilleProduit('Pains');
@@ -110,7 +113,7 @@ class AdminSmokeTest extends WebTestCase
         $this->assertResponseStatusCodeSame(403);
     }
 
-    public function testColonneCoutMargeVisiblePourLeGerant(): void
+    public function testColonneCoutMargeVisibleALaDirigeante(): void
     {
         $crawler = $this->client->request('GET', '/admin/articles');
         $this->assertResponseIsSuccessful();

@@ -198,7 +198,11 @@ class VendeurFicheTest extends WebTestCase
 
     public function testLeSeuilSeRegleDansLesParametres(): void
     {
-        $this->client->loginUser($this->gerante);
+        // Les paramètres sont réservés à la dirigeante (security.yaml).
+        $dirigeante = (new Utilisateur('aya@test.ci', 'Aya'))->setRoles(['ROLE_DIRIGEANTE'])->setMotDePasse('x');
+        $this->em->persist($dirigeante);
+        $this->em->flush();
+        $this->client->loginUser($dirigeante);
         $crawler = $this->client->request('GET', '/admin/parametres');
         $champ = 'parametres_boutique[revendeurs_seuil_alerte_dette]';
         $this->assertSame('5000', $crawler->filter('input[name="'.$champ.'"]')->attr('value'));

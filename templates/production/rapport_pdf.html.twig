@@ -1,0 +1,172 @@
+{# Rapport de production en PDF, rendu côté serveur par Dompdf.
+
+   A4, noir et blanc, page autonome, sur le modèle du rapport de journée
+   (`admin/rapport_vente/pdf.html.twig`) : mêmes précautions.
+
+   ⚠ **Dompdf ne connaît ni flexbox ni grid** : tout est en tableaux.
+   ⚠ **Aucune ressource distante** : le logo arrive en `data:` URI.
+   ⚠ Pas de `* { margin: 0 }` : sous Dompdf, il atteint aussi `@page`.
+
+   Partagé par le pilotage et l'atelier. `avec_montants` à faux (boulanger,
+   vendeuse) retire tout montant : l'atelier ne lit que des quantités.
+   `signatures` : les deux personnes qui signent le papier. #}
+{% import 'admin/_macros.html.twig' as fmt %}
+{% macro reste(millimes) %}
+    {%- import 'admin/_macros.html.twig' as fmt -%}
+    {{- millimes < 0 ? '−' ~ fmt.unites(-millimes) : fmt.unites(millimes) -}}
+{%- endmacro %}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Rapport de production — caisse de {{ session.utilisateur.nom }}</title>
+    <style>
+        body { font-family: "DejaVu Sans", sans-serif; font-size: 9.5pt; color: #000; }
+        body, h1, p, div, table, td, th { margin: 0; padding: 0; }
+
+        @page { size: A4 portrait; margin: 14mm 12mm 16mm 12mm; }
+
+        .entete { width: 100%; border-bottom: 1.5pt solid #000; padding-bottom: 3mm; margin-bottom: 4mm; }
+        .entete td { vertical-align: top; }
+        .entete img { max-height: 16mm; max-width: 34mm; }
+        .boutique { font-size: 13pt; font-weight: bold; }
+        h1 { font-size: 14pt; text-align: right; }
+        .sous-titre { text-align: right; font-size: 10pt; margin-top: 1mm; }
+
+        .bandeau { width: 100%; border-collapse: collapse; margin-bottom: 5mm; }
+        .bandeau td { border: 0.5pt solid #999; padding: 2mm 3mm; width: 25%; }
+        .bandeau span { display: block; font-size: 7.5pt; text-transform: uppercase; color: #444; }
+        .bandeau strong { font-size: 11pt; }
+
+        .avis { border: 0.75pt solid #000; padding: 2mm 3mm; margin-bottom: 4mm; font-size: 9pt; }
+
+        table.detail { width: 100%; border-collapse: collapse; }
+        table.detail th, table.detail td { border-bottom: 0.4pt solid #bbb; padding: 1.6mm 2mm; text-align: left; }
+        table.detail th { font-size: 7.5pt; text-transform: uppercase; letter-spacing: .03em; border-bottom: 0.8pt solid #000; }
+        table.detail .droite { text-align: right; }
+        table.detail tr.famille td { background: #eee; font-weight: bold; font-size: 8.5pt; border-bottom: 0.6pt solid #000; }
+        table.detail tr.total td { border-top: 1.2pt solid #000; border-bottom: 1.2pt solid #000; font-weight: bold; font-size: 10.5pt; }
+
+        .repris { font-size: 7pt; color: #444; }
+        .note { font-size: 8pt; color: #333; margin-top: 3mm; }
+        .signatures { width: 100%; margin-top: 14mm; }
+        .signatures td { width: 45%; border-top: 0.75pt solid #000; padding-top: 2mm; font-size: 9pt; }
+        .signatures td.blanc { width: 10%; border-top: none; }
+
+        /* Rendu une fois par page par Dompdf. `counter(pages)` sort 0 : page seule. */
+        .pied { position: fixed; bottom: 0; left: 0; right: 0; font-size: 7.5pt; color: #444; border-top: 0.4pt solid #999; padding-top: 1.5mm; }
+        .pied .page { float: right; }
+        .pied .page:after { content: "Page " counter(page); }
+
+        table.detail thead { display: table-header-group; }
+        tr { page-break-inside: avoid; }
+        .signatures { page-break-inside: avoid; }
+    </style>
+</head>
+<body>
+
+<div class="pied">
+    {{ boutique }} — édité le {{ edite_le|date('d/m/Y à H:i') }}{% if edite_par %} par {{ edite_par }}{% endif %}
+    <span class="page"></span>
+</div>
+
+<table class="entete">
+    <tr>
+        <td>
+            {% if logo %}<img src="{{ logo }}" alt="">{% endif %}
+            <div class="boutique">{{ boutique }}</div>
+        </td>
+        <td>
+            <h1>Rapport de production</h1>
+            <div class="sous-titre">
+                Caisse de {{ session.utilisateur.nom }}<br>
+                {% if session.estOuverte %}
+                    ouverte le {{ session.ouvertureAt|date('d/m/Y à H:i') }} — en cours
+                {% else %}
+                    du {{ session.ouvertureAt|date('d/m/Y H:i') }} au {{ session.clotureAt|date('d/m/Y H:i') }}
+                {% endif %}
+            </div>
+        </td>
+    </tr>
+</table>
+
+{% if session.estOuverte %}
+    {# Un papier se lit sans l'écran : il doit dire qu'il fige un instant. #}
+    <div class="avis">Caisse encore ouverte : ce rapport arrête les chiffres au {{ edite_le|date('d/m/Y à H:i') }}.</div>
+{% endif %}
+
+<table class="bandeau">
+    <tr>
+        {% if avec_montants %}
+            <td><span>Montant rapporté</span><strong>{{ fmt.fcfa(totaux.montant) }}</strong></td>
+        {% else %}
+            <td><span>En vitrine</span><strong>{{ fmt.unites(totaux.vitrine) }}</strong></td>
+        {% endif %}
+        <td><span>Produit</span><strong>{{ fmt.unites(totaux.produite) }}</strong></td>
+        <td><span>Vendu</span><strong>{{ fmt.unites(totaux.vendue) }}</strong></td>
+        <td><span>Reste</span><strong>{{ _self.reste(totaux.reste) }}</strong></td>
+    </tr>
+</table>
+
+{% if lignes is empty %}
+    <div class="avis">Aucun article d'atelier sur cette caisse.</div>
+{% else %}
+    <table class="detail">
+        <thead>
+            <tr>
+                <th>Article</th>
+                <th class="droite">Produit</th>
+                <th class="droite">En vitrine</th>
+                <th class="droite">Vendu</th>
+                <th class="droite">Reste</th>
+                {% if avec_montants %}<th class="droite">Montant rapporté</th>{% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% set famille_courante = null %}
+            {% for ligne in lignes %}
+                {% set famille = ligne.article.familleProduit %}
+                {% if famille and famille.id != famille_courante %}
+                    {% set famille_courante = famille.id %}
+                    <tr class="famille"><td colspan="{{ avec_montants ? 6 : 5 }}">{{ famille.nom }}</td></tr>
+                {% endif %}
+                <tr>
+                    <td>{{ ligne.article.nom }}</td>
+                    <td class="droite">{{ fmt.unites(ligne.produite) }}</td>
+                    <td class="droite">{{ fmt.unites(ligne.vitrine) }}{% if ligne.reprise > 0 %}<br><span class="repris">dont {{ fmt.unites(ligne.reprise) }} repris</span>{% endif %}</td>
+                    <td class="droite">{{ fmt.unites(ligne.vendue) }}</td>
+                    <td class="droite">{{ _self.reste(ligne.reste) }}</td>
+                    {% if avec_montants %}<td class="droite">{{ fmt.fcfa(ligne.montant) }}</td>{% endif %}
+                </tr>
+            {% endfor %}
+            <tr class="total">
+                <td>TOTAL</td>
+                <td class="droite">{{ fmt.unites(totaux.produite) }}</td>
+                <td class="droite">{{ fmt.unites(totaux.vitrine) }}</td>
+                <td class="droite">{{ fmt.unites(totaux.vendue) }}</td>
+                <td class="droite">{{ _self.reste(totaux.reste) }}</td>
+                {% if avec_montants %}<td class="droite">{{ fmt.fcfa(totaux.montant) }}</td>{% endif %}
+            </tr>
+        </tbody>
+    </table>
+
+    <p class="note">
+        En vitrine : mis en vitrine sur cette caisse, plus les restes repris de la caisse précédente.
+        Reste = en vitrine − vendu (négatif : plus vendu que mis en vitrine).
+        {% if avec_montants %}Montant rapporté : ventes validées de la caisse, articles d'atelier seulement, remises de ligne déduites.{% endif %}
+        {% if avec_montants and remises > 0 %}
+            Remises accordées sur les tickets : {{ fmt.fcfa(remises) }}, tous articles confondus — non réparties, donc non déduites ci-dessus.
+        {% endif %}
+    </p>
+{% endif %}
+
+<table class="signatures">
+    <tr>
+        <td>{{ signatures[0] }} — nom et signature</td>
+        <td class="blanc"></td>
+        <td>{{ signatures[1] }} — nom et signature</td>
+    </tr>
+</table>
+
+</body>
+</html>

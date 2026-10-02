@@ -13,6 +13,7 @@ use App\Entity\Reglement;
 use App\Entity\SessionCaisse;
 use App\Entity\Utilisateur;
 use App\Entity\Vente;
+use App\Enum\Atelier;
 use App\Enum\CategorieDepense;
 use App\Enum\ModeReglement;
 use App\Enum\ModeVente;
@@ -100,6 +101,14 @@ class AppFixtures extends Fixture
         foreach ($definitions as $cle => [$nom, $couleur]) {
             $famille = new FamilleProduit($nom);
             $famille->setCouleur($couleur)->setPosition(++$position);
+            // Fabriqués sur place : ils se déclarent en production et en vitrine.
+            // Les boissons, revendues telles quelles, n'ont pas d'atelier.
+            $famille->setAtelier(match ($cle) {
+                'pains', 'viennoiseries' => Atelier::BOULANGERIE,
+                'patisseries' => Atelier::PATISSERIE,
+                'sandwichs', 'grillades', 'accompagnements' => Atelier::FAST_FOOD,
+                default => null,
+            });
             $manager->persist($famille);
             $familles[$cle] = $famille;
         }

@@ -42,7 +42,9 @@ class TurboNavigationTest extends WebTestCase
         $connexion->executeStatement('SET FOREIGN_KEY_CHECKS = 1');
 
         $this->gerant = new Utilisateur('koffi@test.ci', 'Koffi');
-        $this->gerant->setRoles(['ROLE_GERANT'])->setMotDePasse('x');
+        // Dirigeante : inventaires, stock, pertes et catalogue sont fermés à la
+        // gérante (security.yaml). Le nom de la propriété est resté.
+        $this->gerant->setRoles(['ROLE_DIRIGEANTE'])->setMotDePasse('x');
         $this->em->persist($this->gerant);
 
         $this->caissier = new Utilisateur('fatou@test.ci', 'Fatou');

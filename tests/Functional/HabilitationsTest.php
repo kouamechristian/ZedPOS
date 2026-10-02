@@ -223,32 +223,26 @@ class HabilitationsTest extends WebTestCase
         }
     }
 
-    public function testLeChampPrixEstAbsentDuFormulairePourUnGerant(): void
+    /**
+     * Le catalogue est fermé à la gérante (security.yaml) : elle n'ouvre plus le
+     * formulaire d'article, et un prix forgé n'atteint pas le contrôleur. Le champ
+     * prix reste par ailleurs absent du formulaire sans `ARTICLE_MODIFIER_PRIX`
+     * (`ArticleType`, option `modifier_prix`) — défense en profondeur.
+     */
+    public function testLaGeranteNeModifiePlusLesArticles(): void
     {
         $this->client->loginUser($this->gerant);
-        $crawler = $this->client->request('GET', '/admin/articles/'.$this->article->getId().'/modifier');
+        $this->client->request('GET', '/admin/articles/'.$this->article->getId().'/modifier');
+        $this->assertResponseStatusCodeSame(403);
 
-        $this->assertResponseIsSuccessful('Le gérant garde la main sur les autres attributs.');
-        $this->assertCount(0, $crawler->filter('[name="article[prixVenteTtc]"]'), 'Champ prix absent du DOM.');
-        $this->assertSelectorTextContains('body', 'Seule la dirigeante peut fixer un prix de vente.');
-
-        // Et le champ n'est pas non plus injectable : la soumission l'ignore.
-        $form = $crawler->selectButton('Enregistrer')->form();
-        $this->client->request('POST', $form->getUri(), [
-            'article' => [
-                'nom' => 'Baguette',
-                'unite' => 'pièce',
-                'tauxTva' => '0',
-                'positionCaisse' => '0',
-                'actif' => '1',
-                'prixVenteTtc' => '99999', // champ forgé
-                '_token' => $form->get('article[_token]')->getValue(),
-            ],
+        $this->client->request('POST', '/admin/articles/'.$this->article->getId().'/modifier', [
+            'article' => ['nom' => 'Baguette', 'unite' => 'pièce', 'prixVenteTtc' => '99999'],
         ]);
+        $this->assertResponseStatusCodeSame(403);
 
         $this->em->clear();
         $article = $this->em->getRepository(Article::class)->find($this->article->getId());
-        $this->assertSame(15000, $article->getPrixVenteTtc(), 'Le prix forgé est ignoré.');
+        $this->assertNotSame(9999900, $article->getPrixVenteTtc(), 'Le prix forgé n\'a pas été enregistré.');
     }
 
     public function testLaDirigeanteModifieBienLePrix(): void
@@ -266,23 +260,18 @@ class HabilitationsTest extends WebTestCase
         $this->assertSame(20000, $article->getPrixVenteTtc());
     }
 
-    public function testUnArticleCreeSansPrixResteInactif(): void
+    /** La gérante ne crée plus d'article : elle ne peut donc pas en recréer un pour contourner le prix. */
+    public function testLaGeranteNeCreePlusDArticle(): void
     {
-        // Sinon un gérant contournerait la règle en recréant l'article.
         $this->client->loginUser($this->gerant);
-        $crawler = $this->client->request('GET', '/admin/articles/nouveau');
+        $this->client->request('GET', '/admin/articles/nouveau');
+        $this->assertResponseStatusCodeSame(403);
 
-        $form = $crawler->selectButton('Enregistrer')->form();
-        $form['article[nom]'] = 'Chausson';
-        $form['article[unite]'] = 'pièce';
-        $form['article[actif]']->tick();
-        $this->client->submit($form);
+        $this->client->request('POST', '/admin/articles/nouveau', ['article' => ['nom' => 'Chausson', 'unite' => 'pièce', 'actif' => '1']]);
+        $this->assertResponseStatusCodeSame(403);
 
         $this->em->clear();
-        $article = $this->em->getRepository(Article::class)->findOneBy(['nom' => 'Chausson']);
-        $this->assertNotNull($article);
-        $this->assertSame(0, $article->getPrixVenteTtc());
-        $this->assertFalse($article->isActif(), 'Un article sans prix ne doit pas pouvoir être vendu.');
+        $this->assertNull($this->em->getRepository(Article::class)->findOneBy(['nom' => 'Chausson']));
     }
 
     // --------------------------------------------------- Annulation

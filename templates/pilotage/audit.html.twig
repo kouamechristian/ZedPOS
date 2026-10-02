@@ -16,6 +16,9 @@
                         {%- if valeur is null -%}<span class="text-stone-300">null</span>
                         {%- elseif valeur is same as(true) -%}oui
                         {%- elseif valeur is same as(false) -%}non
+                        {%- elseif valeur is iterable and valeur|filter(v => v is iterable)|length > 0 -%}
+                            {#- Structure imbriquée (lignes d'un ticket modifié…) : join() échouerait sur « Array to string conversion ». -#}
+                            <code class="text-xs whitespace-pre-wrap">{{ valeur|json_encode(constant('JSON_UNESCAPED_UNICODE') b-or constant('JSON_UNESCAPED_SLASHES') b-or constant('JSON_PRETTY_PRINT')) }}</code>
                         {%- elseif valeur is iterable -%}{{ valeur|join(', ') }}
                         {%- else -%}{{ valeur }}
                         {%- endif -%}

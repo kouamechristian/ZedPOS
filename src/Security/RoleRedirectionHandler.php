@@ -17,6 +17,7 @@ use Symfony\Component\Security\Http\Authentication\AuthenticationSuccessHandlerI
  *   gérant     -> /admin
  *   dirigeante -> /pilotage
  *   comptable  -> /comptabilite
+ *   boulanger, pâtissier, vendeuse -> /atelier
  */
 class RoleRedirectionHandler implements AuthenticationSuccessHandlerInterface
 {
@@ -41,6 +42,8 @@ class RoleRedirectionHandler implements AuthenticationSuccessHandlerInterface
             \in_array(RoleUtilisateur::GERANT->value, $roles, true) => 'admin_dashboard',
             \in_array(RoleUtilisateur::COMPTABLE->value, $roles, true) => 'app_comptabilite',
             \in_array(RoleUtilisateur::CAISSIER->value, $roles, true) => 'app_caisse',
+            \in_array(RoleUtilisateur::ATELIER->value, $roles, true),
+            \in_array(RoleUtilisateur::VITRINE->value, $roles, true) => 'app_atelier',
             default => 'app_login',
         };
 

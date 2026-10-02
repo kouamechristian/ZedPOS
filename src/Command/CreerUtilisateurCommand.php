@@ -30,9 +30,9 @@ class CreerUtilisateurCommand extends Command
         $this
             ->addArgument('email', InputArgument::OPTIONAL, 'Adresse e-mail (identifiant de connexion)')
             ->addArgument('nom', InputArgument::OPTIONAL, 'Nom de l\'utilisateur')
-            ->addOption('role', 'r', InputOption::VALUE_REQUIRED, 'Rôle : DIRIGEANTE, GERANT, COMPTABLE ou CAISSIER')
-            ->addOption('mot-de-passe', 'p', InputOption::VALUE_REQUIRED, 'Mot de passe (rôles hors caissier)')
-            ->addOption('code-pin', 'c', InputOption::VALUE_REQUIRED, 'Code PIN à 4 chiffres (caissier)');
+            ->addOption('role', 'r', InputOption::VALUE_REQUIRED, 'Rôle : DIRIGEANTE, GERANT, COMPTABLE, CAISSIER, ATELIER ou VITRINE')
+            ->addOption('mot-de-passe', 'p', InputOption::VALUE_REQUIRED, 'Mot de passe (rôles sans code PIN)')
+            ->addOption('code-pin', 'c', InputOption::VALUE_REQUIRED, 'Code PIN à 4 chiffres (caissier, atelier, vitrine)');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -44,7 +44,7 @@ class CreerUtilisateurCommand extends Command
 
         $role = $this->resoudreRole($input, $io);
         if (null === $role) {
-            $io->error('Rôle invalide. Valeurs attendues : DIRIGEANTE, GERANT, COMPTABLE, CAISSIER.');
+            $io->error('Rôle invalide. Valeurs attendues : DIRIGEANTE, GERANT, COMPTABLE, CAISSIER, ATELIER, VITRINE.');
 
             return Command::INVALID;
         }

@@ -153,7 +153,7 @@ class LogoBoutiqueTest extends WebTestCase
 
     public function testUnLogoTeleverseEstRangeDansLaTableParametre(): void
     {
-        $this->client->loginUser($this->gerant);
+        $this->client->loginUser($this->dirigeante); // paramètres : dirigeante seulement
         $this->envoyerLogo($this->televersement()->getPathname());
 
         $this->assertResponseRedirects('/admin/parametres');
@@ -202,7 +202,7 @@ class LogoBoutiqueTest extends WebTestCase
         file_put_contents($chemin, 'ceci n\'est pas une image');
         $this->temporaires[] = $chemin;
 
-        $this->client->loginUser($this->gerant);
+        $this->client->loginUser($this->dirigeante); // paramètres : dirigeante seulement
         $this->envoyerLogo($chemin);
 
         // 422 : Turbo ne remplace pas la page sur un 200.
@@ -219,7 +219,7 @@ class LogoBoutiqueTest extends WebTestCase
      */
     public function testLeLogoNestPasUnChampTexte(): void
     {
-        $this->client->loginUser($this->gerant);
+        $this->client->loginUser($this->dirigeante); // paramètres : dirigeante seulement
         $crawler = $this->client->request('GET', '/admin/parametres');
 
         $this->assertCount(0, $crawler->filter('input[name="parametres_boutique[boutique_logo]"]'));
@@ -235,7 +235,7 @@ class LogoBoutiqueTest extends WebTestCase
         $nom = $this->logos()->enregistrer($this->televersement());
         $this->parametres()->definirLogo($nom);
 
-        $this->client->loginUser($this->gerant);
+        $this->client->loginUser($this->dirigeante); // paramètres : dirigeante seulement
         $crawler = $this->client->request('GET', '/admin/parametres');
         $form = $crawler->selectButton('Enregistrer')->form();
         $form['parametres_boutique[boutique_raison_sociale]'] = 'Boulangerie du Marché';
@@ -257,7 +257,7 @@ class LogoBoutiqueTest extends WebTestCase
         $ancien = $this->logos()->enregistrer($this->televersement());
         $this->parametres()->definirLogo($ancien);
 
-        $this->client->loginUser($this->gerant);
+        $this->client->loginUser($this->dirigeante); // paramètres : dirigeante seulement
         $this->envoyerLogo($this->televersement()->getPathname());
 
         $this->em->clear();
@@ -274,7 +274,7 @@ class LogoBoutiqueTest extends WebTestCase
         $nom = $this->logos()->enregistrer($this->televersement());
         $this->parametres()->definirLogo($nom);
 
-        $this->client->loginUser($this->gerant);
+        $this->client->loginUser($this->dirigeante); // paramètres : dirigeante seulement
         $crawler = $this->client->request('GET', '/admin/parametres');
 
         $form = $crawler->selectButton('Enregistrer')->form();
@@ -292,7 +292,7 @@ class LogoBoutiqueTest extends WebTestCase
     /** Sans logo, la case de retrait n'a rien à retirer : elle ne s'affiche pas. */
     public function testLaCaseDeRetraitNapparaitQueSiUnLogoExiste(): void
     {
-        $this->client->loginUser($this->gerant);
+        $this->client->loginUser($this->dirigeante); // paramètres : dirigeante seulement
 
         $crawler = $this->client->request('GET', '/admin/parametres');
         $this->assertCount(0, $crawler->filter('input[name="parametres_boutique[logo_retirer]"]'));

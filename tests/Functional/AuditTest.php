@@ -175,7 +175,8 @@ class AuditTest extends WebTestCase
 
     public function testModificationSansChangementDePrixNestPasTracee(): void
     {
-        $this->client->loginUser($this->gerant);
+        // Le catalogue est réservé à la dirigeante (security.yaml).
+        $this->client->loginUser($this->dirigeante);
 
         $crawler = $this->client->request('GET', '/admin/articles/'.$this->article->getId().'/modifier');
         $form = $crawler->selectButton('Enregistrer')->form();
@@ -285,18 +286,15 @@ class AuditTest extends WebTestCase
         $this->assertFalse($this->em->getRepository(Utilisateur::class)->find($this->caissier->getId())->isActif());
     }
 
-    /**
-     * Le gérant désactive un caissier — c'est de la gestion d'équipe — et la
-     * trace d'audit porte **son** nom, pas celui de la dirigeante.
-     */
-    public function testDesactivationParLeGerantTraceeASonNom(): void
+    /** La gestion des comptes est réservée à la dirigeante : la trace porte son nom. */
+    public function testDesactivationTraceeAuNomDeSonAuteur(): void
     {
-        $this->client->loginUser($this->gerant);
+        $this->client->loginUser($this->dirigeante);
         $this->basculer($this->caissier);
 
         $entrees = $this->entrees(ActionAudit::UTILISATEUR_DESACTIVE);
         $this->assertCount(1, $entrees);
-        $this->assertSame($this->gerant->getId(), $entrees[0]->getUtilisateur()?->getId());
+        $this->assertSame($this->dirigeante->getId(), $entrees[0]->getUtilisateur()?->getId());
     }
 
     /**

@@ -126,11 +126,14 @@ base est vide, et plus rien n'y mène ensuite.
 ### Sécurité et rôles
 
 - **Rôles** : `ROLE_DIRIGEANTE` > `ROLE_GERANT` > `ROLE_CAISSIER` (hiérarchie) ;
-  `ROLE_COMPTABLE` est autonome. Voir l'enum `App\Enum\RoleUtilisateur`.
+  `ROLE_COMPTABLE` est autonome. `ROLE_ATELIER` (boulanger, pâtissier) et
+  `ROLE_VITRINE` (vendeuse) n'ouvrent que `/atelier` — le gérant en hérite, voir
+  « Production et vitrine ». Voir l'enum `App\Enum\RoleUtilisateur`.
 - **Deux connexions** sur le même pare-feu `main` :
   - classique e-mail / mot de passe (`/login`) pour dirigeante, gérant, comptable ;
   - code PIN 4 chiffres sur pavé numérique (`/caisse/login`) pour les caissiers,
-    via `App\Security\CaisseAuthenticator`.
+    l'atelier et la vitrine (`RoleUtilisateur::utiliseCodePin()`), via
+    `App\Security\CaisseAuthenticator`.
 - `Utilisateur` porte **deux identifiants distincts** : `motDePasse` (connexion
   classique, = `getPassword()`) et `codePin` (caisse) — les deux hachés.
 - Redirection post-connexion par rôle (`App\Security\RoleRedirectionHandler`) :
@@ -269,18 +272,30 @@ contrôleurs et gabarits testent une **permission**, jamais un rôle.
 | Voir toutes les ventes       | non      | oui    | oui        | oui (L)   |
 | Voir **ses** ventes          | oui      | oui    | oui        | oui (L)   |
 | Modifier un prix de vente    | non      | **non**| **oui**    | non       |
-| Modifier un article          | non      | oui    | oui        | non       |
+| Modifier un article          | non      | **non**| oui        | non       |
 | Annuler une vente encaissée  | **non**  | **oui**| oui        | non       |
 | Modifier son dernier ticket  | **1 fois** | 1 fois | 1 fois   | non       |
-| Exporter la comptabilité     | non      | oui    | oui        | oui (L)   |
-| Gérer les comptes            | non      | oui    | oui        | non       |
+| Exporter la comptabilité     | non      | **non**| oui        | oui (L)   |
+| Gérer les comptes            | non      | **non**| oui        | non       |
 | Agir sur un compte dirigeante| non      | **non**| oui        | non       |
 | Attribuer le rôle dirigeante | non      | **non**| oui        | non       |
 | Gérer stands, dotations, points | non   | oui    | oui        | non       |
 | Fixer la rémunération d'un stand | non  | **non**| **oui**    | non       |
 | Fixer un prix de cession     | non      | **non**| **oui**    | non       |
+| Déclarer production / vitrine | non     | oui    | oui        | non       |
 
 (L) = lecture seule. Le comptable ne reçoit **aucune** permission d'écriture.
+
+> **Écrans réservés à la dirigeante.** Catalogue et stock (articles, familles,
+> stock, fournisseurs, inventaires, production, pertes) et Administration
+> (utilisateurs, paramètres, comptabilité) sont fermés à la gérante **par
+> `access_control`** (`security.yaml`, règle placée avant `^/admin`) et retirés de
+> son menu — décision de l'exploitante. Les voters n'ont pas changé : ils accordent
+> encore ces permissions au gérant, mais il n'atteint plus les écrans où elles
+> s'exercent. Revenir en arrière = retirer la règle **et** les `role:
+> 'ROLE_DIRIGEANTE'` du menu (`admin/base.html.twig`).
+`ROLE_ATELIER` et `ROLE_VITRINE` n'ont que la déclaration de leur geste
+(`ProductionVoter`) — voir « Production et vitrine ».
 
 - **`ArticleVoter`** — `ARTICLE_VOIR_COUT` (jamais un caissier),
   `ARTICLE_MODIFIER_PRIX` (**dirigeante seule**), `ARTICLE_MODIFIER`. Le sujet peut
@@ -546,6 +561,15 @@ Règles qui ne se voient pas à l'œil :
 - **Barre latérale repliée : cookie `zp_barre_repliee`, rendu côté serveur**
   (`data-replie`). En localStorage, elle se déplierait puis se replierait à chaque
   navigation, Turbo remplaçant le `<body>` avant que le contrôleur se connecte.
+- **Menu de la gérante** : les groupes **« Catalogue et stock »** (articles,
+  stock, inventaire, production, pertes) et **« Administration »** (comptabilité,
+  utilisateurs, paramètres) sont réservés à la dirigeante — `role:
+  'ROLE_DIRIGEANTE'` sur chaque entrée de `groupes`, un groupe vide disparaît avec
+  son titre. Décision de l'exploitante. **L'accès est fermé aussi** : `access_control`
+  renvoie 403 à la gérante sur ces URL, et les liens qui y mèneraient depuis ses
+  écrans (« Nouvel article » du tableau de bord, « Voir le stock » du bandeau
+  d'alerte) ne s'affichent plus que pour la dirigeante.
+  `InterfaceGestionTest::testLaPaletteNeProposeQueLesEcransAccessibles` le fige.
 - **Palette ⌘K / Ctrl+K** (`palette_controller.js`) : liste rendue par le serveur
   depuis **la même variable `groupes`** que la barre latérale — ce qu'on ne peut
   pas ouvrir n'y figure pas. Elle ne liste que des **écrans**, jamais des actions :
@@ -749,6 +773,19 @@ les noms sont condensés) et interdit la mise en cache de `sw.js`.
 
 ### Back-office gérant (`/admin`)
 
+- **Tableau de bord `/admin` : deux lectures** (`DashboardController::index()`).
+  La dirigeante voit la caisse ouverte (à défaut la dernière clôturée), le
+  **chiffre du mois en cours** (du 1er à 00:00 au 1er du mois suivant, exclu ;
+  panier moyen et meilleures ventes du mois) et le **chiffre d'affaires global** :
+  toutes les ventes validées depuis la mise en service, avec la date de la
+  première (« depuis le … »). Ventes de caisse seulement — les stands n'y sont
+  pas. Mois écrit en français dans le contrôleur : pas d'extension intl ici.
+  **La gérante ne voit que la caisse ouverte** (décision de l'exploitante) :
+  chiffre, tickets et panier moyen, meilleures ventes **de cette caisse** — aucun
+  chiffre sur 30 jours n'est calculé ni envoyé pour elle, et sans caisse ouverte
+  la dernière clôturée ne lui est pas montrée. Ses raccourcis ne mènent qu'à des
+  écrans qui lui sont ouverts (fiche de production, clôtures, rapport de journée,
+  dotations). Figé par `ProductionVitrineTest::testLeTableauDeBordDeLaGeranteNeMontreQueLaCaisseOuverte`.
 - Réservé à `ROLE_GERANT` (donc aussi la dirigeante par hiérarchie). Layout Twig +
   Tailwind avec navigation latérale, contrôleurs sous `src/Controller/Admin/`.
 - CRUD : Familles, Articles (filtre famille + recherche + activation), Matières
@@ -1537,20 +1574,22 @@ comptable OHADA applicable en Côte d'Ivoire), pour transmission au cabinet.
 **Lecture seule** : aucune route d'écriture, et il ne doit jamais en être ajoutée
 — la comptabilité lit ce que la caisse a produit, elle ne le corrige pas.
 
-Accès : `ROLE_COMPTABLE`, `ROLE_GERANT` et `ROLE_DIRIGEANTE` (qui hérite du gérant)
-— permission `Permission::EXPORTER_COMPTABILITE` (`DonneesGlobalesVoter`), écran
-**et** téléchargements. Le caissier reste exclu.
+Accès : `ROLE_COMPTABLE` et `ROLE_DIRIGEANTE` (`access_control`), permission
+`Permission::EXPORTER_COMPTABILITE` (`DonneesGlobalesVoter`), écran **et**
+téléchargements. Le caissier est exclu, **et la gérante aussi** depuis que le menu
+« Administration » lui a été retiré (décision de l'exploitante).
 
-Le gérant l'atteint par l'entrée **Comptabilité** de la barre latérale du
-back-office ; l'en-tête de `/comptabilite` lui rend le chemin inverse
+La dirigeante l'atteint par l'entrée **Comptabilité** de la barre latérale du
+back-office ; le gérant n'a plus ni l'entrée ni l'accès. L'en-tête de `/comptabilite` lui rend le chemin inverse
 (« Back-office »), affiché sur `is_granted('ROLE_GERANT')` — on y reproduit le
 pare-feu `^/admin`, pas une décision métier, et le comptable ne voit donc pas un
 lien qui ne lui rendrait qu'un 403.
 
 > Le gérant en a longtemps été **exclu** : un export sort de l'application
 > l'intégralité du chiffre d'affaires, des charges et des écarts de caisse, et il
-> lisait les chiffres à l'écran sans emporter les comptes. **Restriction levée** —
-> ne pas la rétablir sans décision explicite.
+> lisait les chiffres à l'écran sans emporter les comptes. La restriction a été
+> levée, puis **rétablie** (2 octobre 2026, décision de l'exploitante) : la
+> gérante n'entre plus dans `/comptabilite`.
 
 **Trois journaux.**
 
@@ -1652,8 +1691,10 @@ automatique le 1er du mois, pour le mois écoulé :
   `DOTATION_VALIDEE`, `DOTATION_ANNULEE` (surlignée) — voir « Revendeurs » —,
   `ARRETE_VALIDE`, `ARRETE_ANNULE` et `ECART_POINT` (surlignées) — voir « Point des
   stands » —, `DETTE_CREEE`, `DETTE_REMBOURSEE` (avec la répartition et le solde
-  avant / après) et `DETTE_ANNULEE` (surlignée) — voir « Dettes des vendeurs ».
-  `PRIX_MODIFIE` couvre aussi le **prix de cession** (clé `prixCession`).
+  avant / après) et `DETTE_ANNULEE` (surlignée) — voir « Dettes des vendeurs »,
+  `PRODUCTION_DECLAREE`, `PRODUCTION_ANNULEE` (surlignée) ; `POINT_VITRINE_VALIDE`,
+  `POINT_VITRINE_ANNULE` et `ECART_VITRINE` ne sont plus écrites (point de vitrine
+  retiré) mais restent pour l'historique — voir « Production et vitrine ». `PRIX_MODIFIE` couvre aussi le **prix de cession** (clé `prixCession`).
   Une clôture avec écart produit **deux** entrées (clôture + écart), pour filtrer
   les écarts seuls.
   `UTILISATEUR_MODIFIE` est **sensible** (surligné) : un rôle changé ou un
@@ -2044,6 +2085,160 @@ arrondie à l'unité, un produit absent l'un de ces jours y comptant pour zéro
 l'écran ; inerte sans historique.
 
 Couverture : `RepartitionVentesTest`, `FiltreRapportTest`, `RapportStandsTest`.
+
+### Production et vitrine (`/atelier`)
+
+**Tout est lié à la caisse ouverte.** À son ouverture, la caisse crée sa **fiche
+de production** : tous les articles d'atelier, produit = 0, en vitrine = 0 —
+sauf **ce qui restait en vitrine à la clôture de la caisse précédente, repris
+en vitrine**. Le boulanger et le pâtissier y ajoutent ce qui sort du four, la
+gérante (ou la vendeuse) ce qu'elle met en vitrine, et la caisse y **décompte ses
+ventes** sans jamais être bloquée. Après le Z, la caisse suivante ouvre sa propre
+fiche en **reprenant les restes**. La fiche se lit sur `/atelier` : produit, en vitrine, vendu,
+reste — « 40 croissants mis en vitrine, 34 vendus, il en reste 6 ».
+
+**Le module ne crée aucune vente et ne touche pas au stock.** L'argent entre par
+la caisse et par elle seule : Z, pilotage, comptabilité et déstockage sont
+inchangés. Déclarations et point sont des **documents de contrôle**. Les matières
+restent consommées **à la vente** par la fiche technique — les consommer à la
+production serait plus juste (un croissant jeté a mangé du beurre), mais c'est
+un changement de fond sur `DestockageVenteListener`, à décider à part.
+
+**Comptes.** Deux rôles au code PIN, sur le pavé de `/caisse/login` :
+`ROLE_ATELIER` (boulanger, pâtissier) et `ROLE_VITRINE` (vendeuse). Ils n'ouvrent
+que `/atelier` (et `/caisse/code-pin`, pour changer le leur) et **n'y lisent que
+des quantités** — ni prix, ni écart (`ProductionVitrineTest::testLAtelierNAfficheAucunPrix`).
+Le gérant en hérite (`role_hierarchy`) : il déclare à leur place quand personne
+n'a sa tablette, et peut les attribuer (`attribuablesPar()`).
+`CaisseAuthenticator` accepte tout rôle `utiliseCodePin()`, plus seulement le
+caissier ; `secret_role_controller.js` lit la liste `data-secret-role-roles-pin-value`.
+
+**Quels articles.** Ceux d'une famille rattachée à un **atelier**
+(`FamilleProduit::$atelier`, `BOULANGERIE` | `PATISSERIE` | `FAST_FOOD` | `AUTRE`,
+back-office → Familles). Aucune famille ne l'est d'office sur une base
+existante ; les fixtures rattachent Pains et Viennoiseries à la boulangerie,
+Pâtisseries à la pâtisserie, Sandwichs, Grillades et Accompagnements au fast-food.
+Les boissons, revendues telles quelles, n'ont pas d'atelier. Chaque atelier a son
+écran (`/atelier/production/{slug}` : `boulangerie`, `patisserie`, `fast-food`,
+`autre`) ; le bouton n'apparaît que si l'atelier a des articles actifs.
+« Fournée » pour le four, « Production » pour le reste (`Atelier::titreDeclaration()`).
+
+**Fiche de production** — `FicheProduction` (+ `LigneFicheProduction` : article,
+`qteProduite`, `qteVitrine`, `qteReprise`, millièmes), **une par caisse** (index unique sur
+`session_caisse_id`). Créée par `SessionCaisseService::ouvrir()` →
+`ProductionService::ouvrirFiche()`, dans le même flush que la caisse.
+
+```
+en vitrine = repris + mis en vitrine   (« dont N repris » à l'écran et au PDF)
+reste      = en vitrine − vendu        (peut être négatif)
+au fournil = produit − mis en vitrine  (repère ; la reprise n'a pas été produite)
+```
+
+- **Reprise des restes** (`ouvrirFiche()`, `LigneFicheProduction::reprendre()`) :
+  à l'ouverture, pour chaque article de la **dernière caisse clôturée**
+  (`SessionCaisseRepository::derniereCloturee()`) dont le reste est **positif**,
+  ce reste devient la reprise de la nouvelle fiche — les croissants de la veille
+  sont toujours sur le présentoir. Produit reste à zéro. Un reste **négatif**
+  (vendu sans déclaration) ne se reprend pas : rien n'est sur le présentoir.
+  La reprise est **figée à l'ouverture** et se propage d'une caisse à l'autre.
+  Migration `Version20260930215048` (`qte_reprise`, 0 pour les fiches existantes).
+
+- **Le vendu n'est pas stocké** : `FicheProductionRepository::ventesParArticle()`
+  le lit dans les ventes **validées** de la caisse, à chaque affichage. Une vente
+  annulée ou modifiée se corrige donc d'elle-même, et **la caisse ne consulte
+  jamais la fiche** — rien n'y bloque une vente. Un article vendu avant d'être
+  mis en vitrine donne un reste **négatif**, affiché en rouge sur `/atelier`.
+- **Lecture : `ProductionService::lireFiche()`**, jamais les lignes brutes. Elle
+  ajoute les articles d'atelier vendus sans ligne et, caisse ouverte, ceux créés
+  depuis l'ouverture — à zéro, sans rien écrire. Une caisse ouverte avant
+  l'existence des fiches se lit donc aussi ; la ligne manquante est créée à la
+  première déclaration (`FicheProduction::ligneDe()`).
+- Migration `Version20260930184705` : crée les fiches des caisses ouvertes ou
+  déjà déclarées, lignes additionnées depuis les déclarations validées.
+
+**Déclarations** — `SaisieProduction` (+ `LigneSaisieProduction`), type
+`PRODUCTION` (numéro `PRD-AAAAMMJJ-XXX`, atelier renseigné) ou `VITRINE`
+(`VIT-…`). Service `App\Service\ProductionService`, écran `AtelierController`.
+Elles sont le **journal** de la fiche : chaque déclaration **s'ajoute** à ses
+lignes (20 puis 15 = 35), son annulation les en retire, dans la même transaction.
+
+- **Rattachée à la caisse ouverte**, sans choix : il n'y en a qu'une à la fois.
+  Sans caisse ouverte, refusée — après le Z, plus rien ne s'y déclare.
+- **Naît validée**, pas de brouillon : on déclare ce qui vient de sortir du four.
+  Une erreur **s'annule** (motif obligatoire, audit surligné) et se ressaisit.
+  Plusieurs déclarations par caisse : une par fournée, une par réassort.
+- **La vitrine n'est pas bornée par la production** : un réassort peut venir
+  d'ailleurs que du fournil du jour.
+  L'écran de vitrine propose tous les articles d'atelier, avec « au fournil » en
+  repère et « Tout ce qui est au fournil » d'un appui.
+- **Annuler** (`PRODUCTION_ANNULER`, `ProductionVoter`) : l'auteur, tant que sa
+  caisse est ouverte ; la gérante, y compris après le Z pour corriger une fournée
+  mal saisie — **tant qu'aucune caisse n'a été ouverte ensuite**
+  (`SessionCaisseRepository::aUneSuivante()`, voter **et** service) : la suivante
+  a repris les restes, changer la fiche après coup ferait mentir sa reprise.
+  L'annulation est tracée (audit surligné).
+- Écritures **sous verrou de la ligne `session_caisse`** (`FOR UPDATE`), la caisse
+  relue après le verrou : deux déclarations simultanées ne se marchent pas dessus
+  sur la fiche, et aucune ne se glisse dans une caisse en train de passer au Z.
+- Même écran que la dotation (vignettes + pavé, `declaration_controller.js`,
+  champs cachés `quantites[id]`, 422 avec la saisie en cas d'erreur). Chaque
+  vignette rappelle où en est la fiche (« Déjà produit », « En vitrine »).
+
+**Rapport de production au pilotage** (`/pilotage/production`, onglet
+« Production » ; `Pilotage\ProductionController`). La dirigeante y lit la fiche
+d'une caisse — **article, produit, en vitrine, vendu, reste, montant rapporté** —
+et la **télécharge en PDF** (`/pilotage/production.pdf`, Dompdf via
+`GenerateurPdf`, `production_AAAA-MM-JJ_Caissière.pdf`).
+
+- **Lié à la caisse** comme le tableau de bord : la caisse ouverte d'office, à
+  défaut la dernière clôturée, ou celle choisie (`?session=`,
+  `ChiffreCaisseService::courant()`). Le lien PDF porte la caisse affichée.
+- **Un seul objet, `RapportProduction`** (`ProductionService::rapport()` : lignes de
+  `lireFiche()`, totaux, remises de ticket, nom du fichier) pour l'écran du
+  pilotage, celui de `/atelier` et le PDF commun `production/rapport_pdf.html.twig`.
+  Sur une caisse ouverte, le PDF le dit : il fige les chiffres à l'heure d'édition.
+- **Aussi sur `/atelier`** : la « Fiche de production de la caisse » est le même
+  tableau, avec total et bouton « Télécharger en PDF » (`/atelier/rapport.pdf`,
+  caisse ouverte seulement — sinon retour à l'accueil avec un message). **La colonne
+  « Montant rapporté » n'y apparaît qu'avec `VOIR_CA_GLOBAL`** (la gérante) : le
+  boulanger et la vendeuse lisent et impriment des quantités seulement
+  (`avec_montants` du gabarit PDF). Signatures « L'atelier / La gérante » ici,
+  « La gérante / La dirigeante » au pilotage.
+- **Montant rapporté** = somme des lignes des ventes **validées** de l'article
+  (`FicheProductionRepository::ventesParArticle()`, même arrondi que
+  `LigneVente::getMontantTtc()`, remise de ligne déduite). Les **remises de
+  ticket** ne se rattachent à aucun article : elles ne sont pas déduites, et leur
+  montant est annoncé sous le tableau quand il y en a. Boissons et autres articles
+  sans atelier n'y figurent pas.
+- Téléphone : cartes empilées ; tableau à partir de `md` (`#rapport-production`).
+  PDF mis en page en tableaux (Dompdf ignore flex et grid), familles en
+  intertitres, signatures gérante / dirigeante.
+- Réservé à la dirigeante (`VOIR_CA_GLOBAL` sous `ROLE_DIRIGEANTE`) : gérant,
+  atelier et caissier en sont refusés (403), écran **et** PDF.
+
+**Plus de point de vitrine.** Il y a eu un écran `/admin/vitrine` : après le Z, la
+gérante saisissait le resté et le perdu, et l'écran chiffrait manquant et excédent
+en FCFA, avec fiche A4, seuil de justification et ligne « Écart de vitrine » au
+pilotage. **Il a été retiré à la demande de l'exploitante** — la fiche de
+production de la caisse (produit, vitrine, vendu, reste) suffit. Migration
+`Version20260930192903` : tables `point_vitrine` / `ligne_point_vitrine` et
+paramètre `vitrine.seuil_ecart` supprimés. Les actions `POINT_VITRINE_VALIDE`,
+`POINT_VITRINE_ANNULE` et `ECART_VITRINE` **restent dans `ActionAudit`** pour les
+entrées déjà au journal (inaltérable) ; plus rien ne les écrit. Ne pas réintroduire
+de rapprochement chiffré sans décision explicite.
+
+**Pas encore fait** : pas de rapport « produit / vendu » par article sur une
+période.
+
+Couverture : `ProductionVitrineTest` (accès par rôle, connexion au pavé, aucune
+donnée de prix à l'atelier, caisse ouverte exigée, fiche créée à
+l'ouverture, déclarations qui s'additionnent et vente qui décompte sans être
+bloquée, vitrine non bornée par la production, annulation retirée de la fiche même
+après le Z mais plus une fois la suivante ouverte, reprise des restes à la caisse
+suivante (positifs seulement, propagée), vente annulée et article non
+déclaré, `/admin/vitrine` disparu, rapport de production du pilotage — écran,
+PDF, caisse choisie, réservé à la dirigeante ; à l'atelier, montants pour la
+gérante seulement et PDF sans montant pour l'atelier —, ateliers fast-food et autres).
 
 ### Stock par emplacement (`StockManager`)
 
@@ -2590,6 +2785,7 @@ compare l'implémentation à cette description et signale les écarts.
 | Caisse hors ligne (Service Worker, IndexedDB, file de synchronisation) | ✅ | `public/sw.js`, `assets/offline/` |
 | Espace de pilotage responsive, ventes par caissière, courbe 30 jours | ✅ | `/pilotage` |
 | Téléchargement des rapports du jour (texte, CSV) | ✅ | `/pilotage/rapport.txt`, `.csv` |
+| Rapport de production par caisse au pilotage (produit, vitrine, vendu, reste, montant), en PDF | ✅ | `/pilotage/production`, `.pdf` |
 | Journal d'audit inaltérable + consultation | ✅ | `/pilotage/audit` |
 | Gestion des comptes (création, modification, activation) | ✅ | `/admin/utilisateurs` |
 | Changement de son propre mot de passe / code PIN | ✅ | `/compte/mot-de-passe`, `/caisse/code-pin` |
@@ -2608,6 +2804,7 @@ compare l'implémentation à cette description et signale les écarts.
 | Point des stands : arrêté de période, retours, écart, fiche imprimable | ✅ | `/admin/points` |
 | Dettes des vendeurs : manquant imputé ou passé en perte, avances, remboursements, alerte à la dotation | ✅ | `/admin/vendeurs/{id}` |
 | Rapports des stands (par stand, par vendeur, caisse et stands, top produits, CSV) et suggestion de dotation | ✅ | `/admin/rapports-stands` |
+| Production et vitrine : fiche de production par caisse (produit, vitrine, vendu, reste), déclarations de l'atelier et de la vitrine | ✅ | `/atelier` |
 
 Tests : **657 tests PHPUnit** (`php bin/phpunit`) et **57 tests Node**
 (`node --test "tests/js/*.test.js"`).

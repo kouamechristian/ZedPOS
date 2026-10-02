@@ -3,6 +3,7 @@
 namespace App\Entity;
 
 use App\Entity\Trait\HorodatageCreation;
+use App\Enum\Atelier;
 use App\Repository\FamilleProduitRepository;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
@@ -43,6 +44,14 @@ class FamilleProduit
      */
     #[ORM\Column(length: 10, nullable: true)]
     private ?string $compteVente = null;
+
+    /**
+     * Atelier qui fabrique les articles de la famille. Seuls ces articles se
+     * déclarent en production et en vitrine, et entrent au point de vitrine.
+     * Null : famille revendue telle quelle (boissons) ou préparée à la demande.
+     */
+    #[ORM\Column(length: 20, nullable: true, enumType: Atelier::class)]
+    private ?Atelier $atelier = null;
 
     /**
      * EXTRA_LAZY : la liste des familles n'affiche que le *nombre* d'articles.
@@ -124,6 +133,18 @@ class FamilleProduit
     {
         $compteVente = null !== $compteVente ? trim($compteVente) : null;
         $this->compteVente = '' !== $compteVente ? $compteVente : null;
+
+        return $this;
+    }
+
+    public function getAtelier(): ?Atelier
+    {
+        return $this->atelier;
+    }
+
+    public function setAtelier(?Atelier $atelier): self
+    {
+        $this->atelier = $atelier;
 
         return $this;
     }

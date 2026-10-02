@@ -60,6 +60,17 @@ enum ActionAudit: string
     case DETTE_REMBOURSEE = 'DETTE_REMBOURSEE';
     case DETTE_ANNULEE = 'DETTE_ANNULEE';
 
+    // Production et vitrine : une déclaration de l'atelier ou de la vitrine, et
+    // son annulation.
+    case PRODUCTION_DECLAREE = 'PRODUCTION_DECLAREE';
+    case PRODUCTION_ANNULEE = 'PRODUCTION_ANNULEE';
+    // Historique seulement : le point de vitrine a été retiré, plus rien n'écrit
+    // ces trois actions. Elles restent pour que les entrées déjà au journal
+    // (inaltérable) gardent leur libellé et restent filtrables.
+    case POINT_VITRINE_VALIDE = 'POINT_VITRINE_VALIDE';
+    case POINT_VITRINE_ANNULE = 'POINT_VITRINE_ANNULE';
+    case ECART_VITRINE = 'ECART_VITRINE';
+
     public function libelle(): string
     {
         return match ($this) {
@@ -88,6 +99,11 @@ enum ActionAudit: string
             self::DETTE_CREEE => 'Dette de vendeur ouverte',
             self::DETTE_REMBOURSEE => 'Remboursement de dette de vendeur',
             self::DETTE_ANNULEE => 'Annulation de dette de vendeur',
+            self::PRODUCTION_DECLAREE => 'Déclaration de production ou de vitrine',
+            self::PRODUCTION_ANNULEE => 'Annulation d\'une déclaration de production',
+            self::POINT_VITRINE_VALIDE => 'Validation d\'un point de vitrine',
+            self::POINT_VITRINE_ANNULE => 'Annulation d\'un point de vitrine',
+            self::ECART_VITRINE => 'Écart de vitrine',
         };
     }
 
@@ -119,6 +135,12 @@ enum ActionAudit: string
             self::ECART_POINT,
             // Effacer ce qu'un vendeur doit, même par le biais d'un point annulé.
             self::DETTE_ANNULEE,
+            // Une fournée ou une mise en vitrine effacée après coup change ce que
+            // le point attend : c'est là qu'un écart se dissimulerait.
+            self::PRODUCTION_ANNULEE,
+            self::POINT_VITRINE_ANNULE,
+            // Marchandise sortie de la vitrine sans passer par la caisse, ou l'inverse.
+            self::ECART_VITRINE,
         ], true);
     }
 
@@ -136,6 +158,8 @@ enum ActionAudit: string
             self::DOTATION_VALIDEE, self::DOTATION_ANNULEE,
             self::ARRETE_VALIDE, self::ARRETE_ANNULE, self::ECART_POINT,
             self::DETTE_CREEE, self::DETTE_REMBOURSEE, self::DETTE_ANNULEE => 'Stands et revendeurs',
+            self::PRODUCTION_DECLAREE, self::PRODUCTION_ANNULEE,
+            self::POINT_VITRINE_VALIDE, self::POINT_VITRINE_ANNULE, self::ECART_VITRINE => 'Production et vitrine',
         };
     }
 }

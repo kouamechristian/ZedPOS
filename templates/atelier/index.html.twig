@@ -1,0 +1,179 @@
+{% extends 'atelier/base.html.twig' %}
+{% import 'admin/_icones.html.twig' as ui %}
+{% import 'admin/_macros.html.twig' as fmt %}
+
+{# Accueil de l'atelier : la caisse ouverte, les boutons de déclaration que le
+   compte a le droit d'ouvrir, et ce qui a déjà été déclaré aujourd'hui.
+
+   Quantités seulement : ni prix, ni écart. #}
+
+{% block page_title %}Atelier et vitrine{% endblock %}
+
+{% block atelier_content %}
+<div class="entete-page apparition">
+    <div>
+        <div class="sur-titre">Atelier et vitrine</div>
+        <h1>Déclarer la production</h1>
+        {% if session %}
+            <p class="mt-1.5 text-sm text-stone-500">
+                Caisse de <strong class="text-stone-800">{{ session.utilisateur.nom }}</strong>,
+                ouverte le {{ session.ouvertureAt|date('d/m/Y à H:i') }}. Tout ce que vous déclarez s'y rattache.
+            </p>
+        {% endif %}
+    </div>
+</div>
+
+{% if not session %}
+    <div class="alerte alerte-ambre apparition" role="alert">
+        {{ ui.icone('info') }}
+        <p>
+            <strong>Aucune caisse n'est ouverte.</strong>
+            La production et la mise en vitrine se déclarent pendant une journée de caisse :
+            attendez que la caissière ait ouvert la sienne.
+        </p>
+    </div>
+{% else %}
+    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {% if is_granted('PRODUCTION_DECLARER') %}
+            {% for atelier in ateliers %}
+                <a href="{{ path('app_atelier_production', {atelier: atelier.slug}) }}"
+                   class="carte carte-interactive apparition flex min-h-28 items-center gap-4 p-5" style="--i: {{ loop.index }}">
+                    <span class="kpi-icone">{{ ui.icone('production') }}</span>
+                    <span>
+                        <span class="block text-lg font-bold text-stone-900">{{ atelier.titreDeclaration }} · {{ atelier.libelle }}</span>
+                        <span class="block text-sm text-stone-500">{{ atelier.aideDeclaration }}</span>
+                    </span>
+                </a>
+            {% else %}
+                <div class="alerte alerte-ambre">
+                    {{ ui.icone('info') }}
+                    <p>Aucune famille n'est rattachée à un atelier. La gérante le règle dans Articles → Familles.</p>
+                </div>
+            {% endfor %}
+        {% endif %}
+        {% if is_granted('VITRINE_DECLARER') %}
+            <a href="{{ path('app_atelier_vitrine') }}"
+               class="carte carte-interactive apparition flex min-h-28 items-center gap-4 p-5" style="--i: 3">
+                <span class="kpi-icone">{{ ui.icone('panier') }}</span>
+                <span>
+                    <span class="block text-lg font-bold text-stone-900">Mise en vitrine</span>
+                    <span class="block text-sm text-stone-500">Ce qui part du fournil vers la vitrine</span>
+                </span>
+            </a>
+        {% endif %}
+    </div>
+
+    {# La fiche de la caisse — le même rapport que l'onglet Production du pilotage :
+       née à l'ouverture, produit et vitrine à zéro, les restes de la caisse
+       précédente repris en vitrine (« dont N repris »). Produit et vitrine
+       s'additionnent à chaque déclaration ; le vendu se lit dans les ventes.
+
+       Le montant rapporté n'apparaît qu'avec `VOIR_CA_GLOBAL` (la gérante) :
+       le boulanger et la vendeuse ne lisent que des quantités, ici comme dans
+       le PDF. Lien `data-turbo="false"` : Turbo attend du HTML. #}
+    {% set avec_montants = is_granted('VOIR_CA_GLOBAL') %}
+    {% set colonnes = avec_montants ? 6 : 5 %}
+    <section class="tableau-conteneur apparition mt-6" style="--i: 4" aria-labelledby="titre-fiche">
+        <div class="carte-entete flex flex-wrap items-center justify-between gap-3">
+            <h2 id="titre-fiche" class="carte-titre">Fiche de production de la caisse</h2>
+            <a href="{{ path('app_atelier_rapport_pdf') }}" data-turbo="false" class="btn btn-secondaire btn-sm">
+                {{ ui.icone('telecharger') }} Télécharger en PDF
+            </a>
+        </div>
+        <div class="defilement-x">
+        <table class="tableau" id="fiche-production">
+            <thead>
+                <tr>
+                    <th>Article</th>
+                    <th class="num">Produit</th>
+                    <th class="num">En vitrine</th>
+                    <th class="num">Vendu</th>
+                    <th class="num" title="En vitrine − vendu">Reste</th>
+                    {% if avec_montants %}<th class="num">Montant rapporté</th>{% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% set famille_courante = null %}
+                {% for ligne in rapport.lignes %}
+                    {% set famille = ligne.article.familleProduit %}
+                    {% if famille and famille.id != famille_courante %}
+                        {% set famille_courante = famille.id %}
+                        <tr><th colspan="{{ colonnes }}" class="bg-stone-50 text-xs uppercase tracking-wide text-stone-500">{{ famille.nom }}</th></tr>
+                    {% endif %}
+                    <tr>
+                        <td class="cellule-principale">{{ ligne.article.nom }}</td>
+                        <td class="num tabular-nums">{{ fmt.unites(ligne.produite) }}</td>
+                        <td class="num tabular-nums">{{ fmt.unites(ligne.vitrine) }}{% if ligne.reprise > 0 %}<div class="text-xs font-normal text-stone-500">dont {{ fmt.unites(ligne.reprise) }} repris</div>{% endif %}</td>
+                        <td class="num tabular-nums">{{ fmt.unites(ligne.vendue) }}</td>
+                        <td class="num tabular-nums font-semibold {{ ligne.reste < 0 ? 'text-red-700' : (ligne.reste == 0 ? 'text-stone-500' : 'text-stone-900') }}">
+                            {{ ligne.reste < 0 ? '−' ~ fmt.unites(-ligne.reste) : fmt.unites(ligne.reste) }}
+                        </td>
+                        {% if avec_montants %}<td class="num tabular-nums font-semibold">{{ fmt.fcfa(ligne.montant) }}</td>{% endif %}
+                    </tr>
+                {% else %}
+                    <tr><td colspan="{{ colonnes }}" class="cellule-vide">Aucun article d'atelier : la gérante rattache les familles dans Articles → Familles.</td></tr>
+                {% endfor %}
+            </tbody>
+            {% if rapport.lignes is not empty %}
+                {% set totaux = rapport.totaux %}
+                <tfoot>
+                    <tr class="font-bold">
+                        <td>Total</td>
+                        <td class="num tabular-nums">{{ fmt.unites(totaux.produite) }}</td>
+                        <td class="num tabular-nums">{{ fmt.unites(totaux.vitrine) }}</td>
+                        <td class="num tabular-nums">{{ fmt.unites(totaux.vendue) }}</td>
+                        <td class="num tabular-nums {{ totaux.reste < 0 ? 'text-red-700' }}">{{ totaux.reste < 0 ? '−' ~ fmt.unites(-totaux.reste) : fmt.unites(totaux.reste) }}</td>
+                        {% if avec_montants %}<td class="num tabular-nums">{{ fmt.fcfa(totaux.montant) }}</td>{% endif %}
+                    </tr>
+                </tfoot>
+            {% endif %}
+        </table>
+        </div>
+        <p class="aide px-4 py-2">
+            Reste = en vitrine − vendu. En rouge : vendu plus qu'il n'a été mis en vitrine — la vente n'est jamais bloquée, pensez à déclarer.
+            {% if avec_montants %}
+                Montant rapporté : ventes validées, remises de ligne déduites{% if rapport.remises > 0 %} ; les remises de ticket ({{ fmt.fcfa(rapport.remises) }}, tous articles confondus) n'en sont pas déduites{% endif %}.
+            {% endif %}
+        </p>
+    </section>
+
+    <section class="carte apparition mt-6" style="--i: 5">
+        <div class="carte-entete">
+            <h2 class="carte-titre">Déclarations de cette caisse</h2>
+        </div>
+        {% for saisie in saisies %}
+            <article class="carte-corps border-t border-stone-100 {{ saisie.estAnnulee ? 'opacity-60' }}">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div class="min-w-0">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="font-semibold text-stone-900">{{ saisie.type.libelle }}{% if saisie.atelier %} · {{ saisie.atelier.libelle }}{% endif %}</span>
+                            <span class="text-xs text-stone-500">{{ saisie.numero }} · {{ saisie.createdAt|date('H:i') }} · {{ saisie.createdBy.nom }}</span>
+                            {% if saisie.estAnnulee %}<span class="badge badge-rouge">Annulée</span>{% endif %}
+                        </div>
+                        <p class="mt-1 text-sm text-stone-700">
+                            {%- for ligne in saisie.lignes -%}
+                                {{- not loop.first ? ', ' -}}{{ fmt.unites(ligne.quantite) }} × {{ ligne.article.nom }}
+                            {%- endfor -%}
+                        </p>
+                        {% if saisie.estAnnulee %}
+                            <p class="mt-1 text-xs text-stone-500">Motif : {{ saisie.motifAnnulation }}</p>
+                        {% endif %}
+                    </div>
+                    {% if is_granted('PRODUCTION_ANNULER', saisie) %}
+                        <details class="shrink-0">
+                            <summary class="btn btn-sm btn-danger cursor-pointer">Annuler</summary>
+                            <form method="post" action="{{ path('app_atelier_annuler', {id: saisie.id}) }}" class="mt-2 flex gap-2">
+                                <input type="hidden" name="_token" value="{{ csrf_token('annuler_declaration_' ~ saisie.id) }}">
+                                <input type="text" name="motif" required maxlength="255" placeholder="Motif (faute de frappe…)" class="champ h-9">
+                                <button class="btn btn-sm btn-danger-plein">Confirmer</button>
+                            </form>
+                        </details>
+                    {% endif %}
+                </div>
+            </article>
+        {% else %}
+            <p class="cellule-vide">Rien de déclaré sur cette caisse pour l'instant.</p>
+        {% endfor %}
+    </section>
+{% endif %}
+{% endblock %}

@@ -27,6 +27,10 @@ namespace App\Security;
  * | Agir sur un compte dirigeante| non      | **non**| oui        | non       |
  * | Attribuer le rôle dirigeante | non      | **non**| oui        | non       |
  * | Gérer stands et dotations    | non      | oui    | oui        | non       |
+ * | Déclarer production / vitrine| non      | oui    | oui        | non       |
+ *
+ * Production et vitrine se déclarent aussi par ROLE_ATELIER (boulanger,
+ * pâtissier) et ROLE_VITRINE (vendeuse), qui n'ont aucune autre permission.
  *
  * (L) = lecture seule : le comptable ne se voit accorder aucune permission d'écriture.
  */
@@ -121,6 +125,20 @@ final class Permission
      * reste à sa main.
      */
     public const REMUNERATION_FIXER = 'REMUNERATION_FIXER';
+
+    // --- Production et vitrine ------------------------------------------------
+
+    /** Déclarer une fournée : le boulanger ou le pâtissier (ROLE_ATELIER), la gérante. */
+    public const PRODUCTION_DECLARER = 'PRODUCTION_DECLARER';
+
+    /** Déclarer une mise en vitrine : la vendeuse (ROLE_VITRINE), la gérante. */
+    public const VITRINE_DECLARER = 'VITRINE_DECLARER';
+
+    /**
+     * Annuler une déclaration (sujet `SaisieProduction`). Son auteur, tant que sa
+     * caisse est ouverte ; la gérante, à tout moment — l'annulation est tracée.
+     */
+    public const PRODUCTION_ANNULER = 'PRODUCTION_ANNULER';
 
     private function __construct()
     {

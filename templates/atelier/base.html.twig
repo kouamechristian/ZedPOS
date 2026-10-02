@@ -1,0 +1,57 @@
+{# Cadre de l'espace Atelier et vitrine : boulanger, pâtissier, vendeuses — et la
+   gérante, qui en hérite. Clair comme les autres espaces de gestion : c'est une
+   tablette de fournil, en pleine lumière, pas l'écran de caisse.
+
+   Aucun prix, aucun écart n'apparaît ici : ces comptes ne lisent que des
+   quantités. Le point, avec ses montants, vit dans le back-office. #}
+{% extends 'base.html.twig' %}
+{% import 'admin/_icones.html.twig' as ui %}
+
+{% block title %}{% block page_title %}Atelier et vitrine{% endblock %} — {{ nom_boutique() }}{% endblock %}
+
+{% block body %}
+<div class="espace-gestion min-h-screen pb-10">
+    <header class="entete-flottante">
+        <div class="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
+            <a href="{{ path('app_atelier') }}" class="flex min-w-0 items-center gap-3">
+                {% set logo_entete = logo_boutique() %}
+                {% if logo_entete %}
+                    <img src="{{ logo_entete }}" alt="" class="marque-logo" onerror="this.remove()">
+                {% else %}
+                    <span class="marque-pastille">Z</span>
+                {% endif %}
+                <div class="min-w-0 leading-tight">
+                    <div class="truncate text-[15px] font-bold tracking-tight text-stone-900">{{ nom_boutique() }}</div>
+                    <div class="truncate text-xs font-medium text-amber-700">Atelier et vitrine</div>
+                </div>
+            </a>
+            <div class="flex shrink-0 items-center gap-2 text-sm">
+                {% if app.user %}
+                    <span class="mr-1 hidden truncate text-stone-600 md:inline">{{ app.user.nom }}</span>
+                {% endif %}
+                {# Même règle que l'en-tête de la comptabilité : on reproduit le
+                   pare-feu `^/admin`, pas une décision métier. #}
+                {% if is_granted('ROLE_GERANT') %}
+                    <a href="{{ path('admin_dashboard') }}" class="btn btn-secondaire btn-sm max-sm:hidden">
+                        {{ ui.icone('backoffice') }} Back-office
+                    </a>
+                {% elseif app.user and app.user.codePin %}
+                    <a href="{{ path('app_caisse_code_pin') }}" class="btn btn-secondaire btn-sm"
+                       title="Changer mon code PIN" aria-label="Changer mon code PIN">
+                        {{ ui.icone('cle') }}<span class="max-lg:hidden">Code PIN</span>
+                    </a>
+                {% endif %}
+                <a href="{{ path('app_logout') }}" class="btn btn-secondaire btn-sm">
+                    {{ ui.icone('deconnexion') }}<span class="max-sm:hidden">Quitter</span>
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <main class="contenu max-w-6xl">
+        {% block atelier_content %}{% endblock %}
+    </main>
+
+    {{ include('admin/_toasts.html.twig') }}
+</div>
+{% endblock %}

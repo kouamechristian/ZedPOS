@@ -23,6 +23,7 @@
                 <th>Famille</th>
                 <th>Position</th>
                 <th class="num">Articles</th>
+                <th>Atelier</th>
                 <th>Compte de vente</th>
                 <th>Statut</th>
                 <th class="num">Actions</th>
@@ -39,6 +40,13 @@
                     </td>
                     <td class="cellule-douce tabular-nums">{{ famille.position }}</td>
                     <td class="num"><span class="badge badge-neutre">{{ famille.articles|length }}</span></td>
+                    <td>
+                        {% if famille.atelier %}
+                            <span class="badge badge-ambre">{{ famille.atelier.libelle }}</span>
+                        {% else %}
+                            <span class="text-stone-400">—</span>
+                        {% endif %}
+                    </td>
                     <td>
                         {% if famille.compteVente %}
                             <span class="code rounded-md bg-stone-100 px-1.5 py-0.5 text-stone-700">{{ famille.compteVente }}</span>
@@ -58,7 +66,7 @@
                     </td>
                 </tr>
             {% else %}
-                <tr><td colspan="6" class="cellule-vide">Aucune famille.</td></tr>
+                <tr><td colspan="7" class="cellule-vide">Aucune famille.</td></tr>
             {% endfor %}
         </tbody>
     </table>

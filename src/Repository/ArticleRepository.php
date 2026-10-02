@@ -4,6 +4,7 @@ namespace App\Repository;
 
 use App\Entity\Article;
 use App\Entity\FamilleProduit;
+use App\Enum\Atelier;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
@@ -44,6 +45,50 @@ class ArticleRepository extends ServiceEntityRepository
         return $this->createQueryBuilder('a')
             ->leftJoin('a.familleProduit', 'f')->addSelect('f')
             ->andWhere('a.actif = true')
+            ->orderBy('f.position', 'ASC')->addOrderBy('a.positionCaisse', 'ASC')->addOrderBy('a.nom', 'ASC')
+            ->getQuery()
+            ->getResult();
+    }
+
+    /**
+     * Articles actifs fabriqués par un atelier (ou par l'un d'eux si `$atelier`
+     * est nul), dans l'ordre de la caisse. Ce sont les seuls qui se déclarent en
+     * production et en vitrine.
+     *
+     * @return list<Article>
+     */
+    public function dAtelier(?Atelier $atelier = null): array
+    {
+        $qb = $this->createQueryBuilder('a')
+            ->join('a.familleProduit', 'f')->addSelect('f')
+            ->andWhere('a.actif = true')
+            ->andWhere('f.atelier IS NOT NULL')
+            ->orderBy('f.position', 'ASC')->addOrderBy('a.positionCaisse', 'ASC')->addOrderBy('a.nom', 'ASC');
+
+        if (null !== $atelier) {
+            $qb->andWhere('f.atelier = :atelier')->setParameter('atelier', $atelier);
+        }
+
+        return $qb->getQuery()->getResult();
+    }
+
+    /**
+     * Articles donnés par id, famille comprise, dans l'ordre de la caisse — actifs
+     * ou non : un article désactivé depuis a pu être produit et vendu ce jour-là.
+     *
+     * @param list<int> $ids
+     *
+     * @return list<Article>
+     */
+    public function parIdsOrdreCaisse(array $ids): array
+    {
+        if ([] === $ids) {
+            return [];
+        }
+
+        return $this->createQueryBuilder('a')
+            ->leftJoin('a.familleProduit', 'f')->addSelect('f')
+            ->andWhere('a.id IN (:ids)')->setParameter('ids', $ids)
             ->orderBy('f.position', 'ASC')->addOrderBy('a.positionCaisse', 'ASC')->addOrderBy('a.nom', 'ASC')
             ->getQuery()
             ->getResult();

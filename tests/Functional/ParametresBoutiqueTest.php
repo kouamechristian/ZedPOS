@@ -38,7 +38,8 @@ class ParametresBoutiqueTest extends WebTestCase
         $connexion->executeStatement('SET FOREIGN_KEY_CHECKS = 1');
 
         $this->gerant = new Utilisateur('koffi@test.ci', 'Koffi');
-        $this->gerant->setRoles(['ROLE_GERANT'])->setMotDePasse('x');
+        // Dirigeante : les paramètres sont fermés à la gérante (security.yaml).
+        $this->gerant->setRoles(['ROLE_DIRIGEANTE'])->setMotDePasse('x');
         $this->em->persist($this->gerant);
 
         $this->caissier = new Utilisateur('fatou@test.ci', 'Fatou');
@@ -120,9 +121,16 @@ class ParametresBoutiqueTest extends WebTestCase
 
     // ---------------------------------------------------------- L'écran admin
 
-    public function testEcranDeSaisieReserveAuGerant(): void
+    public function testEcranDeSaisieReserveALaDirigeante(): void
     {
         $this->client->loginUser($this->caissier);
+        $this->client->request('GET', '/admin/parametres');
+        $this->assertResponseStatusCodeSame(403);
+
+        $gerante = (new Utilisateur('mariam@test.ci', 'Mariam'))->setRoles(['ROLE_GERANT'])->setMotDePasse('x');
+        $this->em->persist($gerante);
+        $this->em->flush();
+        $this->client->loginUser($gerante);
         $this->client->request('GET', '/admin/parametres');
         $this->assertResponseStatusCodeSame(403);
 

@@ -563,17 +563,23 @@ class ExportComptableTest extends WebTestCase
      * qui le lui interdisait a été levée : il n'est plus le seul encadrant à devoir
      * demander les écritures à quelqu'un d'autre.
      */
-    public function testLeGerantAccedeALEspaceComptableEtAuxExports(): void
+    /**
+     * La comptabilité (menu « Administration ») est réservée à la dirigeante et au
+     * cabinet : la gérante n'entre plus ni sur l'écran ni dans les exports.
+     */
+    public function testLaGeranteNAccedePlusALEspaceComptable(): void
     {
         $session = $this->ouvrirCaisse();
         $this->vendre($session, [[$this->coca, 2]]);
+        $jour = (new \DateTimeImmutable('today'))->format('Y-m-d');
 
         $this->client->loginUser($this->gerant);
+        foreach (['/comptabilite', '/comptabilite/telecharger/fec?du='.$jour.'&au='.$jour] as $url) {
+            $this->client->request('GET', $url);
+            $this->assertResponseStatusCodeSame(403, $url);
+        }
 
-        $this->client->request('GET', '/comptabilite');
-        $this->assertResponseIsSuccessful();
-
-        $jour = (new \DateTimeImmutable('today'))->format('Y-m-d');
+        $this->client->loginUser($this->dirigeante);
         $this->client->request('GET', '/comptabilite/telecharger/fec?du='.$jour.'&au='.$jour);
         $this->assertResponseIsSuccessful();
         $this->assertStringContainsString('JournalCode', (string) $this->client->getResponse()->getContent());
@@ -600,17 +606,27 @@ class ExportComptableTest extends WebTestCase
      * Le gérant trouve l'espace comptable depuis sa navigation : un droit sans
      * chemin pour l'atteindre n'existe pas pour l'utilisateur.
      */
+    /**
+     * Le menu « Administration », Comptabilité comprise, est réservé à la
+     * dirigeante : la gérante n'y a plus ni entrée ni accès.
+     */
     public function testLeBackOfficeMeneALEspaceComptable(): void
     {
-        $this->client->loginUser($this->gerant);
+        $this->client->loginUser($this->dirigeante);
         $crawler = $this->client->request('GET', '/admin');
 
         $this->assertResponseIsSuccessful();
         $this->assertGreaterThan(
             0,
             $crawler->filter('nav a[href="/comptabilite"]')->count(),
-            'La barre latérale du back-office doit mener à la comptabilité.',
+            'La barre latérale du back-office doit mener la dirigeante à la comptabilité.',
         );
+
+        $this->client->loginUser($this->gerant);
+        $crawler = $this->client->request('GET', '/admin');
+        $this->assertCount(0, $crawler->filter('aside nav a[href="/comptabilite"]'), 'Plus dans le menu de la gérante.');
+        $this->client->request('GET', '/comptabilite');
+        $this->assertResponseStatusCodeSame(403, 'L\'accès est fermé aussi, pas seulement le menu.');
     }
 
     public function testLeTelechargementRenvoieUnFichierAttache(): void

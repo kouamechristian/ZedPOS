@@ -3,11 +3,14 @@
 {% import 'admin/_icones.html.twig' as ui %}
 
 {% block page_title %}Tableau de bord{% endblock %}
-{% block page_sous_titre %}La caisse ouverte et les trente derniers jours, en un coup d'œil.{% endblock %}
+{% block page_sous_titre %}{{ dirigeante ? 'La caisse ouverte, le mois en cours et le chiffre global, en un coup d\'œil.' : 'La caisse ouverte, en un coup d\'œil.' }}{% endblock %}
 
 {% block page_actions %}
     <a href="{{ path('admin_ventes') }}" class="btn btn-secondaire">{{ ui.icone('ventes') }} Ventes</a>
-    <a href="{{ path('admin_article_new') }}" class="btn btn-primaire">{{ ui.icone('plus') }} Nouvel article</a>
+    {# Le catalogue est réservé à la dirigeante (security.yaml). #}
+    {% if is_granted('ROLE_DIRIGEANTE') %}
+        <a href="{{ path('admin_article_new') }}" class="btn btn-primaire">{{ ui.icone('plus') }} Nouvel article</a>
+    {% endif %}
 {% endblock %}
 
 {% block admin_content %}
@@ -20,14 +23,31 @@
 {% else %}
     {% set note_caisse = (caisse.ouverte ? 'Caisse de ' : 'Dernière caisse clôturée, ') ~ caisse.caissier ~ ' · ' ~ caisse.tickets ~ ' vente' ~ (caisse.tickets > 1 ? 's' : '') %}
 {% endif %}
-{% set indicateurs = [
-    { libelle: caisse and not caisse.ouverte ? "Chiffre de la dernière caisse" : "Chiffre de la caisse ouverte", cible: ca_caisse // 100, valeur: (ca_caisse / 100)|number_format(0, ',', ' '), unite: 'FCFA', note: note_caisse, icone: 'argent', ton: '' },
-    { libelle: 'Chiffre sur 30 jours', cible: ca_30j // 100, valeur: (ca_30j / 100)|number_format(0, ',', ' '), unite: 'FCFA', note: 'Panier moyen ' ~ fmt.fcfa(panier_moyen), icone: 'tendance', ton: '' },
+{# La dirigeante : caisse, mois en cours, chiffre global (depuis la mise en
+   service). La gérante ne lit que la caisse ouverte : tickets et panier moyen de
+   cette caisse à la place. #}
+{% set tickets_caisse = caisse ? caisse.tickets : 0 %}
+{% set indicateur_caisse = { libelle: caisse and not caisse.ouverte ? "Chiffre de la dernière caisse" : "Chiffre de la caisse ouverte", cible: ca_caisse // 100, valeur: (ca_caisse / 100)|number_format(0, ',', ' '), unite: 'FCFA', note: note_caisse, icone: 'argent', ton: '' } %}
+{% set indicateurs_stock = [
     { libelle: 'Articles actifs', cible: articles_actifs, valeur: articles_actifs, unite: '', note: 'au catalogue de la caisse', icone: 'articles', ton: '' },
     { libelle: 'Alertes de stock', cible: matieres_alerte, valeur: matieres_alerte, unite: '', note: matieres_alerte > 0 ? 'matière(s) sous le seuil' : 'aucune matière sous le seuil', icone: matieres_alerte > 0 ? 'pertes' : 'valide', ton: matieres_alerte > 0 ? 'kpi-icone-rouge' : 'kpi-icone-vert' },
 ] %}
+{% if dirigeante %}
+    {% set indicateurs = [
+        indicateur_caisse,
+        { libelle: 'Chiffre du mois', cible: ca_mois // 100, valeur: (ca_mois / 100)|number_format(0, ',', ' '), unite: 'FCFA', note: libelle_mois ~ ' · panier moyen ' ~ fmt.fcfa(panier_moyen), icone: 'tendance', ton: '' },
+        { libelle: "Chiffre d'affaires global", cible: ca_global // 100, valeur: (ca_global / 100)|number_format(0, ',', ' '), unite: 'FCFA', note: premiere_vente ? 'depuis le ' ~ premiere_vente|date('d/m/Y') : 'aucune vente encore', icone: 'argent', ton: '' },
+    ]|merge(indicateurs_stock) %}
+{% else %}
+    {% set indicateurs = [
+        indicateur_caisse,
+        { libelle: 'Tickets de la caisse', cible: tickets_caisse, valeur: tickets_caisse, unite: '', note: 'Panier moyen ' ~ fmt.fcfa(panier_moyen), icone: 'tendance', ton: '' },
+    ]|merge(indicateurs_stock) %}
+{% endif %}
 
-<section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+{# Cinq tuiles pour la dirigeante, quatre pour la gérante : classes écrites en
+   entier, Tailwind ne voit pas une classe composée à la volée. #}
+<section class="grid gap-4 sm:grid-cols-2 {{ indicateurs|length == 5 ? 'xl:grid-cols-5' : 'xl:grid-cols-4' }}">
     {% for indicateur in indicateurs %}
         <article class="kpi apparition" style="--i: {{ loop.index }}">
             <div class="kpi-tete">
@@ -49,11 +69,11 @@
     <section class="carte apparition lg:col-span-2" style="--i: 5">
         <div class="carte-entete">
             <h2 class="carte-titre">Meilleures ventes</h2>
-            <span class="carte-note">30 derniers jours</span>
+            <span class="carte-note">{{ dirigeante ? 'Mois en cours' : 'Caisse ouverte' }}</span>
         </div>
 
         {% if top_articles is empty %}
-            <p class="cellule-vide">Aucune vente sur la période.</p>
+            <p class="cellule-vide">{{ dirigeante or caisse ? 'Aucune vente sur la période.' : 'Aucune caisse ouverte.' }}</p>
         {% else %}
             {% set meilleur = max(top_articles|map(ligne => ligne.ca)) %}
             <table class="tableau">
@@ -92,11 +112,18 @@
         <div class="carte-entete">
             <h2 class="carte-titre">Raccourcis</h2>
         </div>
-        {% set raccourcis = [
+        {# Pertes, inventaires et fiches techniques sont réservés à la dirigeante
+           (security.yaml) : la gérante a ses propres raccourcis. #}
+        {% set raccourcis = dirigeante ? [
             { label: 'Saisir une perte',     aide: 'Casse, périmé, invendu',   route: 'admin_perte_saisie', icone: 'pertes' },
             { label: 'Inventaires',          aide: 'Compter et corriger le stock', route: 'admin_inventaires', icone: 'inventaire' },
             { label: 'Clôtures de caisse',   aide: 'Rapports Z et écarts',     route: 'admin_clotures',     icone: 'clotures' },
             { label: 'Fiches techniques',    aide: 'Coût matières et marges',  route: 'admin_production',   icone: 'production' },
+        ] : [
+            { label: 'Fiche de production',  aide: 'Produit, vitrine, vendu, reste', route: 'app_atelier',    icone: 'production' },
+            { label: 'Clôtures de caisse',   aide: 'Rapports Z et écarts',     route: 'admin_clotures',     icone: 'clotures' },
+            { label: 'Rapport de journée',   aide: 'Ventes par famille, en PDF', route: 'admin_ventes_rapport', icone: 'ventes' },
+            { label: 'Dotations',            aide: 'Marchandise des stands',   route: 'admin_dotation_index', icone: 'fournisseurs' },
         ] %}
         <ul class="p-2">
             {% for raccourci in raccourcis %}

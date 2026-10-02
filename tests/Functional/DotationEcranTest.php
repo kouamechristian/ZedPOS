@@ -272,10 +272,10 @@ class DotationEcranTest extends WebTestCase
     {
         $url = '/admin/articles/'.$this->baguette->getId().'/modifier';
 
+        // La gérante n'ouvre plus la fiche article (catalogue réservé à la dirigeante).
         $this->client->loginUser($this->gerante);
-        $crawler = $this->client->request('GET', $url);
-        $this->assertCount(0, $crawler->filter('input[name="article[prixCession]"]'));
-        $this->assertSelectorTextContains('body', '125 FCFA');
+        $this->client->request('GET', $url);
+        $this->assertResponseStatusCodeSame(403);
 
         $this->client->loginUser($this->dirigeante);
         $crawler = $this->client->request('GET', $url);

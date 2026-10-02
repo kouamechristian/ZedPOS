@@ -5,8 +5,13 @@ namespace App\Enum;
 /**
  * Rôles applicatifs de ZedPOS.
  *
- * Hiérarchie (voir security.yaml) : DIRIGEANTE > GERANT > CAISSIER.
+ * Hiérarchie (voir security.yaml) : DIRIGEANTE > GERANT > CAISSIER ; le gérant
+ * hérite aussi d'ATELIER et de VITRINE, pour déclarer à leur place.
  * COMPTABLE est un rôle autonome (accès comptabilité, connexion classique).
+ *
+ * ATELIER (boulanger, pâtissier) et VITRINE (vendeuse) se connectent au pavé
+ * numérique comme le caissier. Ils n'ouvrent que l'espace `/atelier` et n'y
+ * lisent que des quantités : ni prix, ni écart.
  */
 enum RoleUtilisateur: string
 {
@@ -14,13 +19,15 @@ enum RoleUtilisateur: string
     case GERANT = 'ROLE_GERANT';
     case COMPTABLE = 'ROLE_COMPTABLE';
     case CAISSIER = 'ROLE_CAISSIER';
+    case ATELIER = 'ROLE_ATELIER';
+    case VITRINE = 'ROLE_VITRINE';
 
     /**
      * Ce rôle se connecte-t-il au pavé numérique (code PIN) plutôt qu'avec un mot de passe ?
      */
     public function utiliseCodePin(): bool
     {
-        return self::CAISSIER === $this;
+        return \in_array($this, [self::CAISSIER, self::ATELIER, self::VITRINE], true);
     }
 
     public function libelle(): string
@@ -30,6 +37,8 @@ enum RoleUtilisateur: string
             self::GERANT => 'Gérant',
             self::COMPTABLE => 'Comptable',
             self::CAISSIER => 'Caissier',
+            self::ATELIER => 'Boulanger / Pâtissier',
+            self::VITRINE => 'Vendeuse',
         };
     }
 
@@ -55,6 +64,6 @@ enum RoleUtilisateur: string
     {
         return $dirigeante
             ? self::cases()
-            : [self::GERANT, self::CAISSIER];
+            : [self::GERANT, self::CAISSIER, self::ATELIER, self::VITRINE];
     }
 }

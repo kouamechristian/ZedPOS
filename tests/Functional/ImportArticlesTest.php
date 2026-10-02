@@ -107,7 +107,7 @@ class ImportArticlesTest extends WebTestCase
 
     public function testLeBoutonImporterFigureSurLeCatalogue(): void
     {
-        $this->client->loginUser($this->gerant);
+        $this->client->loginUser($this->dirigeante);
         $crawler = $this->client->request('GET', '/admin/articles');
         $this->assertResponseIsSuccessful();
 
@@ -125,7 +125,7 @@ class ImportArticlesTest extends WebTestCase
 
     public function testLeModeleEstTelechargeableEtPorteLeBom(): void
     {
-        $this->client->loginUser($this->gerant);
+        $this->client->loginUser($this->dirigeante);
         $this->client->request('GET', '/admin/articles/importer/modele');
 
         $this->assertResponseIsSuccessful();
@@ -195,9 +195,9 @@ class ImportArticlesTest extends WebTestCase
      * L'invariant central. Un gérant ne peut pas fixer un prix au formulaire (le
      * champ n'y est même pas) : l'import ne doit pas être la porte de service.
      */
-    public function testUnGerantNimportePasDePrix(): void
+    public function testSansHabilitationDePrixLImportNeReprendAucunPrix(): void
     {
-        $this->importerParLEcran("Baguette;150\nCroissant;200\n", $this->gerant);
+        $this->service()->importer("Baguette;150\nCroissant;200\n", avecPrix: false);
 
         $catalogue = $this->catalogue();
         $this->assertCount(2, $catalogue);
@@ -210,13 +210,18 @@ class ImportArticlesTest extends WebTestCase
         }
     }
 
-    /** Le gérant doit l'apprendre **avant** de déposer son fichier, pas après. */
-    public function testLEcranAvertitLeGerantQueLesPrixSerontIgnores(): void
+    /**
+     * L'import appartient au catalogue, réservé à la dirigeante (security.yaml) :
+     * la gérante n'atteint ni l'écran, ni le modèle. La dirigeante, qui fixe les
+     * prix, n'a pas d'avertissement.
+     */
+    public function testLaGeranteNAccedePlusALImport(): void
     {
         $this->client->loginUser($this->gerant);
-        $texte = $this->client->request('GET', '/admin/articles/importer')->filter('body')->text();
-
-        $this->assertStringContainsString('Les prix ne seront pas repris', $texte);
+        foreach (['/admin/articles/importer', '/admin/articles/importer/modele'] as $url) {
+            $this->client->request('GET', $url);
+            $this->assertResponseStatusCodeSame(403, $url);
+        }
 
         $this->client->loginUser($this->dirigeante);
         $texte = $this->client->request('GET', '/admin/articles/importer')->filter('body')->text();
@@ -226,10 +231,9 @@ class ImportArticlesTest extends WebTestCase
 
     public function testLeCompteRenduSignaleLesPrixEcartes(): void
     {
-        $this->importerParLEcran("Baguette;150\n", $this->gerant);
-        $texte = $this->client->followRedirect()->filter('body')->text();
+        $rapport = $this->service()->importer("Baguette;150\n", avecPrix: false);
 
-        $this->assertStringContainsString('Les prix du fichier n\'ont pas été repris', $texte);
+        $this->assertTrue($rapport->prixIgnores, 'Le compte rendu dit que les prix du fichier n\'ont pas été repris.');
     }
 
     // -------------------------------------------------- L'import n'écrase rien

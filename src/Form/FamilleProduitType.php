@@ -4,7 +4,9 @@ namespace App\Form;
 
 use App\Comptabilite\PlanComptable;
 use App\Entity\FamilleProduit;
+use App\Enum\Atelier;
 use Symfony\Component\Form\AbstractType;
+use Symfony\Component\Form\Extension\Core\Type\EnumType;
 use Symfony\Component\Form\Extension\Core\Type\CheckboxType;
 use Symfony\Component\Form\Extension\Core\Type\ChoiceType;
 use Symfony\Component\Form\Extension\Core\Type\ColorType;
@@ -27,6 +29,15 @@ class FamilleProduitType extends AbstractType
             ->add('couleur', ColorType::class, ['label' => 'Couleur', 'required' => false])
             ->add('position', IntegerType::class, ['label' => 'Position dans la caisse'])
             ->add('actif', CheckboxType::class, ['label' => 'Active', 'required' => false])
+            ->add('atelier', EnumType::class, [
+                'class' => Atelier::class,
+                'label' => 'Atelier de fabrication',
+                'required' => false,
+                'choice_label' => static fn (Atelier $atelier): string => $atelier->libelle(),
+                'placeholder' => 'Aucun (revendu tel quel, préparé à la demande)',
+                'help' => 'Les articles d\'une famille rattachée à un atelier se déclarent en production '
+                    .'et en vitrine, et entrent au point de vitrine.',
+            ])
             ->add('compteVente', ChoiceType::class, [
                 'label' => 'Compte de vente (SYSCOHADA)',
                 'required' => false,

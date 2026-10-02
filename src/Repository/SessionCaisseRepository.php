@@ -59,4 +59,27 @@ class SessionCaisseRepository extends ServiceEntityRepository
             ['ouvertureAt' => 'ASC'],
         );
     }
+
+    /**
+     * La dernière caisse clôturée : celle dont la suivante reprend les restes.
+     * Départagée par l'identifiant, deux clôtures pouvant tomber dans la même seconde.
+     */
+    public function derniereCloturee(): ?SessionCaisse
+    {
+        return $this->findOneBy(
+            ['statut' => StatutSessionCaisse::CLOTUREE],
+            ['clotureAt' => 'DESC', 'id' => 'DESC'],
+        );
+    }
+
+    /** Une caisse a-t-elle été ouverte après celle-ci ? Elle a alors repris ses restes. */
+    public function aUneSuivante(SessionCaisse $session): bool
+    {
+        return null !== $this->createQueryBuilder('s')
+            ->select('s.id')
+            ->andWhere('s.id > :id')->setParameter('id', $session->getId())
+            ->setMaxResults(1)
+            ->getQuery()
+            ->getOneOrNullResult();
+    }
 }

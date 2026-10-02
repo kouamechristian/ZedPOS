@@ -48,7 +48,9 @@ class InventaireTest extends WebTestCase
         $connexion->executeStatement('SET FOREIGN_KEY_CHECKS = 1');
 
         $this->gerant = new Utilisateur('koffi@test.ci', 'Koffi');
-        $this->gerant->setRoles(['ROLE_GERANT'])->setMotDePasse('x');
+        // Dirigeante : inventaires, stock, pertes et catalogue sont fermés à la
+        // gérante (security.yaml). Le nom de la propriété est resté.
+        $this->gerant->setRoles(['ROLE_DIRIGEANTE'])->setMotDePasse('x');
         $this->em->persist($this->gerant);
 
         // 100 kg de farine à 450 FCFA le kg, 50 kg de sucre à 600.

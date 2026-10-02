@@ -1,0 +1,156 @@
+{% extends 'pilotage/base.html.twig' %}
+{% import 'admin/_macros.html.twig' as fmt %}
+{% import 'admin/_icones.html.twig' as ui %}
+
+{# Rapport de production d'une caisse : la fiche (produit, en vitrine, vendu,
+   reste) et ce que chaque article a rapporté.
+
+   Mobile-first comme tout le pilotage : des cartes empilées sur téléphone, le
+   tableau à partir de `md`, où ses six colonnes tiennent sans défiler. Les deux
+   lisent les mêmes lignes.
+
+   Le lien PDF porte `data-turbo="false"` : Turbo attend du HTML, le fichier ne
+   descendrait pas. #}
+
+{% macro reste(millimes) %}
+    {%- import 'admin/_macros.html.twig' as fmt -%}
+    <span class="{{ millimes < 0 ? 'text-red-700' : (millimes == 0 ? 'text-stone-400' : 'text-stone-900') }}">
+        {{- millimes < 0 ? '−' ~ fmt.unites(-millimes) : fmt.unites(millimes) -}}
+    </span>
+{%- endmacro %}
+
+{% block page_title %}Production{% endblock %}
+
+{% block pilotage_content %}
+<div class="apparition mb-5 flex flex-wrap items-end justify-between gap-3">
+    <div>
+        <div class="sur-titre">Rapport de production</div>
+        <h1 class="text-2xl font-bold tracking-tight text-stone-900">
+            {% if session %}Caisse de {{ session.utilisateur.nom }}{% else %}Aucune caisse{% endif %}
+        </h1>
+        {% if session %}
+            <p class="mt-1 text-sm text-stone-500">
+                {% if session.estOuverte %}
+                    <span class="badge badge-vert badge-point">Ouverte</span> depuis le {{ session.ouvertureAt|date('d/m/Y à H:i') }} — les chiffres bougent avec les ventes.
+                {% else %}
+                    Du {{ session.ouvertureAt|date('d/m/Y H:i') }} au {{ session.clotureAt|date('d/m/Y H:i') }} · clôturée
+                {% endif %}
+            </p>
+        {% endif %}
+    </div>
+
+    <div class="flex flex-wrap items-center gap-2">
+        <form method="get" class="flex items-center gap-2" data-controller="soumission-auto">
+            <label for="session" class="sr-only">Caisse</label>
+            <select id="session" name="session" class="champ h-10 w-auto" data-action="change->soumission-auto#soumettre">
+                {% for s in sessions %}
+                    <option value="{{ s.id }}" {% if session and s.id == session.id %}selected{% endif %}>
+                        {{ s.ouverte ? 'Ouverte · ' : '' }}{{ s.caissier }} — {{ s.ouvertureAt|date('d/m H:i') }}
+                    </option>
+                {% else %}
+                    <option>Aucune caisse</option>
+                {% endfor %}
+            </select>
+            <noscript><button class="btn btn-primaire">Voir</button></noscript>
+        </form>
+        {% if session %}
+            <a href="{{ path('pilotage_production_pdf', {session: session.id}) }}" data-turbo="false" class="btn btn-primaire">
+                {{ ui.icone('telecharger') }} Télécharger en PDF
+            </a>
+        {% endif %}
+    </div>
+</div>
+
+{% if session is null %}
+    <div class="alerte alerte-ambre apparition" role="alert">
+        {{ ui.icone('info') }}
+        <p>Aucune caisse n'a encore été ouverte.</p>
+    </div>
+{% elseif lignes is empty %}
+    <div class="alerte alerte-ambre apparition" role="alert">
+        {{ ui.icone('info') }}
+        <p>Aucun article d'atelier sur cette caisse. Les familles se rattachent à un atelier dans le back-office, Articles → Familles.</p>
+    </div>
+{% else %}
+    {# ---- Le chiffre qu'on vient chercher ---- #}
+    <section class="mb-5 grid gap-4 sm:grid-cols-3">
+        <div class="heros apparition sm:col-span-1" style="--i: 1">
+            <div class="text-xs font-semibold uppercase tracking-[.14em] text-amber-300">Montant rapporté</div>
+            <div class="mt-2 text-3xl font-black tabular-nums">{{ fmt.fcfa(totaux.montant) }}</div>
+        </div>
+        <div class="kpi apparition" style="--i: 2">
+            <div class="text-sm text-stone-500">Produit · en vitrine</div>
+            <div class="kpi-valeur tabular-nums">{{ fmt.unites(totaux.produite) }} · {{ fmt.unites(totaux.vitrine) }}</div>
+        </div>
+        <div class="kpi apparition" style="--i: 3">
+            <div class="text-sm text-stone-500">Vendu · reste</div>
+            <div class="kpi-valeur tabular-nums">{{ fmt.unites(totaux.vendue) }} · {{ _self.reste(totaux.reste) }}</div>
+        </div>
+    </section>
+
+    {# ---- Téléphone : une carte par article ---- #}
+    <ul class="grid gap-2 md:hidden">
+        {% for ligne in lignes %}
+            <li class="carte p-4">
+                <div class="flex items-baseline justify-between gap-3">
+                    <span class="font-semibold text-stone-900">{{ ligne.article.nom }}</span>
+                    <span class="font-bold tabular-nums">{{ fmt.fcfa(ligne.montant) }}</span>
+                </div>
+                <div class="mt-1.5 grid grid-cols-4 gap-2 text-center text-xs text-stone-500">
+                    <div>Produit<div class="text-base font-semibold tabular-nums text-stone-900">{{ fmt.unites(ligne.produite) }}</div></div>
+                    <div>Vitrine<div class="text-base font-semibold tabular-nums text-stone-900">{{ fmt.unites(ligne.vitrine) }}</div>{% if ligne.reprise > 0 %}<div>dont {{ fmt.unites(ligne.reprise) }} repris</div>{% endif %}</div>
+                    <div>Vendu<div class="text-base font-semibold tabular-nums text-stone-900">{{ fmt.unites(ligne.vendue) }}</div></div>
+                    <div>Reste<div class="text-base font-semibold tabular-nums">{{ _self.reste(ligne.reste) }}</div></div>
+                </div>
+            </li>
+        {% endfor %}
+    </ul>
+
+    {# ---- Tablette et ordinateur : le tableau ---- #}
+    <div class="tableau-conteneur apparition hidden md:block" style="--i: 4">
+        <div class="defilement-x">
+        <table class="tableau" id="rapport-production">
+            <thead>
+                <tr>
+                    <th>Article</th>
+                    <th class="num">Produit</th>
+                    <th class="num">En vitrine</th>
+                    <th class="num">Vendu</th>
+                    <th class="num" title="En vitrine − vendu">Reste</th>
+                    <th class="num">Montant rapporté</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ligne in lignes %}
+                    <tr>
+                        <td class="cellule-principale">{{ ligne.article.nom }}</td>
+                        <td class="num tabular-nums">{{ fmt.unites(ligne.produite) }}</td>
+                        <td class="num tabular-nums">{{ fmt.unites(ligne.vitrine) }}{% if ligne.reprise > 0 %}<div class="text-xs font-normal text-stone-500">dont {{ fmt.unites(ligne.reprise) }} repris</div>{% endif %}</td>
+                        <td class="num tabular-nums">{{ fmt.unites(ligne.vendue) }}</td>
+                        <td class="num tabular-nums font-semibold">{{ _self.reste(ligne.reste) }}</td>
+                        <td class="num tabular-nums font-semibold">{{ fmt.fcfa(ligne.montant) }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr class="font-bold">
+                    <td>Total</td>
+                    <td class="num tabular-nums">{{ fmt.unites(totaux.produite) }}</td>
+                    <td class="num tabular-nums">{{ fmt.unites(totaux.vitrine) }}</td>
+                    <td class="num tabular-nums">{{ fmt.unites(totaux.vendue) }}</td>
+                    <td class="num tabular-nums">{{ _self.reste(totaux.reste) }}</td>
+                    <td class="num tabular-nums">{{ fmt.fcfa(totaux.montant) }}</td>
+                </tr>
+            </tfoot>
+        </table>
+        </div>
+    </div>
+
+    <p class="aide mt-3">
+        En vitrine : mis en vitrine sur cette caisse, plus les restes repris de la caisse précédente. Reste = en vitrine − vendu ; en rouge, plus vendu que mis en vitrine. Montant rapporté : ventes validées de la caisse, articles d'atelier seulement, remises de ligne déduites.
+        {% if remises > 0 %}
+            Les remises accordées sur les tickets ({{ fmt.fcfa(remises) }}, tous articles confondus) ne s'y rattachent à aucun article et n'en sont pas déduites.
+        {% endif %}
+    </p>
+{% endif %}
+{% endblock %}

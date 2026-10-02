@@ -8,7 +8,8 @@
 {% block page_title %}Code PIN{% endblock %}
 
 {% block entete_actions %}
-    <a href="{{ path('app_caisse') }}" class="rounded-lg bg-white border border-gray-300 px-3 py-2 font-medium text-gray-700 hover:bg-gray-100">← Caisse</a>
+    {% set vers_caisse = accueil is not defined or accueil == path('app_caisse') %}
+    <a href="{{ accueil ?? path('app_caisse') }}" class="rounded-lg bg-white border border-gray-300 px-3 py-2 font-medium text-gray-700 hover:bg-gray-100">← {{ vers_caisse ? 'Caisse' : 'Retour' }}</a>
 {% endblock %}
 
 {% block caisse_content %}

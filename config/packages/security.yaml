@@ -12,8 +12,10 @@ security:
 
     # Hiérarchie des rôles : DIRIGEANTE > GERANT > CAISSIER.
     # COMPTABLE est un rôle autonome (connexion classique, accès comptabilité).
+    # ATELIER (boulanger, pâtissier) et VITRINE (vendeuse) : code PIN, espace
+    # /atelier seulement. La gérante en hérite pour déclarer à leur place.
     role_hierarchy:
-        ROLE_GERANT: [ROLE_CAISSIER]
+        ROLE_GERANT: [ROLE_CAISSIER, ROLE_ATELIER, ROLE_VITRINE]
         ROLE_DIRIGEANTE: [ROLE_GERANT]
 
     firewalls:
@@ -75,13 +77,24 @@ security:
         # contrôleur : le gérant annule ; le caissier modifie, une fois, le seul
         # ticket qu'il vient d'encaisser.
         - { path: ^/api, roles: ROLE_CAISSIER }
+        # Chaque compte à code PIN change le sien sur le même écran : le
+        # boulanger et la vendeuse n'ont pas accès au reste de /caisse.
+        - { path: ^/caisse/code-pin$, roles: [ROLE_CAISSIER, ROLE_ATELIER, ROLE_VITRINE] }
         - { path: ^/caisse, roles: ROLE_CAISSIER }
+        # Production et vitrine : les déclarations fines (qui déclare quoi) sont
+        # arbitrées par ProductionVoter, au contrôleur.
+        - { path: ^/atelier, roles: [ROLE_ATELIER, ROLE_VITRINE] }
+        # « Catalogue et stock » et « Administration » : réservés à la dirigeante,
+        # à la demande de l'exploitante — la gérante n'y entre plus, menu comme URL.
+        # Placée avant ^/admin : la première règle qui correspond l'emporte.
+        # `(/|$)` : /admin/production ne doit pas attraper un futur /admin/productions-x.
+        - { path: ^/admin/(articles|familles|stock|fournisseurs|inventaires|production|pertes|utilisateurs|parametres)(/|$), roles: ROLE_DIRIGEANTE }
         - { path: ^/admin, roles: ROLE_GERANT }
         - { path: ^/pilotage, roles: ROLE_DIRIGEANTE }
         # ROLE_COMPTABLE reste autonome : il n'est dans la hiérarchie d'aucun
-        # autre rôle, il doit donc être nommé ici. ROLE_GERANT couvre du même
-        # coup la dirigeante, qui en hérite.
-        - { path: ^/comptabilite, roles: [ROLE_COMPTABLE, ROLE_GERANT] }
+        # autre rôle, il doit donc être nommé ici. La gérante n'y a plus accès
+        # (menu « Administration » réservé à la dirigeante).
+        - { path: ^/comptabilite, roles: [ROLE_COMPTABLE, ROLE_DIRIGEANTE] }
 
 when@test:
     security:

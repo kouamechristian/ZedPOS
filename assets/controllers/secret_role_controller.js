@@ -19,15 +19,15 @@ import { Controller } from '@hotwired/stimulus';
 export default class extends Controller {
     static targets = ['role', 'motDePasse', 'codePin'];
 
-    /* Rôle se connectant au code PIN — doit rester aligné sur RoleUtilisateur::utiliseCodePin(). */
-    static values = { rolePin: { type: String, default: 'ROLE_CAISSIER' } };
+    /* Rôles se connectant au code PIN, séparés par des espaces — alignés sur RoleUtilisateur::utiliseCodePin(). */
+    static values = { rolesPin: { type: String, default: 'ROLE_CAISSIER' } };
 
     connect() {
         this.basculer();
     }
 
     basculer() {
-        const pin = this.roleTarget.value === this.rolePinValue;
+        const pin = this.rolesPinValue.split(/\s+/).includes(this.roleTarget.value);
 
         this.afficher(this.codePinTarget, pin);
         this.afficher(this.motDePasseTarget, !pin);

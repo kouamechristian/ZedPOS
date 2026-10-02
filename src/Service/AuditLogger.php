@@ -12,6 +12,8 @@ use App\Entity\Vendeur;
 use App\Service\Point\ResultatPoint;
 use App\Entity\JournalAudit;
 use App\Entity\LigneDotation;
+use App\Entity\LigneSaisieProduction;
+use App\Entity\SaisieProduction;
 use App\Entity\MatierePremiere;
 use App\Entity\Perte;
 use App\Entity\SessionCaisse;
@@ -347,6 +349,41 @@ class AuditLogger
         }
 
         return $etat;
+    }
+
+    // ------------------------------------------------- Production et vitrine
+
+    public function productionDeclaree(SaisieProduction $saisie): JournalAudit
+    {
+        return $this->enregistrer(ActionAudit::PRODUCTION_DECLAREE, 'SaisieProduction', $saisie->getId(), null, $this->etatSaisieProduction($saisie), $saisie->getCreatedBy());
+    }
+
+    /** @param array<string, mixed> $avant {@see self::etatSaisieProduction()} relevé avant */
+    public function productionAnnulee(SaisieProduction $saisie, array $avant, Utilisateur $auteur): JournalAudit
+    {
+        return $this->enregistrer(ActionAudit::PRODUCTION_ANNULEE, 'SaisieProduction', $saisie->getId(), $avant, $this->etatSaisieProduction($saisie), $auteur);
+    }
+
+    /**
+     * Quantités en millièmes. Une déclaration ne porte aucun prix : l'atelier et la
+     * vitrine n'en voient pas.
+     *
+     * @return array<string, mixed>
+     */
+    public function etatSaisieProduction(SaisieProduction $saisie): array
+    {
+        return [
+            'numero' => $saisie->getNumero(),
+            'type' => $saisie->getType()->value,
+            'atelier' => $saisie->getAtelier()?->value,
+            'statut' => $saisie->getStatut()->value,
+            'sessionCaisse' => $saisie->getSessionCaisse()->getId(),
+            'lignes' => array_map(static fn (LigneSaisieProduction $ligne): array => [
+                'produit' => $ligne->getArticle()->getNom(),
+                'quantite' => $ligne->getQuantite(),
+            ], $saisie->getLignes()->toArray()),
+            'motifAnnulation' => $saisie->getMotifAnnulation(),
+        ];
     }
 
     /**

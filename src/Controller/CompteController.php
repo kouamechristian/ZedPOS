@@ -68,7 +68,7 @@ class CompteController extends AbstractController
     }
 
     #[Route('/caisse/code-pin', name: 'app_caisse_code_pin', methods: ['GET', 'POST'])]
-    public function codePin(Request $request, CreationUtilisateur $comptes): Response
+    public function codePin(Request $request, CreationUtilisateur $comptes, RoleRedirectionHandler $accueil): Response
     {
         $utilisateur = $this->utilisateur();
         if (null === $utilisateur->getCodePin()) {
@@ -77,6 +77,9 @@ class CompteController extends AbstractController
 
         $form = $this->createForm(ChangerCodePinType::class);
         $form->handleRequest($request);
+        // Le retour mène à l'espace du compte : la caisse pour la caissière,
+        // l'atelier pour le boulanger ou la vendeuse, qui n'ont pas accès à /caisse.
+        $vue = ['accueil' => $accueil->urlPour($utilisateur)];
 
         if ($form->isSubmitted() && $form->isValid()) {
             try {
@@ -84,7 +87,7 @@ class CompteController extends AbstractController
             } catch (CreationUtilisateurException $e) {
                 $form->addError(new FormError($e->getMessage()));
 
-                return $this->rendreFormulaire('caisse/code_pin.html.twig', $form);
+                return $this->rendreFormulaire('caisse/code_pin.html.twig', $form, $vue);
             }
 
             // Retour sur cet écran et non sur `/caisse` : l'écran de vente
@@ -94,7 +97,7 @@ class CompteController extends AbstractController
             return $this->redirectToRoute('app_caisse_code_pin', [], Response::HTTP_SEE_OTHER);
         }
 
-        return $this->rendreFormulaire('caisse/code_pin.html.twig', $form);
+        return $this->rendreFormulaire('caisse/code_pin.html.twig', $form, $vue);
     }
 
     private function utilisateur(): Utilisateur

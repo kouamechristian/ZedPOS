@@ -24,6 +24,7 @@ class SessionCaisseService
         private readonly SessionCaisseRepository $sessions,
         private readonly RapportCaisseService $rapports,
         private readonly AuditLogger $audit,
+        private readonly ProductionService $production,
     ) {
     }
 
@@ -51,6 +52,9 @@ class SessionCaisseService
 
         $session = new SessionCaisse($utilisateur, $fondCaisse);
         $this->em->persist($session);
+        // La fiche de production naît avec la caisse, tous les articles d'atelier à
+        // zéro : le boulanger et la gérante n'ont plus qu'à y ajouter leurs quantités.
+        $this->production->ouvrirFiche($session);
         $this->em->flush();
 
         return $session;

@@ -65,17 +65,23 @@ class CreationUtilisateurTest extends WebTestCase
 
     // ------------------------------------------------------- Habilitation
 
-    public function testLeGerantEtLaDirigeanteCreentDesComptes(): void
+    /**
+     * La gestion des comptes (menu « Administration ») est réservée à la
+     * dirigeante (security.yaml) : la gérante n'atteint plus aucun de ses écrans.
+     */
+    public function testSeuleLaDirigeanteGereLesComptes(): void
     {
-        foreach ([$this->gerant, $this->dirigeante] as $utilisateur) {
-            $this->client->loginUser($utilisateur);
-
-            $this->client->request('GET', '/admin/utilisateurs/nouveau');
-            $this->assertResponseIsSuccessful();
-
-            $crawler = $this->client->request('GET', '/admin/utilisateurs');
-            $this->assertCount(1, $crawler->filter('a:contains("Nouvel utilisateur")'));
+        $this->client->loginUser($this->gerant);
+        foreach (['/admin/utilisateurs', '/admin/utilisateurs/nouveau', '/admin/utilisateurs/'.$this->dirigeante->getId().'/modifier'] as $url) {
+            $this->client->request('GET', $url);
+            $this->assertResponseStatusCodeSame(403, 'Gérante sur '.$url);
         }
+
+        $this->client->loginUser($this->dirigeante);
+        $this->client->request('GET', '/admin/utilisateurs/nouveau');
+        $this->assertResponseIsSuccessful();
+        $crawler = $this->client->request('GET', '/admin/utilisateurs');
+        $this->assertCount(1, $crawler->filter('a:contains("Nouvel utilisateur")'));
     }
 
     public function testUnCaissierNAccedePasALaGestionDesComptes(): void
@@ -94,23 +100,19 @@ class CreationUtilisateurTest extends WebTestCase
     // ------------------------------------- Le gérant ne distribue pas au-dessus de lui
 
     /**
-     * Le plafond de la hiérarchie : un gérant crée des caissiers et des gérants,
-     * jamais une dirigeante. Sans cela, il s'ouvrirait un second compte et
-     * récupérerait les prix de vente, le pilotage et le journal d'audit.
+     * Le plafond du gérant reste dans le code (`attribuablesPar()`), même si
+     * l'écran lui est aujourd'hui fermé : rouvrir la porte ne doit pas rouvrir la
+     * distribution des rôles au-dessus de lui.
      */
-    public function testLeGerantNeSeVoitPasProposerLeRoleDirigeante(): void
+    public function testLePlafondDuGerantResteEnPlace(): void
     {
-        $this->client->loginUser($this->gerant);
-        $crawler = $this->client->request('GET', '/admin/utilisateurs/nouveau');
+        $proposes = RoleUtilisateur::attribuablesPar(false);
 
-        $proposes = $crawler->filter('#creer_utilisateur_role option')
-            ->each(static fn ($option): string => (string) $option->attr('value'));
-
-        $this->assertContains(RoleUtilisateur::CAISSIER->value, $proposes);
-        $this->assertContains(RoleUtilisateur::GERANT->value, $proposes);
-        $this->assertNotContains(RoleUtilisateur::DIRIGEANTE->value, $proposes);
+        $this->assertContains(RoleUtilisateur::CAISSIER, $proposes);
+        $this->assertContains(RoleUtilisateur::GERANT, $proposes);
+        $this->assertNotContains(RoleUtilisateur::DIRIGEANTE, $proposes);
         // Ouvrir l'accès au cabinet extérieur relève du contrat, pas du magasin.
-        $this->assertNotContains(RoleUtilisateur::COMPTABLE->value, $proposes);
+        $this->assertNotContains(RoleUtilisateur::COMPTABLE, $proposes);
     }
 
     public function testLaDirigeanteSeVoitProposerTousLesRoles(): void
@@ -126,29 +128,20 @@ class CreationUtilisateurTest extends WebTestCase
         }
     }
 
-    /**
-     * Le champ absent est la vraie protection : un rôle hors liste est **rejeté à
-     * la soumission**, même en forgeant la requête. Un contrôle qui ne tiendrait
-     * qu'à l'affichage ne protégerait rien.
-     */
+    /** Une requête forgée par la gérante est arrêtée à la porte, avant le formulaire. */
     public function testUnGerantQuiForgeLeRoleDirigeanteEstRefuse(): void
     {
         $this->client->loginUser($this->gerant);
-        $crawler = $this->client->request('GET', '/admin/utilisateurs/nouveau');
-
-        $form = $crawler->selectButton('Créer le compte')->form();
         $this->client->request('POST', '/admin/utilisateurs/nouveau', [
             'creer_utilisateur' => [
                 'nom' => 'Compte pirate',
                 'email' => 'pirate@test.ci',
                 'role' => RoleUtilisateur::DIRIGEANTE->value,
                 'motDePasse' => 'secret123',
-                '_token' => $form->get('creer_utilisateur[_token]')->getValue(),
             ],
         ]);
 
-        // 422 : formulaire invalide, que Turbo peut remplacer.
-        $this->assertResponseStatusCodeSame(422);
+        $this->assertResponseStatusCodeSame(403);
         $this->assertNull($this->trouver('pirate@test.ci'), 'Aucun compte ne doit être créé.');
     }
 
@@ -311,70 +304,59 @@ class CreationUtilisateurTest extends WebTestCase
         $this->assertResponseStatusCodeSame(403);
     }
 
-    /**
-     * L'échappatoire évidente : plutôt que de *créer* une dirigeante, en promouvoir
-     * une. Le plafond de `attribuablesPar()` vaut donc aussi en modification.
-     */
     public function testUnGerantNePeutPasPromouvoirQuelquUnEnDirigeante(): void
     {
         $caissier = $this->creerCaissier('yao@test.ci', 'Yao', '4321');
 
         $this->client->loginUser($this->gerant);
-        $crawler = $this->client->request('GET', '/admin/utilisateurs/'.$caissier->getId().'/modifier');
-        $this->assertResponseIsSuccessful();
+        $this->client->request('GET', '/admin/utilisateurs/'.$caissier->getId().'/modifier');
+        $this->assertResponseStatusCodeSame(403);
 
-        $proposes = $crawler->filter('#creer_utilisateur_role option')
-            ->each(static fn ($option): string => (string) $option->attr('value'));
-        $this->assertNotContains(RoleUtilisateur::DIRIGEANTE->value, $proposes);
-
-        // Le choix étant absent du formulaire, on forge la requête directement :
-        // c'est la seule façon de vérifier que le refus tient côté serveur et pas
-        // seulement à l'affichage.
-        $this->forger('/admin/utilisateurs/'.$caissier->getId().'/modifier', $crawler, [
+        $this->client->request('POST', '/admin/utilisateurs/'.$caissier->getId().'/modifier', ['creer_utilisateur' => [
             'nom' => 'Yao',
             'email' => 'yao@test.ci',
             'role' => RoleUtilisateur::DIRIGEANTE->value,
             'motDePasse' => 'secret123',
-        ]);
+        ]]);
+        $this->assertResponseStatusCodeSame(403);
 
-        $this->assertResponseStatusCodeSame(422);
         $this->em->clear();
         $this->assertNotContains('ROLE_DIRIGEANTE', $this->trouver('yao@test.ci')->getRoles());
     }
 
     /**
-     * On ne change pas son propre rôle : un gérant qui se rétrograderait perdrait
-     * `/admin` séance tenante et il faudrait quelqu'un d'autre pour l'en sortir.
-     * Même esprit que l'interdiction de se désactiver soi-même.
+     * On ne change pas son propre rôle : une dirigeante qui se rétrograderait
+     * perdrait le pilotage séance tenante.
      */
     public function testOnNeChangePasSonProprerole(): void
     {
-        $this->client->loginUser($this->gerant);
-        $crawler = $this->client->request('GET', '/admin/utilisateurs/'.$this->gerant->getId().'/modifier');
+        $this->client->loginUser($this->dirigeante);
+        $crawler = $this->client->request('GET', '/admin/utilisateurs/'.$this->dirigeante->getId().'/modifier');
         $this->assertResponseIsSuccessful();
 
         $proposes = $crawler->filter('#creer_utilisateur_role option')
             ->each(static fn ($option): string => (string) $option->attr('value'));
 
         // Seul son rôle actuel, en plus du libellé « Choisir un rôle… » (valeur vide).
-        $this->assertSame([RoleUtilisateur::GERANT->value], array_values(array_filter($proposes)));
+        $this->assertSame([RoleUtilisateur::DIRIGEANTE->value], array_values(array_filter($proposes)));
 
-        $this->forger('/admin/utilisateurs/'.$this->gerant->getId().'/modifier', $crawler, [
-            'nom' => 'Koffi',
-            'email' => 'koffi@test.ci',
+        $this->forger('/admin/utilisateurs/'.$this->dirigeante->getId().'/modifier', $crawler, [
+            'nom' => 'Aya',
+            'email' => 'aya@test.ci',
             'role' => RoleUtilisateur::CAISSIER->value,
             'codePin' => '1357',
         ]);
 
         $this->assertResponseStatusCodeSame(422);
         $this->em->clear();
-        $this->assertContains('ROLE_GERANT', $this->trouver('koffi@test.ci')->getRoles());
+        $this->assertContains('ROLE_DIRIGEANTE', $this->trouver('aya@test.ci')->getRoles());
     }
 
     /**
-     * Le rôle en place figure toujours dans la liste, même hors de portée de
-     * l'auteur : sans lui le formulaire s'ouvrirait sur un choix vide et le simple
-     * fait d'enregistrer rétrograderait le compte.
+     * Le rôle en place figure toujours dans la liste : sans lui le formulaire
+     * s'ouvrirait sur un choix vide et le simple fait d'enregistrer rétrograderait
+     * le compte. (Le cas « hors de portée de l'auteur » ne se présente plus à
+     * l'écran : seule la dirigeante y entre, et tous les rôles lui sont ouverts.)
      */
     public function testLeRoleEnPlaceResteProposeMemeHorsDePorteeDeLAuteur(): void
     {
@@ -383,15 +365,13 @@ class CreationUtilisateurTest extends WebTestCase
         $this->em->persist($comptable);
         $this->em->flush();
 
-        // Le gérant ne peut pas *attribuer* COMPTABLE, mais il doit pouvoir
-        // corriger le nom d'un comptable sans le déclasser au passage.
-        $this->client->loginUser($this->gerant);
+        $this->client->loginUser($this->dirigeante);
         $crawler = $this->client->request('GET', '/admin/utilisateurs/'.$comptable->getId().'/modifier');
 
-        $proposes = $crawler->filter('#creer_utilisateur_role option')
-            ->each(static fn ($option): string => (string) $option->attr('value'));
-
-        $this->assertContains(RoleUtilisateur::COMPTABLE->value, $proposes);
+        $this->assertSame(
+            RoleUtilisateur::COMPTABLE->value,
+            $crawler->filter('#creer_utilisateur_role option[selected]')->attr('value'),
+        );
     }
 
     public function testLaModificationEstTraceeAuJournalDAudit(): void
@@ -454,20 +434,20 @@ class CreationUtilisateurTest extends WebTestCase
         $this->client->submit($form);
     }
 
-    public function testUnGerantBasculeUnCompteCaissier(): void
+    public function testLaDirigeanteBasculeUnCompteCaissier(): void
     {
         $caissier = new Utilisateur('yao@test.ci', 'Yao');
         $caissier->setRoles(['ROLE_CAISSIER'])->setCodePin('y');
         $this->em->persist($caissier);
         $this->em->flush();
 
-        $this->client->loginUser($this->gerant);
+        $this->client->loginUser($this->dirigeante);
         $crawler = $this->client->request('GET', '/admin/utilisateurs');
 
         $this->assertGreaterThan(
             0,
             $crawler->filter('tr:contains("yao@test.ci") button')->count(),
-            'Le gérant doit pouvoir désactiver un caissier.',
+            'La dirigeante doit pouvoir désactiver un caissier.',
         );
     }
 
