@@ -1,0 +1,86 @@
+{% extends 'admin/base.html.twig' %}
+{% import 'admin/_icones.html.twig' as ui %}
+{% import 'admin/_macros.html.twig' as fmt %}
+{% import 'magasin/reception/_frise.html.twig' as rec %}
+
+{# Fiche d'une réception : frise, quantités à chaque étape, écarts et rejets.
+   Le prix n'apparaît qu'avec MAGASIN_VOIR_PRIX. L'annulation demande un motif ;
+   stockée, elle contre-passe les entrées (refusée si la marchandise est déjà
+   sortie). #}
+
+{% block page_title %}Réception {{ reception.numero }}{% endblock %}
+{% block page_sous_titre %}{{ reception.fournisseur.nom }} · {{ reception.dateReception|date('d/m/Y') }}{% if reception.bonLivraison %} · BL {{ reception.bonLivraison }}{% endif %}{% endblock %}
+
+{% block page_actions %}
+    <a href="{{ path('magasin_reception_bon', {id: reception.id}) }}" class="btn btn-secondaire" data-turbo="false" target="_blank">{{ ui.icone('imprimer') }} Imprimer le bon</a>
+    <a href="{{ path('magasin_reception_index') }}" class="btn btn-fantome">{{ ui.icone('retour') }} Réceptions</a>
+{% endblock %}
+
+{% block admin_content %}
+{% set voir_prix = is_granted('MAGASIN_VOIR_PRIX') %}
+{{ rec.frise(reception) }}
+
+<div class="carte apparition mb-5">
+    <div class="carte-entete">
+        <h2 class="carte-titre">Produits</h2>
+        {{ rec.statut(reception.statut) }}
+    </div>
+    <div class="defilement-x">
+    <table class="tableau" id="lignes-reception">
+        <thead>
+            <tr>
+                <th>Produit</th>
+                <th class="num">Annoncé</th>
+                <th class="num">Compté</th>
+                <th class="num">Rejeté</th>
+                <th>Motif</th>
+                <th class="num">Accepté</th>
+                <th>Emplacement</th>
+                {% if voir_prix %}<th class="num">Prix unitaire</th><th class="num">Valeur acceptée</th>{% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for ligne in reception.lignes %}
+                <tr {% if ligne.aUnEcartDeComptage %}class="bg-amber-50" data-ecart{% endif %}>
+                    <td class="cellule-principale">{{ ligne.produit.nom }}</td>
+                    <td class="num tabular-nums">{{ rec.qte(ligne.qteAnnoncee, ligne) }}</td>
+                    <td class="num tabular-nums">{{ rec.qte(ligne.qteComptee, ligne) }}</td>
+                    <td class="num tabular-nums">{{ ligne.qteRejetee ? rec.qte(ligne.qteRejetee, ligne) : '—' }}</td>
+                    <td class="cellule-douce">{{ ligne.motifRejet ? ligne.motifRejet.libelle : '—' }}</td>
+                    <td class="num tabular-nums">
+                        {{ rec.qte(ligne.qteAcceptee, ligne) }}
+                        {% if ligne.qteAcceptee and ligne.contenance != 1000 %}<br><span class="cellule-douce text-xs">{{ magasin_quantite(ligne.produit, ligne.qteAccepteeEnStock) }}</span>{% endif %}
+                    </td>
+                    <td class="cellule-douce">{{ ligne.emplacement ? ligne.emplacement.libelle : '—' }}</td>
+                    {% if voir_prix %}
+                        <td class="num tabular-nums">{{ ligne.prixUnitaire is not null ? fmt.fcfa(ligne.prixUnitaire) : '—' }}</td>
+                        <td class="num tabular-nums">{{ ligne.valeurAcceptee is not null and ligne.qteAcceptee is not null ? fmt.fcfa(ligne.valeurAcceptee) : '—' }}</td>
+                    {% endif %}
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% if reception.commentaire or reception.commentaireControle %}
+        <div class="carte-corps text-sm">
+            {% if reception.commentaire %}<p><strong>Commentaire :</strong> {{ reception.commentaire }}</p>{% endif %}
+            {% if reception.commentaireControle %}<p><strong>Écart au contrôle :</strong> {{ reception.commentaireControle }}</p>{% endif %}
+        </div>
+    {% endif %}
+</div>
+
+{% if reception.statut.value != 'ANNULEE' and is_granted('MAGASIN_GERER') %}
+    <details class="carte apparition max-w-2xl">
+        <summary class="carte-corps cursor-pointer font-semibold text-red-800">Annuler cette réception</summary>
+        <form method="post" action="{{ path('magasin_reception_annuler', {id: reception.id}) }}" class="carte-corps">
+            <input type="hidden" name="_token" value="{{ csrf_token('reception_' ~ reception.id) }}">
+            {% if reception.estStockee %}
+                <p class="aide mb-2">La réception est stockée : ses entrées seront contre-passées. Refusé si une partie de la marchandise est déjà sortie.</p>
+            {% endif %}
+            <label class="etiquette" for="motif">Motif (obligatoire)</label>
+            <input id="motif" name="motif" class="champ" maxlength="255" required>
+            <button class="btn btn-danger mt-3">{{ ui.icone('supprimer') }} Annuler la réception</button>
+        </form>
+    </details>
+{% endif %}
+{% endblock %}

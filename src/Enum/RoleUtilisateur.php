@@ -12,6 +12,11 @@ namespace App\Enum;
  * ATELIER (boulanger, pâtissier) et VITRINE (vendeuse) se connectent au pavé
  * numérique comme le caissier. Ils n'ouvrent que l'espace `/atelier` et n'y
  * lisent que des quantités : ni prix, ni écart.
+ *
+ * MAGASIN (magasinier) est autonome comme le comptable, et comme lui **en lecture
+ * seule** : il n'ouvre que `/magasin`, où il consulte réceptions, sorties et stock
+ * sans pouvoir agir (`MAGASIN_VOIR`). Les gestes — recevoir, sortir, corriger —
+ * restent à la gérante et à la dirigeante. Connexion par mot de passe.
  */
 enum RoleUtilisateur: string
 {
@@ -21,6 +26,7 @@ enum RoleUtilisateur: string
     case CAISSIER = 'ROLE_CAISSIER';
     case ATELIER = 'ROLE_ATELIER';
     case VITRINE = 'ROLE_VITRINE';
+    case MAGASIN = 'ROLE_MAGASIN';
 
     /**
      * Ce rôle se connecte-t-il au pavé numérique (code PIN) plutôt qu'avec un mot de passe ?
@@ -39,6 +45,7 @@ enum RoleUtilisateur: string
             self::CAISSIER => 'Caissier',
             self::ATELIER => 'Boulanger / Pâtissier',
             self::VITRINE => 'Vendeuse',
+            self::MAGASIN => 'Magasinier (consultation)',
         };
     }
 
@@ -64,6 +71,6 @@ enum RoleUtilisateur: string
     {
         return $dirigeante
             ? self::cases()
-            : [self::GERANT, self::CAISSIER, self::ATELIER, self::VITRINE];
+            : [self::GERANT, self::CAISSIER, self::ATELIER, self::VITRINE, self::MAGASIN];
     }
 }

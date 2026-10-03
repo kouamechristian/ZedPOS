@@ -390,6 +390,7 @@ class DemoResetCommand extends Command
                 ['Gérant', 'koffi.nguessan@zedpos.ci', 'gerant123', '/admin'],
                 ['Caissière (caisse ouverte)', 'Fatou Traoré', 'PIN 1234', '/caisse'],
                 ['Caissier (caisse clôturée)', 'Yao Kouassi', 'PIN 5678', '/caisse'],
+                ['Magasinier (consultation)', 'adama.magasin@zedpos.ci', 'magasin123', '/magasin'],
             ],
         );
 

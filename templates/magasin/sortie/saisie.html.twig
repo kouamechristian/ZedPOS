@@ -1,0 +1,116 @@
+{% extends 'admin/base.html.twig' %}
+{% import 'admin/_icones.html.twig' as ui %}
+{% import 'magasin/sortie/_sortie.html.twig' as so %}
+
+{# Saisie rapide d'une sortie, au doigt.
+
+   Destination en tuiles (un appui), motif, demandeur ; puis une ligne par
+   produit : quantité et unité — « 3 sacs » ou « 12,5 kg », au choix, ligne par
+   ligne. Sous chaque ligne, le **disponible** de l'emplacement, mis à jour sans
+   réseau (`sortie_lignes_controller.js`) : on voit avant de valider qu'il n'y a
+   pas 30 sacs en réserve. Le choix de l'emplacement n'apparaît que s'il y a plus
+   d'une zone active.
+
+   « Valider la sortie » enregistre et fait sortir le stock d'un geste ; refusée
+   faute de stock, la sortie reste en brouillon et l'écran y revient. #}
+
+{% block page_title %}{{ sortie ? 'Sortie ' ~ sortie.numero : 'Nouvelle sortie' }}{% endblock %}
+{% block page_sous_titre %}{{ sortie ? 'Brouillon — rien n\'est encore sorti du stock.' : 'Ce qui part du magasin, et pourquoi.' }}{% endblock %}
+
+{% block page_actions %}
+    <a href="{{ sortie ? path('magasin_sortie_show', {id: sortie.id}) : path('magasin_sortie_index') }}" class="btn btn-fantome">{{ ui.icone('retour') }} {{ sortie ? 'Fiche' : 'Sorties' }}</a>
+{% endblock %}
+
+{% block admin_content %}
+{% set choix = emplacements|length > 1 %}
+{{ so.erreur(erreur) }}
+
+<form method="post" class="carte apparition max-w-4xl"
+      data-controller="sortie-lignes"
+      data-sortie-lignes-infos-value="{{ infos|json_encode }}"
+      data-sortie-lignes-reserve-value="{{ reserve ? reserve.id : '' }}">
+    <input type="hidden" name="_token" value="{{ csrf_token(sortie ? 'sortie_' ~ sortie.id : 'sortie_nouvelle') }}">
+    <div class="carte-corps">
+        <fieldset class="mb-4">
+            <legend class="etiquette">Destination</legend>
+            <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {% for d in destinations %}
+                    <label class="cursor-pointer">
+                        <input type="radio" name="destination" value="{{ d.value }}" class="peer sr-only" {{ entete.destination == d.value ? 'checked' }}>
+                        <span class="block rounded-xl border-2 border-stone-200 bg-white px-3 py-4 text-center text-base font-semibold peer-checked:border-amber-600 peer-checked:bg-amber-50 peer-checked:text-amber-900">{{ d.libelle }}</span>
+                    </label>
+                {% endfor %}
+            </div>
+        </fieldset>
+
+        <div class="grid grid-cols-1 gap-x-5 sm:grid-cols-3">
+            <div>
+                <label class="etiquette" for="motif">Motif</label>
+                <select id="motif" name="motif" class="champ">
+                    {% for m in motifs %}
+                        <option value="{{ m.value }}" {{ entete.motif == m.value ? 'selected' }}>{{ m.libelle }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="etiquette" for="demande_par">Demandé par</label>
+                <input id="demande_par" name="demande_par" class="champ" maxlength="100" value="{{ entete.demandePar }}" placeholder="Ex. : Yao, boulanger">
+            </div>
+            <div>
+                <label class="etiquette" for="date">Date</label>
+                <input id="date" type="date" name="date" class="champ" value="{{ entete.date }}" max="{{ 'now'|date('Y-m-d') }}" required>
+            </div>
+        </div>
+
+        <h2 class="carte-titre mb-2 mt-4">Produits</h2>
+        <div class="space-y-3" id="lignes-sortie" data-sortie-lignes-target="corps">
+            {% for ligne in lignes %}
+                {{ _self.ligne(loop.index0, ligne, produits, emplacements, infos, choix) }}
+            {% endfor %}
+        </div>
+        <template data-sortie-lignes-target="modele">{{ _self.ligne('__i__', {produit: '', quantite: '', unite: 'achat', emplacement: ''}, produits, emplacements, infos, choix) }}</template>
+        <button type="button" class="btn btn-secondaire mt-3" data-action="sortie-lignes#ajouter">{{ ui.icone('plus') }} Ajouter un produit</button>
+
+        <div class="mt-4">
+            <label class="etiquette" for="commentaire">Commentaire</label>
+            <input id="commentaire" name="commentaire" class="champ" maxlength="255" value="{{ entete.commentaire }}">
+        </div>
+    </div>
+    <div class="carte-pied flex-wrap">
+        <button name="action" value="valider" class="btn btn-succes btn-lg">{{ ui.icone('valide') }} Valider la sortie</button>
+        <button name="action" value="brouillon" class="btn btn-secondaire btn-lg">Enregistrer le brouillon</button>
+    </div>
+</form>
+{% endblock %}
+
+{% macro ligne(i, ligne, produits, emplacements, infos, choix) %}
+    {% import 'admin/_icones.html.twig' as ui %}
+    {% set ligne = {produit: '', quantite: '', unite: 'achat', emplacement: ''}|merge(ligne) %}
+    {% set info = infos[ligne.produit] ?? null %}
+    <div class="rounded-xl border border-stone-200 bg-white p-3" data-sortie-lignes-target="ligne">
+        <div class="flex flex-wrap items-end gap-2">
+            <div class="min-w-48 flex-1">
+                <select name="lignes[{{ i }}][produit]" class="champ" data-action="sortie-lignes#actualiser" aria-label="Produit">
+                    <option value="">— Choisir le produit —</option>
+                    {% for p in produits %}
+                        <option value="{{ p.id }}" {{ ligne.produit == p.id ~ '' ? 'selected' }}>{{ p.nom }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <input name="lignes[{{ i }}][quantite]" class="champ w-24 text-right text-lg tabular-nums" inputmode="decimal" value="{{ ligne.quantite }}" aria-label="Quantité">
+            <select name="lignes[{{ i }}][unite]" class="champ w-28" data-unite aria-label="Unité">
+                <option value="achat" {{ ligne.unite == 'achat' ? 'selected' }} {% if info and info.achat is null %}hidden{% endif %}>{{ info ? (info.achat ?? '') : 'unité d\'achat' }}</option>
+                <option value="stock" {{ ligne.unite == 'stock' or (info and info.achat is null) ? 'selected' }}>{{ info ? info.stock : 'unité de stock' }}</option>
+            </select>
+            {% if choix %}
+                <select name="lignes[{{ i }}][emplacement]" class="champ w-44" data-action="sortie-lignes#actualiser" aria-label="Emplacement">
+                    {% for e in emplacements %}
+                        <option value="{{ e.id }}" {{ ligne.emplacement == e.id ~ '' ? 'selected' }}>{{ e.libelle }}</option>
+                    {% endfor %}
+                </select>
+            {% endif %}
+            <button type="button" class="btn btn-icone btn-fantome" data-action="sortie-lignes#retirer" aria-label="Retirer la ligne">{{ ui.icone('supprimer') }}</button>
+        </div>
+        <p class="aide mt-1" data-disponible>{% if info %}Disponible : {{ info.disponible[ligne.emplacement ?: (emplacements|first).id] ?? '—' }}{% endif %}</p>
+    </div>
+{% endmacro %}

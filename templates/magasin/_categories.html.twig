@@ -1,0 +1,12 @@
+{# Filtre par catégorie en pastilles. Garde la recherche en cours, abandonne la
+   page — un nouveau filtre repart de la première page, sinon on atterrirait sur
+   une page qui n'existe plus dans le résultat filtré. #}
+{% macro filtre(route, categories, categorie) %}
+    {% set requete = app.request.query.all|filter((v, k) => k not in ['page', 'categorie']) %}
+    <nav class="mb-3 flex flex-wrap gap-2" aria-label="Filtrer par catégorie">
+        <a href="{{ path(route, requete) }}" class="badge {{ categorie is null ? 'badge-ambre' : 'badge-neutre' }}" {% if categorie is null %}aria-current="page"{% endif %}>Toutes</a>
+        {% for c in categories %}
+            <a href="{{ path(route, requete|merge({categorie: c.value})) }}" class="badge {{ categorie == c ? 'badge-ambre' : 'badge-neutre' }}" {% if categorie == c %}aria-current="page"{% endif %}>{{ c.libelle }}</a>
+        {% endfor %}
+    </nav>
+{% endmacro %}

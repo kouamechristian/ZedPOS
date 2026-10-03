@@ -1,0 +1,24 @@
+{# Styles communs aux PDF du magasin (Dompdf).
+
+   ⚠ Dompdf ne connaît ni flexbox ni grid : tout est en tableaux.
+   ⚠ Pas de `* { margin: 0 }` : sous Dompdf il atteint aussi `@page`.
+   DejaVu Sans : la police embarquée qui porte les accents. #}
+<style>
+    body { font-family: "DejaVu Sans", sans-serif; font-size: 8.5pt; color: #000; }
+    body, h1, h2, p, div, table, td, th { margin: 0; padding: 0; }
+    .entete { width: 100%; border-bottom: 1.5pt solid #000; padding-bottom: 3mm; margin-bottom: 4mm; }
+    .entete td { vertical-align: top; }
+    .boutique { font-size: 13pt; font-weight: bold; }
+    h1 { font-size: 14pt; text-align: right; }
+    .sous-titre { text-align: right; font-size: 9.5pt; margin-top: 1mm; }
+    table.detail { width: 100%; border-collapse: collapse; }
+    table.detail th, table.detail td { border-bottom: 0.4pt solid #bbb; padding: 1.4mm 1.6mm; text-align: left; vertical-align: top; }
+    table.detail th { font-size: 7pt; text-transform: uppercase; letter-spacing: .03em; border-bottom: 0.8pt solid #000; }
+    table.detail .droite { text-align: right; }
+    table.detail .fort { font-weight: bold; }
+    table.detail tr.total td { border-top: 0.8pt solid #000; border-bottom: none; font-weight: bold; }
+    .note { margin-top: 4mm; font-size: 7.5pt; color: #333; }
+    .pied { position: fixed; bottom: -10mm; left: 0; right: 0; font-size: 7pt; color: #444; border-top: 0.4pt solid #999; padding-top: 1.5mm; }
+    .pied .page { float: right; }
+    .pied .page:after { content: "Page " counter(page); }
+</style>

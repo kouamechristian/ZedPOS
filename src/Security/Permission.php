@@ -140,6 +140,32 @@ final class Permission
      */
     public const PRODUCTION_ANNULER = 'PRODUCTION_ANNULER';
 
+    // --- Magasin (module indépendant, /magasin) --------------------------------
+
+    /**
+     * Consulter le magasin : stock, réceptions, sorties, bons imprimables. La
+     * gérante, la dirigeante et le magasinier (ROLE_MAGASIN), qui n'a que celle-ci.
+     */
+    public const MAGASIN_VOIR = 'MAGASIN_VOIR';
+
+    /**
+     * Tenir le magasin : réceptions et leurs étapes, sorties, comptage d'inventaire.
+     * La gérante et la dirigeante — **jamais le magasinier**, qui consulte seulement.
+     */
+    public const MAGASIN_GERER = 'MAGASIN_GERER';
+
+    /** Créer et modifier les produits et les emplacements du magasin. La gérante et la dirigeante. */
+    public const MAGASIN_REFERENTIEL = 'MAGASIN_REFERENTIEL';
+
+    /**
+     * Voir et saisir les prix d'achat, le coût moyen pondéré, les valeurs de stock.
+     * **Dirigeante seule** : la gérante tient les quantités.
+     */
+    public const MAGASIN_VOIR_PRIX = 'MAGASIN_VOIR_PRIX';
+
+    /** Valider un inventaire qui présente un écart. **Dirigeante seule.** */
+    public const MAGASIN_VALIDER_ECART = 'MAGASIN_VALIDER_ECART';
+
     private function __construct()
     {
     }

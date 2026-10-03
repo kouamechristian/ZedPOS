@@ -1,0 +1,92 @@
+{% extends 'admin/base.html.twig' %}
+{% import 'admin/_icones.html.twig' as ui %}
+{% import 'admin/_macros.html.twig' as fmt %}
+{% import 'magasin/sortie/_sortie.html.twig' as so %}
+
+{# Fiche d'une sortie. Brouillon : on la reprend ou on la valide. Validée : elle
+   ne se modifie plus, elle s'annule (motif obligatoire, marchandise remise en
+   stock). La valeur au coût moyen figé n'apparaît qu'avec MAGASIN_VOIR_PRIX. #}
+
+{% block page_title %}Sortie {{ sortie.numero }}{% endblock %}
+{% block page_sous_titre %}{{ sortie.destination.libelle }} · {{ sortie.motif.libelle }} · {{ sortie.dateSortie|date('d/m/Y') }}{% endblock %}
+
+{% block page_actions %}
+    <a href="{{ path('magasin_sortie_bon', {id: sortie.id}) }}" class="btn btn-secondaire" data-turbo="false" target="_blank">{{ ui.icone('imprimer') }} Imprimer le bon</a>
+    <a href="{{ path('magasin_sortie_index') }}" class="btn btn-fantome">{{ ui.icone('retour') }} Sorties</a>
+{% endblock %}
+
+{% block admin_content %}
+{% set voir_prix = is_granted('MAGASIN_VOIR_PRIX') %}
+
+{% if sortie.estAnnulee %}
+    <div class="alerte alerte-rouge mb-5" role="status">
+        <p><strong>Sortie annulée</strong> le {{ sortie.annuleeAt|date('d/m/Y à H:i') }} par {{ sortie.annuleePar.nom }} — {{ sortie.motifAnnulation }}{% if sortie.aEteValidee %} · la marchandise est revenue en stock{% endif %}.</p>
+    </div>
+{% elseif sortie.estBrouillon %}
+    <div class="alerte alerte-ambre mb-5" role="status">
+        <p><strong>Brouillon</strong> — rien n'est encore sorti du stock.</p>
+    </div>
+{% endif %}
+
+<div class="carte apparition mb-5">
+    <div class="carte-entete">
+        <h2 class="carte-titre">Produits</h2>
+        {{ so.statut(sortie.statut) }}
+    </div>
+    <div class="defilement-x">
+    <table class="tableau" id="lignes-sortie">
+        <thead>
+            <tr>
+                <th>Produit</th>
+                <th class="num">Quantité</th>
+                <th class="num">Sort du stock</th>
+                <th>Emplacement</th>
+                {% if voir_prix %}<th class="num">Valeur</th>{% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for ligne in sortie.lignes %}
+                <tr>
+                    <td class="cellule-principale">{{ ligne.produit.nom }}</td>
+                    <td class="num tabular-nums">{{ so.saisie(ligne) }}</td>
+                    <td class="num tabular-nums">{{ magasin_quantite(ligne.produit, ligne.quantite) }}</td>
+                    <td class="cellule-douce">{{ ligne.emplacement.libelle }}</td>
+                    {% if voir_prix %}<td class="num tabular-nums">{{ ligne.valeur is not null ? fmt.fcfa(ligne.valeur) : '—' }}</td>{% endif %}
+                </tr>
+            {% endfor %}
+        </tbody>
+        {% if voir_prix and sortie.valeur is not null %}
+            <tfoot><tr><td colspan="4" class="num">Valeur au coût moyen</td><td class="num tabular-nums"><strong>{{ fmt.fcfa(sortie.valeur) }}</strong></td></tr></tfoot>
+        {% endif %}
+    </table>
+    </div>
+    <div class="carte-corps text-sm">
+        <p>Demandé par : <strong>{{ sortie.demandePar ?: '—' }}</strong> · Saisi par {{ sortie.creePar.nom }}{% if sortie.serviePar %} · Servi par <strong>{{ sortie.serviePar.nom }}</strong> le {{ sortie.valideeAt|date('d/m/Y à H:i') }}{% endif %}</p>
+        {% if sortie.commentaire %}<p class="mt-1">Commentaire : {{ sortie.commentaire }}</p>{% endif %}
+    </div>
+    {% if sortie.estBrouillon and is_granted('MAGASIN_GERER') %}
+        <div class="carte-pied flex-wrap">
+            <form method="post" action="{{ path('magasin_sortie_valider', {id: sortie.id}) }}">
+                <input type="hidden" name="_token" value="{{ csrf_token('sortie_' ~ sortie.id) }}">
+                <button class="btn btn-succes btn-lg">{{ ui.icone('valide') }} Valider la sortie</button>
+            </form>
+            <a href="{{ path('magasin_sortie_edit', {id: sortie.id}) }}" class="btn btn-secondaire btn-lg">{{ ui.icone('modifier') }} Modifier</a>
+        </div>
+    {% endif %}
+</div>
+
+{% if not sortie.estAnnulee and is_granted('MAGASIN_GERER') %}
+    <details class="carte apparition max-w-2xl">
+        <summary class="carte-corps cursor-pointer font-semibold text-red-800">Annuler cette sortie</summary>
+        <form method="post" action="{{ path('magasin_sortie_annuler', {id: sortie.id}) }}" class="carte-corps">
+            <input type="hidden" name="_token" value="{{ csrf_token('sortie_' ~ sortie.id) }}">
+            {% if sortie.estValidee %}
+                <p class="aide mb-2">La sortie est validée : la marchandise sera remise en stock dans ses emplacements.</p>
+            {% endif %}
+            <label class="etiquette" for="motif">Motif (obligatoire)</label>
+            <input id="motif" name="motif" class="champ" maxlength="255" required>
+            <button class="btn btn-danger mt-3">{{ ui.icone('supprimer') }} Annuler la sortie</button>
+        </form>
+    </details>
+{% endif %}
+{% endblock %}

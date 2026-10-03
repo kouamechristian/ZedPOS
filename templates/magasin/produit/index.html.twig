@@ -1,0 +1,71 @@
+{% extends 'admin/base.html.twig' %}
+{% import 'admin/_macros.html.twig' as fmt %}
+{% import 'admin/_icones.html.twig' as ui %}
+{% import '_pagination.html.twig' as pagination %}
+{% import 'admin/_recherche.html.twig' as recherche %}
+{% import 'magasin/_categories.html.twig' as categories_magasin %}
+
+{# Référentiel des produits du magasin — indépendant des matières premières de
+   la caisse et des fiches techniques. Le coût moyen n'apparaît qu'avec
+   MAGASIN_VOIR_PRIX (la dirigeante). #}
+
+{% block page_title %}Produits du magasin{% endblock %}
+{% block page_sous_titre %}Matières, emballages et fournitures tenus au magasin, avec leur unité d'achat.{% endblock %}
+
+{% block page_actions %}
+    {% if is_granted('MAGASIN_REFERENTIEL') %}<a href="{{ path('magasin_produit_new') }}" class="btn btn-primaire">{{ ui.icone('plus') }} Nouveau produit</a>{% endif %}
+{% endblock %}
+
+{% block admin_content %}
+{% set voir_prix = is_granted('MAGASIN_VOIR_PRIX') %}
+<turbo-frame id="liste-produits-magasin" data-turbo-action="advance">
+
+{{ categories_magasin.filtre('magasin_produit_index', categories, categorie) }}
+{{ recherche.barre('magasin_produit_index', 'Nom ou unité') }}
+<div class="tableau-conteneur apparition">
+    <div class="defilement-x">
+    <table class="tableau">
+        <thead>
+            <tr>
+                <th>Produit</th>
+                <th>Catégorie</th>
+                <th>Unités</th>
+                <th class="num">Seuil d'alerte</th>
+                <th>Fournisseur habituel</th>
+                {% if voir_prix %}<th class="num">Coût moyen</th>{% endif %}
+                <th>Statut</th>
+                <th class="num">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for produit in produits.items %}
+                <tr>
+                    <td class="cellule-principale">{{ produit.nom }}</td>
+                    <td class="cellule-douce">{{ produit.categorie.libelle }}</td>
+                    <td class="cellule-douce">
+                        {% if produit.aUneUniteAchat %}
+                            {{ produit.uniteAchat }} de {{ fmt.unites(produit.contenanceAchat) }} {{ produit.uniteStock }}
+                        {% else %}
+                            {{ produit.uniteStock }}
+                        {% endif %}
+                    </td>
+                    <td class="num tabular-nums">{{ produit.seuilAlerte > 0 ? magasin_quantite(produit, produit.seuilAlerte) : '—' }}</td>
+                    <td class="cellule-douce">{{ produit.fournisseurHabituel ? produit.fournisseurHabituel.nom : '—' }}</td>
+                    {% if voir_prix %}<td class="num tabular-nums">{{ produit.coutMoyen > 0 ? fmt.fcfa(produit.coutMoyen) ~ ' / ' ~ produit.uniteStock : '—' }}</td>{% endif %}
+                    <td>{{ fmt.badge(produit.actif) }}</td>
+                    <td>
+                        <div class="actions-ligne">
+                            {% if is_granted('MAGASIN_REFERENTIEL') %}<a href="{{ path('magasin_produit_edit', {id: produit.id}) }}" data-turbo-frame="_top" class="btn btn-sm btn-secondaire">{{ ui.icone('modifier') }} Modifier</a>{% endif %}
+                        </div>
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="{{ voir_prix ? 8 : 7 }}" class="cellule-vide">Aucun produit.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{{ pagination.barre(produits, 'magasin_produit_index') }}
+</turbo-frame>
+{% endblock %}

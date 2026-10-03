@@ -1,0 +1,19 @@
+{# Petits éléments communs aux écrans des sorties. #}
+
+{% macro statut(statut) %}
+    {% set couleurs = {BROUILLON: 'badge-neutre', VALIDEE: 'badge-vert', ANNULEE: 'badge-rouge'} %}
+    <span class="badge {{ couleurs[statut.value] }}">{{ statut.libelle }}</span>
+{% endmacro %}
+
+{# Quantité saisie, dans l'unité choisie : « 3 sacs », « 12,5 kg ». #}
+{% macro saisie(ligne) %}{{ magasin_unite(ligne.qteSaisie, ligne.uniteSaisie, ligne.enUniteAchat) }}{% endmacro %}
+
+{% macro erreur(message) %}
+    {% import 'admin/_icones.html.twig' as ui %}
+    {% if message %}
+        <div class="alerte alerte-rouge apparition mb-4" role="alert">
+            {{ ui.icone('erreur') }}
+            <p>{{ message }}</p>
+        </div>
+    {% endif %}
+{% endmacro %}

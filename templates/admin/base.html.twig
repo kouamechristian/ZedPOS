@@ -12,14 +12,18 @@
    ce qu'on ne peut pas ouvrir n'apparaît donc nulle part. Un groupe dont aucune
    entrée n'est visible disparaît avec son titre.
 
+   Les entrées hors Magasin portent au minimum ROLE_GERANT : le magasinier
+   (ROLE_MAGASIN) partage cette coquille mais ne voit que la section « Magasin »,
+   ouverte par MAGASIN_VOIR.
+
    « Catalogue et stock » et « Administration » sont réservés à la dirigeante, à
    la demande de l'exploitante : la gérante ne les voit plus dans le menu, et
    `access_control` (security.yaml) lui en ferme aussi les URL. #}
 {% set groupes = [
     { titre: 'Activité', entrees: [
-        { label: 'Tableau de bord', route: 'admin_dashboard',     match: ['admin_dashboard'],                   icone: 'accueil' },
-        { label: 'Ventes',          route: 'admin_ventes',        match: ['admin_ventes'],                      icone: 'ventes' },
-        { label: 'Clôtures',        route: 'admin_clotures',      match: ['admin_cloture'],                     icone: 'clotures' },
+        { label: 'Tableau de bord', route: 'admin_dashboard',     match: ['admin_dashboard'],                   icone: 'accueil', role: 'ROLE_GERANT' },
+        { label: 'Ventes',          route: 'admin_ventes',        match: ['admin_ventes'],                      icone: 'ventes', role: 'ROLE_GERANT' },
+        { label: 'Clôtures',        route: 'admin_clotures',      match: ['admin_cloture'],                     icone: 'clotures', role: 'ROLE_GERANT' },
     ]},
     { titre: 'Catalogue et stock', entrees: [
         { label: 'Articles',        route: 'admin_article_index', match: ['admin_article', 'admin_famille'],    icone: 'articles', role: 'ROLE_DIRIGEANTE' },
@@ -28,14 +32,24 @@
         { label: 'Production',      route: 'admin_production',    match: ['admin_production'],                  icone: 'production', role: 'ROLE_DIRIGEANTE' },
         { label: 'Pertes',          route: 'admin_pertes',        match: ['admin_perte'],                       icone: 'pertes', role: 'ROLE_DIRIGEANTE' },
     ]},
+    { titre: 'Magasin', entrees: [
+        { label: 'Tableau de bord', route: 'magasin_tableau_de_bord',  match: ['magasin_tableau_de_bord'], icone: 'accueil', role: 'MAGASIN_VOIR' },
+        { label: 'Réceptions',      route: 'magasin_reception_index',   match: ['magasin_reception'],   icone: 'fournisseurs', role: 'MAGASIN_VOIR' },
+        { label: 'Sorties',         route: 'magasin_sortie_index',      match: ['magasin_sortie'],      icone: 'document', role: 'MAGASIN_VOIR' },
+        { label: 'Stock magasin',   route: 'magasin_stock_index',       match: ['magasin_stock'],       icone: 'stock', role: 'MAGASIN_VOIR' },
+        { label: 'Analyse',         route: 'magasin_analyse',           match: ['magasin_analyse', 'magasin_fiche_stock'], icone: 'pilotage', role: 'MAGASIN_VOIR' },
+        { label: 'Inventaires',     route: 'magasin_inventaire_index',  match: ['magasin_inventaire'],  icone: 'inventaire', role: 'MAGASIN_VOIR' },
+        { label: 'Produits',        route: 'magasin_produit_index',     match: ['magasin_produit'],     icone: 'articles', role: 'MAGASIN_VOIR' },
+        { label: 'Emplacements',    route: 'magasin_emplacement_index', match: ['magasin_emplacement'], icone: 'filtre', role: 'MAGASIN_VOIR' },
+    ]},
     { titre: 'Production et vitrine', entrees: [
-        { label: 'Fiche de production', route: 'app_atelier',          match: ['app_atelier'],                      icone: 'production' },
+        { label: 'Fiche de production', route: 'app_atelier',          match: ['app_atelier'],                      icone: 'production', role: 'ROLE_GERANT' },
     ]},
     { titre: 'Revendeurs', entrees: [
-        { label: 'Dotations',       route: 'admin_dotation_index', match: ['admin_dotation'],                   icone: 'fournisseurs' },
-        { label: 'Points',          route: 'admin_point_index',    match: ['admin_point'],                      icone: 'clotures' },
-        { label: 'Rapports',        route: 'admin_rapport_stand',  match: ['admin_rapport_stand'],              icone: 'pilotage' },
-        { label: 'Stands',          route: 'admin_stand_index',    match: ['admin_stand', 'admin_vendeur'],      icone: 'accueil' },
+        { label: 'Dotations',       route: 'admin_dotation_index', match: ['admin_dotation'],                   icone: 'fournisseurs', role: 'ROLE_GERANT' },
+        { label: 'Points',          route: 'admin_point_index',    match: ['admin_point'],                      icone: 'clotures', role: 'ROLE_GERANT' },
+        { label: 'Rapports',        route: 'admin_rapport_stand',  match: ['admin_rapport_stand'],              icone: 'pilotage', role: 'ROLE_GERANT' },
+        { label: 'Stands',          route: 'admin_stand_index',    match: ['admin_stand', 'admin_vendeur'],      icone: 'accueil', role: 'ROLE_GERANT' },
     ]},
     { titre: 'Administration', entrees: [
         { label: 'Comptabilité',    route: 'app_comptabilite',    match: ['app_comptabilite'],                  icone: 'comptabilite', role: 'ROLE_DIRIGEANTE' },
@@ -99,6 +113,8 @@
 
         {# Préchargement au survol : la page suivante est déjà en mémoire au clic.
            **Un seul** <nav> préchargé sur la page : `TurboNavigationTest` le fige. #}
+        {# Compteur rouge sur « Stock magasin » : les produits au seuil d'alerte. #}
+        {% set compteurs = is_granted('MAGASIN_VOIR') ? {magasin_stock_index: magasin_alertes()|length} : {} %}
         <nav class="flex-1 overflow-y-auto overflow-x-hidden pb-3" data-turbo-prefetch="true">
             {% for groupe in groupes %}
                 {% set visibles = groupe.entrees|filter(entree => entree.role is not defined or is_granted(entree.role)) %}
@@ -110,6 +126,9 @@
                            {% if actif %}aria-current="page"{% endif %}>
                             {{ ui.icone(entree.icone) }}
                             <span class="masque-replie">{{ entree.label }}</span>
+                            {% if (compteurs[entree.route] ?? 0) > 0 %}
+                                <span class="badge badge-rouge masque-replie ml-auto" data-compteur-seuil title="Produits au seuil d'alerte">{{ compteurs[entree.route] }}</span>
+                            {% endif %}
                         </a>
                     {% endfor %}
                 {% endif %}
@@ -167,7 +186,7 @@
                             <span class="avatar">{{ initiales ?: '?' }}</span>
                             <span class="hidden text-left leading-tight md:block">
                                 <span class="block text-[13px] font-semibold text-stone-800">{{ nom_utilisateur }}</span>
-                                <span class="block text-[11px] text-stone-500">{{ is_granted('ROLE_DIRIGEANTE') ? 'Dirigeante' : 'Gérance' }}</span>
+                                <span class="block text-[11px] text-stone-500">{{ is_granted('ROLE_DIRIGEANTE') ? 'Dirigeante' : (is_granted('ROLE_GERANT') ? 'Gérance' : 'Magasin') }}</span>
                             </span>
                         </summary>
                         <div class="menu-panneau">
@@ -200,7 +219,9 @@
                 <div class="actions-page">{% block page_actions %}{% endblock %}</div>
             </div>
 
-            {% set sousSeuil = alertesStock.matieresSousSeuil %}
+            {# Alerte du stock de la boutique : sans objet pour le magasinier, dont le
+               module a son propre stock. #}
+            {% set sousSeuil = is_granted('ROLE_GERANT') ? alertesStock.matieresSousSeuil : [] %}
             {% if sousSeuil is not empty %}
                 <div class="alerte alerte-ambre apparition mb-5" style="--i: 1">
                     {{ ui.icone('pertes') }}
@@ -215,6 +236,8 @@
                     {% endif %}
                 </div>
             {% endif %}
+
+            {{ include('magasin/_alerte_seuil.html.twig') }}
 
             {% block admin_content %}{% endblock %}
         </main>

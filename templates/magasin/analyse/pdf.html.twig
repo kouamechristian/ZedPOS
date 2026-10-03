@@ -1,0 +1,71 @@
+{# Analyse des mouvements du magasin en PDF (Dompdf), A4 paysage : mêmes
+   données et mêmes colonnes que l'écran. Valeur avec MAGASIN_VOIR_PRIX
+   seulement. Pas de logo : le module n'emprunte rien aux paramètres de la
+   boutique hors du nom, lu par la fonction Twig. #}
+{% import 'admin/_macros.html.twig' as fmt %}
+{% set voir_prix = is_granted('MAGASIN_VOIR_PRIX') %}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Analyse du magasin {{ filtre.libelle }}</title>
+    {{ include('magasin/analyse/_pdf_styles.html.twig') }}
+    <style>@page { size: A4 landscape; margin: 12mm 10mm 16mm 10mm; }</style>
+</head>
+<body>
+    <div class="pied">
+        Édité le {{ edite_le|date('d/m/Y à H:i') }}{% if edite_par %} par {{ edite_par }}{% endif %} — {{ nom_boutique() }}
+        <span class="page"></span>
+    </div>
+
+    <table class="entete">
+        <tr>
+            <td><div class="boutique">{{ nom_boutique() }}</div></td>
+            <td>
+                <h1>Analyse des mouvements du magasin</h1>
+                <div class="sous-titre">{{ filtre.libelle|capitalize }}{{ filtre.categorie ? ' — ' ~ filtre.categorie.libelle }}{{ filtre.emplacement ? ' — ' ~ filtre.emplacement.libelle }}</div>
+            </td>
+        </tr>
+    </table>
+
+    <table class="detail">
+        <thead>
+            <tr>
+                <th>Produit</th>
+                <th class="droite">Stock début</th>
+                <th class="droite">Entrées</th>
+                <th class="droite">Sorties</th>
+                {% for motif in motifs %}<th class="droite">dont {{ motif.libelle|lower }}</th>{% endfor %}
+                <th class="droite">Ajustements</th>
+                <th class="droite">Stock fin</th>
+                {% if voir_prix %}<th class="droite">Valeur</th>{% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for ligne in lignes %}
+                {% set p = ligne.produit %}
+                <tr>
+                    <td>{{ p.nom }}</td>
+                    <td class="droite">{{ magasin_quantite(p, ligne.debut) }}</td>
+                    <td class="droite">{{ ligne.entrees != 0 ? '+' ~ magasin_quantite(p, ligne.entrees) : '—' }}</td>
+                    <td class="droite">{{ ligne.sorties != 0 ? '−' ~ magasin_quantite(p, ligne.sorties) : '—' }}</td>
+                    {% for motif in motifs %}
+                        {% set q = ligne.sortiesParMotif[motif.value] ?? 0 %}
+                        <td class="droite">{{ q != 0 ? '−' ~ magasin_quantite(p, q) : '—' }}</td>
+                    {% endfor %}
+                    <td class="droite">{{ ligne.ajustements != 0 ? (ligne.ajustements > 0 ? '+' : '') ~ magasin_quantite(p, ligne.ajustements) : '—' }}</td>
+                    <td class="droite fort">{{ magasin_quantite(p, ligne.fin) }}</td>
+                    {% if voir_prix %}<td class="droite">{{ fmt.fcfa(ligne.valeur) }}</td>{% endif %}
+                </tr>
+            {% else %}
+                <tr><td colspan="{{ 6 + motifs|length + (voir_prix ? 1 : 0) }}">Aucun produit.</td></tr>
+            {% endfor %}
+            {% if voir_prix and lignes is not empty %}
+                <tr class="total"><td colspan="{{ 6 + motifs|length }}" class="droite">Valeur du stock en fin de période, au coût moyen actuel</td><td class="droite">{{ fmt.fcfa(valeurTotale) }}</td></tr>
+            {% endif %}
+        </tbody>
+    </table>
+
+    <p class="note">Stock début + entrées − sorties ± ajustements = stock fin. Chaque colonne est nette des annulations de la période ; les ajustements sont les corrections d'inventaire.</p>
+</body>
+</html>

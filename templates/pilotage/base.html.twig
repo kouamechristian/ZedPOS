@@ -82,6 +82,7 @@
     </header>
 
     <main class="contenu {{ block('pilotage_largeur') }}">
+        {{ include('magasin/_alerte_seuil.html.twig') }}
         {% block pilotage_content %}{% endblock %}
     </main>
 

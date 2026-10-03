@@ -1,0 +1,122 @@
+{% extends 'admin/base.html.twig' %}
+{% import 'admin/_icones.html.twig' as ui %}
+{% import 'admin/_macros.html.twig' as fmt %}
+
+{# Feuille d'inventaire à l'écran : comptage, puis validation.
+
+   Contrairement à la feuille imprimée, l'écran **montre le théorique et l'écart**
+   de chaque ligne : on y reporte un comptage déjà fait à l'aveugle, et l'écart
+   est ce qu'on vient y vérifier. Il se recalcule en direct
+   (`inventaire_comptage_controller.js`, millièmes entiers).
+
+   Une case vide = pas compté, ignoré à la validation ; « 0 » = il n'en reste
+   aucun. Le compté se tape en unité d'achat ou en unité de stock, ligne par
+   ligne. Valeur des écarts avec MAGASIN_VOIR_PRIX seulement. #}
+
+{% block page_title %}Inventaire {{ inventaire.numero }}{% endblock %}
+{% block page_sous_titre %}{{ inventaire.portee }} · ouvert le {{ inventaire.createdAt|date('d/m/Y à H:i') }} par {{ inventaire.ouvertPar.nom }}{% endblock %}
+
+{% block page_actions %}
+    <a href="{{ path('magasin_inventaire_feuille', {id: inventaire.id}) }}" class="btn btn-secondaire" data-turbo="false" target="_blank">{{ ui.icone('imprimer') }} Feuille de comptage</a>
+    <a href="{{ path('magasin_inventaire_index') }}" class="btn btn-fantome">{{ ui.icone('retour') }} Inventaires</a>
+{% endblock %}
+
+{% block admin_content %}
+{% set modifiable = inventaire.estEnCours and is_granted('MAGASIN_GERER') %}
+{% set voir_prix = is_granted('MAGASIN_VOIR_PRIX') %}
+
+{% if erreur %}
+    <div class="alerte alerte-rouge apparition mb-4" role="alert">{{ ui.icone('erreur') }}<p>{{ erreur }}</p></div>
+{% endif %}
+{% if inventaire.statut.value == 'VALIDE' %}
+    <div class="alerte alerte-vert mb-4" role="status"><p><strong>Validé</strong> le {{ inventaire.valideAt|date('d/m/Y à H:i') }} par {{ inventaire.validePar.nom }} — {{ inventaire.lignesEnEcart|length }} écart(s) reporté(s) au stock.</p></div>
+{% elseif inventaire.statut.value == 'ABANDONNE' %}
+    <div class="alerte alerte-rouge mb-4" role="status"><p><strong>Abandonné</strong> le {{ inventaire.abandonneAt|date('d/m/Y à H:i') }} par {{ inventaire.abandonnePar.nom }} — sans effet sur le stock.</p></div>
+{% elseif inventaire.aDesEcarts and not is_granted('MAGASIN_VALIDER_ECART') %}
+    <div class="alerte alerte-ambre mb-4" role="status"><p>Des écarts sont constatés : la validation revient à la dirigeante. Enregistrez le comptage, elle le validera.</p></div>
+{% endif %}
+
+<form method="post" action="{{ path('magasin_inventaire_compter', {id: inventaire.id}) }}" class="carte apparition" data-controller="inventaire-comptage">
+    <input type="hidden" name="_token" value="{{ csrf_token('inventaire_' ~ inventaire.id) }}">
+    <div class="defilement-x">
+    <table class="tableau" id="lignes-inventaire">
+        <thead>
+            <tr>
+                <th>Produit</th>
+                <th>Emplacement</th>
+                <th class="num">Théorique</th>
+                <th class="num">Compté</th>
+                <th class="num">Écart</th>
+                {% if voir_prix %}<th class="num">Valeur de l'écart</th>{% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for ligne in lignes %}
+                {% set s = saisie is not null ? (saisie[ligne.id] ?? {}) : {} %}
+                {% set valeur = saisie is not null ? (s.quantite ?? '') : (ligne.qteSaisie is not null ? ((ligne.qteSaisie // 1000) ~ (ligne.qteSaisie % 1000 > 0 ? ',' ~ ('%03d'|format(ligne.qteSaisie % 1000))|trim('0', 'right') : '')) : '') %}
+                {% set unite = saisie is not null ? (s.unite ?? 'achat') : (ligne.qteSaisie is null or ligne.enUniteAchat ? 'achat' : 'stock') %}
+                <tr data-inventaire-comptage-target="ligne" data-theorique="{{ ligne.qteTheorique }}" data-contenance="{{ ligne.contenance }}" data-unite-stock="{{ ligne.produit.uniteStock }}"
+                    {% if ligne.estComptee and ligne.ecart != 0 %}class="bg-amber-50" data-ecart{% endif %}>
+                    <td class="cellule-principale">{{ ligne.produit.nom }}</td>
+                    <td class="cellule-douce">{{ ligne.emplacement.libelle }}</td>
+                    <td class="num tabular-nums">{{ magasin_quantite(ligne.produit, ligne.qteTheorique) }}</td>
+                    <td class="num">
+                        {% if modifiable %}
+                            <div class="flex items-center justify-end gap-2">
+                                <input name="comptes[{{ ligne.id }}][quantite]" value="{{ valeur }}" inputmode="decimal" class="champ w-24 text-right tabular-nums"
+                                       data-action="input->inventaire-comptage#calculer" aria-label="Compté — {{ ligne.produit.nom }}, {{ ligne.emplacement.libelle }}">
+                                {% if ligne.peutSeCompterEnUniteAchat %}
+                                    <select name="comptes[{{ ligne.id }}][unite]" class="champ w-24" data-action="inventaire-comptage#calculer" aria-label="Unité">
+                                        <option value="achat" {{ unite == 'achat' ? 'selected' }}>{{ ligne.uniteAchat }}</option>
+                                        <option value="stock" {{ unite == 'stock' ? 'selected' }}>{{ ligne.produit.uniteStock }}</option>
+                                    </select>
+                                {% else %}
+                                    <input type="hidden" name="comptes[{{ ligne.id }}][unite]" value="stock">
+                                    <span class="cellule-douce w-24 text-left text-sm">{{ ligne.produit.uniteStock }}</span>
+                                {% endif %}
+                            </div>
+                        {% else %}
+                            <span class="tabular-nums">{{ ligne.estComptee ? magasin_quantite(ligne.produit, ligne.qteComptee) : 'non compté' }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="num tabular-nums font-semibold" data-ecart-cellule>
+                        {% if ligne.estComptee %}{{ ligne.ecart == 0 ? '0' : (ligne.ecart > 0 ? '+' : '−') ~ magasin_quantite(ligne.produit, ligne.ecart|abs) }}{% else %}—{% endif %}
+                    </td>
+                    {% if voir_prix %}<td class="num tabular-nums">{{ ligne.estComptee and ligne.ecart != 0 ? fmt.fcfa(ligne.valeurEcart) : '—' }}</td>{% endif %}
+                </tr>
+            {% endfor %}
+        </tbody>
+        {% if voir_prix and inventaire.aDesEcarts %}
+            <tfoot><tr><td colspan="5" class="num">Valeur des écarts, au coût figé à l'ouverture</td><td class="num tabular-nums"><strong>{{ fmt.fcfa(inventaire.valeurEcarts) }}</strong></td></tr></tfoot>
+        {% endif %}
+    </table>
+    </div>
+
+    <div class="carte-corps">
+        <p class="aide mb-3">{{ inventaire.lignesComptees|length }} ligne(s) comptée(s) sur {{ lignes|length }}. Une case vide n'est pas comptée et ne change rien ; « 0 » veut dire qu'il n'en reste aucun.</p>
+        {% if modifiable %}
+            <label class="etiquette" for="commentaire">Commentaire (obligatoire s'il y a un écart)</label>
+            <textarea id="commentaire" name="commentaire" rows="2" maxlength="255" class="champ">{{ commentaire }}</textarea>
+        {% elseif inventaire.commentaire %}
+            <p class="text-sm"><strong>Commentaire :</strong> {{ inventaire.commentaire }}</p>
+        {% endif %}
+    </div>
+    {% if modifiable %}
+        <div class="carte-pied flex-wrap">
+            <button name="action" value="valider" class="btn btn-succes btn-lg">{{ ui.icone('valide') }} Valider l'inventaire</button>
+            <button name="action" value="enregistrer" class="btn btn-secondaire btn-lg">Enregistrer le comptage</button>
+        </div>
+    {% endif %}
+</form>
+
+{% if modifiable %}
+    <details class="carte apparition mt-5 max-w-2xl">
+        <summary class="carte-corps cursor-pointer font-semibold text-red-800">Abandonner cet inventaire</summary>
+        <form method="post" action="{{ path('magasin_inventaire_abandonner', {id: inventaire.id}) }}" class="carte-corps">
+            <input type="hidden" name="_token" value="{{ csrf_token('inventaire_' ~ inventaire.id) }}">
+            <p class="aide mb-2">Le stock ne bouge pas ; la feuille reste dans la liste, marquée abandonnée.</p>
+            <button class="btn btn-danger">{{ ui.icone('supprimer') }} Abandonner</button>
+        </form>
+    </details>
+{% endif %}
+{% endblock %}

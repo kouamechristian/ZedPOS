@@ -1,0 +1,70 @@
+{% extends 'admin/base.html.twig' %}
+{% import 'admin/_icones.html.twig' as ui %}
+{% import 'admin/_macros.html.twig' as fmt %}
+{% import 'magasin/analyse/_filtre.html.twig' as af %}
+
+{# Analyse des mouvements du magasin sur une période.
+
+   Une ligne par produit : Stock début + Entrées − Sorties ± Ajustements = Stock
+   fin, en unité d'achat et en unité de stock. Les sorties sont ventilées par
+   motif (une colonne par motif utilisé dans la période). Le nom du produit mène
+   à sa fiche de stock pour la même période. Valeur au coût moyen actuel, avec
+   MAGASIN_VOIR_PRIX seulement — à l'écran comme au PDF. #}
+
+{% block page_title %}Analyse des mouvements{% endblock %}
+{% block page_sous_titre %}Entrées et sorties du magasin {{ filtre.libelle }}{{ filtre.emplacement ? ' — ' ~ filtre.emplacement.libelle }}.{% endblock %}
+
+{% block page_actions %}
+    <a href="{{ path('magasin_analyse_pdf', filtre.parametres) }}" class="btn btn-secondaire" data-turbo="false" target="_blank">{{ ui.icone('telecharger') }} PDF</a>
+{% endblock %}
+
+{% block admin_content %}
+{% set voir_prix = is_granted('MAGASIN_VOIR_PRIX') %}
+{{ af.barre('magasin_analyse', filtre, emplacements, categories) }}
+
+<div class="tableau-conteneur apparition">
+    <div class="defilement-x">
+    <table class="tableau" id="analyse-magasin">
+        <thead>
+            <tr>
+                <th>Produit</th>
+                <th class="num">Stock début</th>
+                <th class="num">Entrées</th>
+                <th class="num">Sorties</th>
+                {% for motif in motifs %}<th class="num cellule-douce">dont {{ motif.libelle|lower }}</th>{% endfor %}
+                <th class="num">Ajustements</th>
+                <th class="num">Stock fin</th>
+                {% if voir_prix %}<th class="num">Valeur</th>{% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for ligne in lignes %}
+                {% set p = ligne.produit %}
+                <tr data-produit="{{ p.nom }}">
+                    <td class="cellule-principale">
+                        <a href="{{ path('magasin_fiche_stock', {id: p.id}|merge(filtre.parametres)) }}" class="lien">{{ p.nom }}</a>
+                    </td>
+                    <td class="num tabular-nums" data-colonne="debut">{{ magasin_quantite(p, ligne.debut) }}</td>
+                    <td class="num tabular-nums text-green-800" data-colonne="entrees">{{ af.flux(p, ligne.entrees, '+') }}</td>
+                    <td class="num tabular-nums text-red-800" data-colonne="sorties">{{ af.flux(p, ligne.sorties, '−') }}</td>
+                    {% for motif in motifs %}
+                        <td class="num tabular-nums cellule-douce" data-motif="{{ motif.value }}">{{ af.flux(p, ligne.sortiesParMotif[motif.value] ?? 0, '−') }}</td>
+                    {% endfor %}
+                    <td class="num tabular-nums" data-colonne="ajustements">{{ af.flux(p, ligne.ajustements, ligne.ajustements > 0 ? '+' : '') }}</td>
+                    <td class="num tabular-nums font-semibold" data-colonne="fin">{{ magasin_quantite(p, ligne.fin) }}</td>
+                    {% if voir_prix %}<td class="num tabular-nums">{{ fmt.fcfa(ligne.valeur) }}</td>{% endif %}
+                </tr>
+            {% else %}
+                <tr><td colspan="{{ 6 + motifs|length + (voir_prix ? 1 : 0) }}" class="cellule-vide">Aucun produit.</td></tr>
+            {% endfor %}
+        </tbody>
+        {% if voir_prix and lignes is not empty %}
+            <tfoot>
+                <tr><td colspan="{{ 6 + motifs|length }}" class="num">Valeur du stock en fin de période, au coût moyen actuel</td><td class="num tabular-nums"><strong>{{ fmt.fcfa(valeurTotale) }}</strong></td></tr>
+            </tfoot>
+        {% endif %}
+    </table>
+    </div>
+</div>
+<p class="aide mt-3">Stock début + entrées − sorties ± ajustements = stock fin. Chaque colonne est nette des annulations de la période. Les ajustements sont les corrections d'inventaire.</p>
+{% endblock %}

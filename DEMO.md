@@ -44,6 +44,7 @@ l'étape 6.
 | Comptable | `cabinet@zedpos.ci` | `comptable123` | `/comptabilite` |
 | Caissière | Fatou Traoré | PIN **1234** | `/caisse` |
 | Caissier | Yao Kouassi | PIN **5678** | `/caisse` |
+| Magasinier (consultation) | `adama.magasin@zedpos.ci` | `magasin123` | `/magasin` |
 
 ### Préparer les deux écrans
 
@@ -214,6 +215,22 @@ Vigilance :
 ```
 
 ---
+
+## Pour le client qui gère un magasin de matières (2 min, optionnel)
+
+Connectez-vous en gérant (`koffi.nguessan@zedpos.ci`) puis **Magasin → Tableau de
+bord**. Sept jours d'activité sont déjà là :
+
+1. Le **bandeau rouge** en haut : la levure a atteint son seuil d'alerte.
+2. Les cartes **Contrôle** et **Inspection** annoncent une réception en attente
+   chacune : ouvrez celle à contrôler, tapez les quantités, suivez la frise
+   jusqu'au **stockage** — le stock se met à jour.
+3. **Sorties** : une sortie en brouillon attend ; validez-la, puis tentez d'en
+   sortir 30 sacs — c'est refusé, avec le stock disponible.
+4. **Analyse** : la semaine, produit par produit, début + entrées − sorties =
+   fin ; touchez « Farine de blé » pour sa fiche de stock, puis **PDF**.
+
+Guide complet : `docs/GUIDE-MAGASIN.md`.
 
 ## Pour le client qui a un cabinet comptable (1 min, optionnel)
 

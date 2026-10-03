@@ -1,0 +1,67 @@
+{# Frise des quatre étapes, en tête de chaque écran d'une réception.
+
+   Une étape faite est verte et dit qui l'a faite et quand ; l'étape à faire est
+   en ambre et mène à son écran ; les suivantes sont grises et inertes — on ne
+   saute pas d'étape. `active` désigne l'écran affiché (encadré). Une réception
+   annulée garde ses étapes faites, sous un bandeau rouge. #}
+{% macro frise(reception, active = null) %}
+    {% set rang = reception.statut.value == 'ANNULEE' ? reception.statutAvantAnnulation.rang : reception.statut.rang %}
+    {% set etapes = [
+        {cle: 'RECUE', titre: 'Réception', route: 'magasin_reception_annonce', par: reception.recuePar, le: reception.createdAt},
+        {cle: 'CONTROLEE', titre: 'Contrôle', route: 'magasin_reception_controle', par: reception.controleePar, le: reception.controleeAt},
+        {cle: 'INSPECTEE', titre: 'Inspection', route: 'magasin_reception_inspection', par: reception.inspecteePar, le: reception.inspecteeAt},
+        {cle: 'STOCKEE', titre: 'Stockage', route: 'magasin_reception_stockage', par: reception.stockeePar, le: reception.stockeeAt},
+    ] %}
+    <ol class="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label="Étapes de la réception" id="frise-reception">
+        {% for etape in etapes %}
+            {% set numero = loop.index %}
+            {% set faite = numero <= rang %}
+            {% set a_faire = reception.statut.value != 'ANNULEE' and numero == rang + 1 %}
+            {# Le lien n'existe que pour qui peut faire l'étape : le magasinier consulte. #}
+            {% set lien = a_faire and is_granted('MAGASIN_GERER') %}
+            {% set classes = faite ? 'border-green-600 bg-green-50 text-green-900' : (a_faire ? 'border-amber-500 bg-amber-50 text-amber-900' : 'border-stone-200 bg-white text-stone-400') %}
+            <li data-etape="{{ etape.cle }}" data-etat="{{ faite ? 'faite' : (a_faire ? 'a-faire' : 'a-venir') }}"
+                class="rounded-xl border-2 px-3 py-2 {{ classes }} {{ active == etape.cle ? 'ring-2 ring-amber-600 ring-offset-1' }}"
+                {% if active == etape.cle %}aria-current="step"{% endif %}>
+                {% if lien %}<a href="{{ path(etape.route, {id: reception.id}) }}" class="block">{% endif %}
+                <span class="block text-xs font-semibold uppercase tracking-wide">{{ numero }}. {{ etape.titre }}</span>
+                <span class="block text-sm">
+                    {% if faite and etape.par %}
+                        {{ etape.par.nom }}{% if etape.le %} · {{ etape.le|date('d/m H:i') }}{% endif %}
+                    {% elseif a_faire %}
+                        À faire{{ lien ? ' →' }}
+                    {% else %}
+                        —
+                    {% endif %}
+                </span>
+                {% if lien %}</a>{% endif %}
+            </li>
+        {% endfor %}
+    </ol>
+    {% if reception.statut.value == 'ANNULEE' %}
+        <div class="alerte alerte-rouge mb-5" role="status">
+            <p><strong>Réception annulée</strong> le {{ reception.annuleeAt|date('d/m/Y à H:i') }} par {{ reception.annuleePar.nom }} — {{ reception.motifAnnulation }}</p>
+        </div>
+    {% endif %}
+{% endmacro %}
+
+{% macro statut(statut) %}
+    {% set couleurs = {RECUE: 'badge-bleu', CONTROLEE: 'badge-orange', INSPECTEE: 'badge-ambre', STOCKEE: 'badge-vert', ANNULEE: 'badge-rouge'} %}
+    <span class="badge {{ couleurs[statut.value] }}">{{ statut.libelle }}</span>
+{% endmacro %}
+
+{# Quantité d'une ligne dans son unité de saisie : « 20 sac », « 12,5 kg ». #}
+{% macro qte(millimes, ligne) %}{% import 'admin/_macros.html.twig' as fmt %}{{ millimes is null ? '—' : fmt.unites(millimes) ~ ' ' ~ ligne.uniteSaisie }}{% endmacro %}
+
+{# Valeur d'un champ réaffiché : « 18 », « 2,5 » — sans séparateur de milliers. #}
+{% macro champ(millimes) %}{% if millimes is not null %}{{ (millimes // 1000) ~ (millimes % 1000 > 0 ? ',' ~ ('%03d'|format(millimes % 1000))|trim('0', 'right') : '') }}{% endif %}{% endmacro %}
+
+{% macro erreur(message) %}
+    {% import 'admin/_icones.html.twig' as ui %}
+    {% if message %}
+        <div class="alerte alerte-rouge apparition mb-4" role="alert">
+            {{ ui.icone('erreur') }}
+            <p>{{ message }}</p>
+        </div>
+    {% endif %}
+{% endmacro %}

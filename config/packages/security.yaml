@@ -91,6 +91,11 @@ security:
         - { path: ^/admin/(articles|familles|stock|fournisseurs|inventaires|production|pertes|utilisateurs|parametres)(/|$), roles: ROLE_DIRIGEANTE }
         - { path: ^/admin, roles: ROLE_GERANT }
         - { path: ^/pilotage, roles: ROLE_DIRIGEANTE }
+        # Module Magasin, indépendant du stock de la boutique : la gérante le tient,
+        # la dirigeante en hérite. ROLE_MAGASIN (magasinier) y entre aussi, mais en
+        # lecture seule — il est autonome comme le comptable, donc nommé ici. Ce qui
+        # sépare consulter et agir : MagasinVoter (MAGASIN_VOIR / MAGASIN_GERER).
+        - { path: ^/magasin, roles: [ROLE_GERANT, ROLE_MAGASIN] }
         # ROLE_COMPTABLE reste autonome : il n'est dans la hiérarchie d'aucun
         # autre rôle, il doit donc être nommé ici. La gérante n'y a plus accès
         # (menu « Administration » réservé à la dirigeante).

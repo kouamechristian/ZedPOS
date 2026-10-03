@@ -1,0 +1,66 @@
+{# Fiche de stock d'un produit en PDF (Dompdf), A4 portrait : mêmes mouvements
+   et même solde progressif que l'écran. #}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Fiche de stock — {{ produit.nom }}</title>
+    {{ include('magasin/analyse/_pdf_styles.html.twig') }}
+    <style>@page { size: A4 portrait; margin: 14mm 12mm 16mm 12mm; }</style>
+</head>
+<body>
+    <div class="pied">
+        Édité le {{ edite_le|date('d/m/Y à H:i') }}{% if edite_par %} par {{ edite_par }}{% endif %} — {{ nom_boutique() }}
+        <span class="page"></span>
+    </div>
+
+    <table class="entete">
+        <tr>
+            <td><div class="boutique">{{ nom_boutique() }}</div></td>
+            <td>
+                <h1>Fiche de stock — {{ produit.nom }}</h1>
+                <div class="sous-titre">{{ filtre.libelle|capitalize }}{{ filtre.emplacement ? ' — ' ~ filtre.emplacement.libelle }}</div>
+            </td>
+        </tr>
+    </table>
+
+    <table class="detail">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Mouvement</th>
+                <th>Document</th>
+                <th>Emplacement</th>
+                <th class="droite">Entrée</th>
+                <th class="droite">Sortie</th>
+                <th class="droite">Solde</th>
+                <th>Par</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td colspan="6" class="fort">Stock au début de la période</td>
+                <td class="droite fort">{{ magasin_quantite(produit, fiche.debut) }}</td>
+                <td></td>
+            </tr>
+            {% for m in fiche.mouvements %}
+                <tr>
+                    <td>{{ m.date|date('d/m/Y H:i') }}</td>
+                    <td>{{ m.type.libelle }}</td>
+                    <td>{{ m.numero ?? m.documentType ~ ' n° ' ~ m.documentId }}</td>
+                    <td>{{ m.emplacement }}</td>
+                    <td class="droite">{{ m.quantite > 0 ? '+' ~ magasin_quantite(produit, m.quantite) : '' }}</td>
+                    <td class="droite">{{ m.quantite < 0 ? '−' ~ magasin_quantite(produit, -m.quantite) : '' }}</td>
+                    <td class="droite">{{ magasin_quantite(produit, m.solde) }}</td>
+                    <td>{{ m.auteur ?? '—' }}</td>
+                </tr>
+            {% endfor %}
+            <tr class="total">
+                <td colspan="6">Stock à la fin de la période</td>
+                <td class="droite">{{ magasin_quantite(produit, fiche.fin) }}</td>
+                <td></td>
+            </tr>
+        </tbody>
+    </table>
+</body>
+</html>

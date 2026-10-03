@@ -1,0 +1,84 @@
+{% extends 'admin/base.html.twig' %}
+{% import 'admin/_icones.html.twig' as ui %}
+{% import 'admin/_macros.html.twig' as fmt %}
+{% import '_pagination.html.twig' as pagination %}
+
+{# Inventaires du magasin. Ouvrir une feuille fige le stock théorique de la
+   portée choisie — tout le magasin, ou un emplacement s'il y en a plusieurs.
+   Une seule feuille en cours par emplacement : le service le vérifie. #}
+
+{% block page_title %}Inventaires du magasin{% endblock %}
+{% block page_sous_titre %}Compter ce qui est en réserve et corriger le stock. Le premier inventaire fait le stock de départ.{% endblock %}
+
+{% block admin_content %}
+{% set gerer = is_granted('MAGASIN_GERER') %}
+
+{% for inventaire in enCours %}
+    <div class="alerte alerte-ambre apparition mb-4" role="status">
+        {{ ui.icone('inventaire') }}
+        <p class="flex-1"><strong>{{ inventaire.numero }}</strong> en cours — {{ inventaire.portee }}, ouvert le {{ inventaire.createdAt|date('d/m/Y à H:i') }}.</p>
+        <a href="{{ path('magasin_inventaire_show', {id: inventaire.id}) }}" class="lien shrink-0">{{ gerer ? 'Reprendre le comptage' : 'Voir' }}</a>
+    </div>
+{% endfor %}
+
+{% if gerer %}
+    <form method="post" action="{{ path('magasin_inventaire_ouvrir') }}" class="carte apparition mb-5 max-w-2xl">
+        <input type="hidden" name="_token" value="{{ csrf_token('inventaire_ouvrir') }}">
+        <div class="carte-corps">
+            <h2 class="carte-titre mb-3">Ouvrir un inventaire</h2>
+            {% if emplacements|length > 1 %}
+                <label class="etiquette" for="emplacement">Que compter ?</label>
+                <select id="emplacement" name="emplacement" class="champ">
+                    <option value="">Tout le magasin</option>
+                    {% for e in emplacements %}<option value="{{ e.id }}">{{ e.libelle }}</option>{% endfor %}
+                </select>
+            {% else %}
+                <p class="text-sm text-stone-600">La feuille couvrira tout le magasin.</p>
+            {% endif %}
+        </div>
+        <div class="carte-pied">
+            <button class="btn btn-primaire">{{ ui.icone('plus') }} Ouvrir la feuille</button>
+        </div>
+    </form>
+{% endif %}
+
+<div class="tableau-conteneur apparition">
+    <div class="defilement-x">
+    <table class="tableau" id="inventaires-magasin">
+        <thead>
+            <tr>
+                <th>Numéro</th>
+                <th>Ouvert le</th>
+                <th>Portée</th>
+                <th>Ouvert par</th>
+                <th>Statut</th>
+                <th>Validé par</th>
+                <th class="num">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for inventaire in inventaires.items %}
+                {% set couleurs = {EN_COURS: 'badge-ambre', VALIDE: 'badge-vert', ABANDONNE: 'badge-neutre'} %}
+                <tr>
+                    <td class="cellule-principale"><a href="{{ path('magasin_inventaire_show', {id: inventaire.id}) }}" class="lien">{{ inventaire.numero }}</a></td>
+                    <td class="cellule-douce">{{ inventaire.createdAt|date('d/m/Y H:i') }}</td>
+                    <td>{{ inventaire.portee }}</td>
+                    <td class="cellule-douce">{{ inventaire.ouvertPar.nom }}</td>
+                    <td><span class="badge {{ couleurs[inventaire.statut.value] }}">{{ inventaire.statut.libelle }}</span></td>
+                    <td class="cellule-douce">{{ inventaire.validePar ? inventaire.validePar.nom ~ ', ' ~ inventaire.valideAt|date('d/m/Y') : '—' }}</td>
+                    <td>
+                        <div class="actions-ligne">
+                            <a href="{{ path('magasin_inventaire_feuille', {id: inventaire.id}) }}" class="btn btn-sm btn-secondaire" data-turbo="false" target="_blank">{{ ui.icone('imprimer') }} Feuille</a>
+                            <a href="{{ path('magasin_inventaire_show', {id: inventaire.id}) }}" class="btn btn-sm btn-secondaire">{{ ui.icone('oeil') }} Voir</a>
+                        </div>
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="7" class="cellule-vide">Aucun inventaire. Le premier fera le stock de départ.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{{ pagination.barre(inventaires, 'magasin_inventaire_index') }}
+{% endblock %}

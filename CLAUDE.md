@@ -128,7 +128,19 @@ base est vide, et plus rien n'y mène ensuite.
 - **Rôles** : `ROLE_DIRIGEANTE` > `ROLE_GERANT` > `ROLE_CAISSIER` (hiérarchie) ;
   `ROLE_COMPTABLE` est autonome. `ROLE_ATELIER` (boulanger, pâtissier) et
   `ROLE_VITRINE` (vendeuse) n'ouvrent que `/atelier` — le gérant en hérite, voir
-  « Production et vitrine ». Voir l'enum `App\Enum\RoleUtilisateur`.
+  « Production et vitrine ». `ROLE_MAGASIN` (magasinier) est autonome comme le
+  comptable : il n'ouvre que `/magasin`, **en lecture seule** (`MAGASIN_VOIR`),
+  se connecte par mot de passe et arrive sur le tableau de bord `/magasin` ; recevoir, sortir
+  et corriger restent à la gérante et à la dirigeante (`MAGASIN_GERER`,
+  `MagasinVoter`). Son menu ne montre que la section « Magasin » : toute autre
+  entrée du back-office porte au minimum `role: 'ROLE_GERANT'`
+  (`MagasinierAccesTest`). Voir l'enum `App\Enum\RoleUtilisateur`.
+  **Alertes de seuil du magasin** (`AlertesStockMagasin`, seuil atteint = stock
+  total ≤ seuil, produit actif) : bannière rouge `magasin/_alerte_seuil.html.twig`
+  en tête du back-office **et** du pilotage pour tout `MAGASIN_VOIR`, compteur sur
+  « Stock magasin », avertissement à la validation d'une sortie qui fait
+  atteindre le seuil. **Rien n'est stocké** : relue sur le stock à chaque page,
+  l'alerte disparaît d'elle-même au réapprovisionnement (`AlertesSeuilMagasinTest`).
 - **Deux connexions** sur le même pare-feu `main` :
   - classique e-mail / mot de passe (`/login`) pour dirigeante, gérant, comptable ;
   - code PIN 4 chiffres sur pavé numérique (`/caisse/login`) pour les caissiers,
@@ -2327,6 +2339,118 @@ Réversible tant qu'aucun stand n'a servi.
 - Le stock **peut devenir négatif** (une vente n'est jamais bloquée) mais **journalise
   une alerte** (`logger->warning`, dans `StockManager`).
 
+### Module Magasin (`/magasin`)
+
+Le magasin des matières, emballages et fournitures, géré **à part** du stock de
+la boutique : **Réception → Contrôle → Inspection → Stockage → Sorties →
+Analyse → Inventaire.** Guide utilisateur : `docs/GUIDE-MAGASIN.md`.
+
+**Indépendance totale — la règle n° 1 du module.** Rien du magasin ne lit ni
+n'écrit le stock de la boutique, et l'inverse non plus : **une vente, avec ou
+sans fiche technique, ne change rien au stock du magasin.**
+
+- Tables préfixées `magasin_`, code sous les espaces de noms `…\Magasin`,
+  gabarits sous `templates/magasin/`, routes `/magasin`, noms `magasin_*`.
+- **Interdits** dans un fichier du module : `MatierePremiere`, `FicheTechnique`,
+  `CalculateurCoutMatiere`, `StockManager`, `MouvementStock`, `StockCourant`,
+  `Emplacement`, `DestockageVenteListener`, `Inventaire` / `InventaireService`, et
+  tout ce qui touche aux ventes, à la caisse, aux stands et à la production.
+  **`IndependanceMagasinTest` relit `src/**/Magasin/` et échoue** à la première
+  importation interdite (avec un auto-test de son détecteur).
+- **Dépendances permises, en lecture** : `Utilisateur`, `Fournisseur`
+  (ManyToOne unidirectionnel), `AuditLogger` / `ActionAudit`, `GenerateurPdf`,
+  `Pagination` / `Recherche`, la coquille du back-office, `Permission` et les
+  voters. Pas `ParametresBoutique` : les PDF portent `nom_boutique()` (fonction
+  Twig), sans logo.
+
+**Stock — `MagasinStockService`, seul point d'écriture.** Même discipline que
+`StockManager`, sur ses propres tables (`magasin_mouvement`, `magasin_stock`) :
+quantités en millièmes d'unité de stock, verrous `FOR UPDATE` dans un ordre fixe,
+**contrôle du stock négatif sur le cumul du lot avant toute écriture**
+(`StockMagasinInsuffisantException`, message en sacs et en kilos), transaction DBAL
+tenue à la main pour que l'écran puisse se réafficher en 422, mouvements
+immuables, annulation par **contrepassation** (type `ANNULATION`).
+Invariant : stock = somme des mouvements (`magasin:stock:verifier`, code 1 sinon).
+Une zone désactivée ne reçoit plus rien, mais se vide.
+
+**Unités.** Chaque produit a une unité de stock (kg, L, pièce) et, au choix, une
+unité d'achat et sa contenance (sac de 50 kg). Tout s'affiche dans les deux —
+`magasin_quantite()` : « 20 sacs (1 000 kg) ». Unité et contenance sont **figées
+sur chaque ligne de document** : changer la taille des sacs ne réécrit pas un bon.
+Saisies lues sans flottant (`SaisieQuantite`, pendant JS `assets/magasin/quantites.js`).
+
+**Les documents, et ce qui touche au stock.**
+
+| Document | Cycle | Ce qui bouge le stock |
+|---|---|---|
+| Réception `REC-AAAA-NNNN` | reçue → contrôlée → inspectée → **stockée** (ou annulée) | le **stockage** seul, de l'**accepté** seul (`ENTREE_RECEPTION`) |
+| Sortie `SOR-AAAA-NNNN` | brouillon → **validée** (ou annulée) | la **validation** (`SORTIE`) |
+| Inventaire `INV-AAAA-NNNN` | en cours → **validé** (ou abandonné) | la **validation** : l'écart de chaque ligne comptée (`AJUSTEMENT_INVENTAIRE`) |
+
+- **Réception** : pas d'étape sautée, pas de retour une fois la suivante faite.
+  Compté ≠ annoncé → commentaire obligatoire ; accepté + rejeté = compté ; un
+  rejet a un motif et n'entre jamais. Annuler une réception stockée la
+  contre-passe — refusé si la marchandise est déjà sortie.
+- **Coût moyen pondéré** recalculé au stockage quand un prix est saisi, en
+  entiers : `(stock × CMP + valeur) / (stock + quantité)`, arrondi au centime ;
+  stock ≤ 0 avant → le prix devient le CMP. L'annulation retire la livraison au
+  prix où elle est entrée (approximation documentée). Sorties et inventaires ne
+  le changent pas.
+- **Sortie** : destination (atelier, cuisine, boutique, autre), motif
+  (production, perte / avarie, retour fournisseur, autre), « demandé par » en
+  texte libre, « servi par » = qui valide. Quantité en unité d'achat **ou** de
+  stock, ligne par ligne. Coût figé à la validation. Refusée au-delà du stock :
+  elle reste en brouillon, l'écran y ramène avec la saisie.
+- **Inventaire** : théorique et coût figés à l'ouverture ; **une feuille en cours
+  par portée** (tout le magasin couvre chaque emplacement) ; feuille imprimée
+  **à l'aveugle** ; case vide = pas compté (ignoré), 0 = plus rien ; **écart
+  appliqué en delta**, jamais en écrasant le stock ; commentaire obligatoire dès
+  qu'il y a un écart, et la validation revient alors à la **dirigeante**. Le
+  premier inventaire fait le stock de départ.
+
+**Droits** (`MagasinVoter`) :
+
+| Permission | Magasinier | Gérante | Dirigeante |
+|---|---|---|---|
+| `MAGASIN_VOIR` (tout consulter, imprimer, PDF) | oui | oui | oui |
+| `MAGASIN_GERER` (réceptions, sorties, inventaires) | non | oui | oui |
+| `MAGASIN_REFERENTIEL` (produits, emplacements) | non | oui | oui |
+| `MAGASIN_VOIR_PRIX` (prix d'achat, CMP, valeurs) | non | non | oui |
+| `MAGASIN_VALIDER_ECART` (inventaire avec écart) | non | non | oui |
+
+Chaque route d'action porte son `#[IsGranted]` en plus de `MAGASIN_VOIR` sur la
+classe ; les boutons sans le droit ne sont pas rendus (`MagasinierAccesTest`).
+
+**Écrans.** Tableau de bord `/magasin` — six cartes dans l'ordre du plan de
+traitement, chiffres du jour par produit (on n'additionne pas des sacs et des
+cartons), ce qui attend à chaque étape, produits au seuil. Analyse
+`/magasin/analyse` — début + entrées − sorties ± ajustements = fin, **lu dans les
+mouvements**, chaque colonne nette des annulations de ses documents, sorties
+ventilées par motif ; fiche de stock d'un produit avec solde progressif ; PDF des
+deux (même résultat que l'écran). **Alertes de seuil** : voir « Sécurité et rôles ».
+
+**Audit** : `MAGASIN_PRODUIT_ENREGISTRE`, `MAGASIN_EMPLACEMENT_ENREGISTRE`, une
+entrée par étape de réception, `MAGASIN_SORTIE_*`, `MAGASIN_INVENTAIRE_*` ;
+surlignées : `MAGASIN_RECEPTION_ANNULEE`, `MAGASIN_SORTIE_ANNULEE`,
+`MAGASIN_ECART_INVENTAIRE` (seconde entrée d'une validation avec écart, comme une
+clôture de caisse).
+
+**Démonstration** : `MagasinFixtures` (après `AppFixtures`) rejoue sept jours par
+les vrais services — inventaire de départ, deux réceptions dont une avec écart et
+rejet, sorties quotidiennes, une perte, puis aujourd'hui une réception à
+contrôler, une à inspecter, une sortie en brouillon et la levure au seuil.
+
+**Tests** — un service, un test : `MagasinStockServiceTest`,
+`ReceptionMagasinServiceTest`, `SortieMagasinServiceTest`,
+`InventaireMagasinTest`, `AnalyseMagasinTest`, `TableauDeBordMagasinTest`,
+`AlertesSeuilMagasinTest`, `MagasinierAccesTest`, les tests d'écrans, et
+`IndependanceMagasinTest`. Leur nettoyage commun est
+`ReceptionMagasinServiceTest::viderTables()` : **une nouvelle table du module
+s'y ajoute**, sinon une ligne restée d'un test bloque le suivant.
+
+> ⚠ Ne jamais lancer deux `php bin/phpunit` à la fois : ils partagent la base de
+> test, se marchent dessus et produisent des erreurs qui n'existent pas.
+
 ### Ticket de caisse et impression
 
 **Le papier fait 58 mm, la tête n'en imprime que 48.** L'imprimante du comptoir
@@ -2740,6 +2864,7 @@ dérive, le test échoue.
 # et ~30 jours de ventes historiques réalistes (pics 5-9h / 18-21h), avec une
 # session de caisse par caissier et par jour : dépenses, clôture Z et écarts
 # justifiés pour les jours passés, sessions ouvertes pour aujourd'hui.
+# MagasinFixtures ajoute 7 jours de magasin et le compte magasinier.
 php -d memory_limit=1G bin/console doctrine:fixtures:load --no-interaction --no-debug
 ```
 
@@ -2752,6 +2877,7 @@ Comptes créés (mots de passe de démo, à ne pas utiliser en production) :
 | Comptable | `cabinet@zedpos.ci` | mot de passe `comptable123` |
 | Caissier | `fatou.traore@zedpos.ci` | code PIN `1234` |
 | Caissier | `yao.kouassi@zedpos.ci` | code PIN `5678` |
+| Magasinier (consultation) | `adama.magasin@zedpos.ci` | mot de passe `magasin123` |
 
 ---
 
@@ -2805,8 +2931,9 @@ compare l'implémentation à cette description et signale les écarts.
 | Dettes des vendeurs : manquant imputé ou passé en perte, avances, remboursements, alerte à la dotation | ✅ | `/admin/vendeurs/{id}` |
 | Rapports des stands (par stand, par vendeur, caisse et stands, top produits, CSV) et suggestion de dotation | ✅ | `/admin/rapports-stands` |
 | Production et vitrine : fiche de production par caisse (produit, vitrine, vendu, reste), déclarations de l'atelier et de la vitrine | ✅ | `/atelier` |
+| Module Magasin indépendant : réceptions en 4 étapes, sorties, inventaire, analyse, tableau de bord, alertes de seuil, PDF, rôle magasinier | ✅ | `/magasin` |
 
-Tests : **657 tests PHPUnit** (`php bin/phpunit`) et **57 tests Node**
+Tests : **865 tests PHPUnit** (`php bin/phpunit`) et **86 tests Node**
 (`node --test "tests/js/*.test.js"`).
 
 ### Écarts par rapport au contexte métier — à traiter
@@ -2860,7 +2987,9 @@ Classés par importance.
    `ModeReglement::CREDIT` existe dans l'énumération mais il n'y a ni compte client,
    ni encours, ni relance. Ne pas proposer ce mode en caisse tant que c'est le cas.
 
-6. **Entrées de stock non outillées.**
+6. **Entrées de stock non outillées** (stock de la boutique).
+   Le module Magasin a ses réceptions, mais sur **son propre stock** : par
+   construction, il ne touche pas aux matières de `StockManager`.
    Le CRUD fournisseurs existe, mais il n'y a **ni bon de commande ni réception**.
    Depuis que `stockActuel` n'est plus modifiable à la main, une livraison ne peut
    être enregistrée **que par un inventaire** — ce qui est un détournement : on
@@ -2903,6 +3032,7 @@ Classés par importance.
 | `docs/GUIDE-CAISSIER.md` | La caissière — une page, à imprimer |
 | `docs/GUIDE-GERANT.md` | Le gérant — stock, pertes, rapports |
 | `docs/GUIDE-COMPTABLE.md` | Le comptable — exports SYSCOHADA, contrôles, plan de comptes |
+| `docs/GUIDE-MAGASIN.md` | Gérante, dirigeante, magasinier — le magasin en six étapes |
 | `docs/DEPLOIEMENT.md` | Mise en production sur un VPS — prérequis, `.env.local`, HTTPS, sauvegardes |
 | `docs/AGENT-MATERIEL.md` | Qui maintient l'agent de caisse — routes, charge utile `/print`, logo |
 | `DEMO.md` | Démonstration client en 10 minutes |

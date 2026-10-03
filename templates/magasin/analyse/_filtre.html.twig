@@ -1,0 +1,52 @@
+{# Barre de filtre commune à l'analyse et à la fiche de stock : trois raccourcis
+   de période, des dates libres, la catégorie (analyse seulement) et
+   l'emplacement — proposé seulement s'il y en a plus d'un. Les raccourcis
+   gardent les autres filtres. #}
+{% macro barre(route, filtre, emplacements, categories = null, parametresRoute = {}) %}
+    {% set autres = parametresRoute|merge(filtre.categorie ? {categorie: filtre.categorie.value} : {})|merge(filtre.emplacement ? {emplacement: filtre.emplacement.id} : {}) %}
+    <div class="carte apparition mb-5">
+        <div class="carte-corps space-y-3">
+            <nav class="onglets" aria-label="Période">
+                {% for cle, libelle in {jour: 'Aujourd\'hui', semaine: 'Cette semaine', mois: 'Ce mois'} %}
+                    <a href="{{ path(route, autres|merge({periode: cle})) }}" class="onglet" {% if filtre.periode == cle %}aria-current="page"{% endif %}>{{ libelle }}</a>
+                {% endfor %}
+            </nav>
+            <form method="get" class="flex flex-wrap items-end gap-3" id="filtre-analyse">
+                <input type="hidden" name="periode" value="libre">
+                <div>
+                    <label class="etiquette" for="du">Du</label>
+                    <input id="du" type="date" name="du" value="{{ filtre.du|date('Y-m-d') }}" max="{{ 'now'|date('Y-m-d') }}" class="champ h-10 w-auto">
+                </div>
+                <div>
+                    <label class="etiquette" for="au">Au</label>
+                    <input id="au" type="date" name="au" value="{{ filtre.au|date('Y-m-d') }}" max="{{ 'now'|date('Y-m-d') }}" class="champ h-10 w-auto">
+                </div>
+                {% if categories %}
+                    <div>
+                        <label class="etiquette" for="categorie">Catégorie</label>
+                        <select id="categorie" name="categorie" class="champ h-10 w-auto">
+                            <option value="">Toutes</option>
+                            {% for c in categories %}<option value="{{ c.value }}" {{ filtre.categorie == c ? 'selected' }}>{{ c.libelle }}</option>{% endfor %}
+                        </select>
+                    </div>
+                {% endif %}
+                {% if emplacements|length > 1 %}
+                    <div>
+                        <label class="etiquette" for="emplacement">Emplacement</label>
+                        <select id="emplacement" name="emplacement" class="champ h-10 w-auto">
+                            <option value="">Tout le magasin</option>
+                            {% for e in emplacements %}<option value="{{ e.id }}" {{ filtre.emplacement and filtre.emplacement.id == e.id ? 'selected' }}>{{ e.libelle }}</option>{% endfor %}
+                        </select>
+                    </div>
+                {% endif %}
+                <button class="btn btn-secondaire h-10">Afficher</button>
+            </form>
+            {% if filtre.avertissement %}
+                <p class="alerte alerte-ambre" role="status">{{ filtre.avertissement }}</p>
+            {% endif %}
+        </div>
+    </div>
+{% endmacro %}
+
+{# Quantité signée pour une colonne de flux : « +20 sacs (1 000 kg) », « −3 sacs », « — » si rien. #}
+{% macro flux(produit, millimes, signe) %}{% if millimes == 0 %}<span class="cellule-douce">—</span>{% else %}{{ signe }}{{ magasin_quantite(produit, millimes) }}{% endif %}{% endmacro %}

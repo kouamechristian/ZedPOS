@@ -71,6 +71,25 @@ enum ActionAudit: string
     case POINT_VITRINE_ANNULE = 'POINT_VITRINE_ANNULE';
     case ECART_VITRINE = 'ECART_VITRINE';
 
+    // Magasin (module indépendant) : référentiel des produits et des zones.
+    case MAGASIN_PRODUIT_ENREGISTRE = 'MAGASIN_PRODUIT_ENREGISTRE';
+    case MAGASIN_EMPLACEMENT_ENREGISTRE = 'MAGASIN_EMPLACEMENT_ENREGISTRE';
+    // Réceptions fournisseurs : une entrée par étape, et l'annulation.
+    case MAGASIN_RECEPTION_RECUE = 'MAGASIN_RECEPTION_RECUE';
+    case MAGASIN_RECEPTION_CONTROLEE = 'MAGASIN_RECEPTION_CONTROLEE';
+    case MAGASIN_RECEPTION_INSPECTEE = 'MAGASIN_RECEPTION_INSPECTEE';
+    case MAGASIN_RECEPTION_STOCKEE = 'MAGASIN_RECEPTION_STOCKEE';
+    case MAGASIN_RECEPTION_ANNULEE = 'MAGASIN_RECEPTION_ANNULEE';
+    // Sorties : brouillon enregistré, validation (le stock sort), annulation.
+    case MAGASIN_SORTIE_ENREGISTREE = 'MAGASIN_SORTIE_ENREGISTREE';
+    case MAGASIN_SORTIE_VALIDEE = 'MAGASIN_SORTIE_VALIDEE';
+    case MAGASIN_SORTIE_ANNULEE = 'MAGASIN_SORTIE_ANNULEE';
+    // Inventaires : ouverture, validation (+ écart, comme une clôture de caisse), abandon.
+    case MAGASIN_INVENTAIRE_OUVERT = 'MAGASIN_INVENTAIRE_OUVERT';
+    case MAGASIN_INVENTAIRE_VALIDE = 'MAGASIN_INVENTAIRE_VALIDE';
+    case MAGASIN_ECART_INVENTAIRE = 'MAGASIN_ECART_INVENTAIRE';
+    case MAGASIN_INVENTAIRE_ABANDONNE = 'MAGASIN_INVENTAIRE_ABANDONNE';
+
     public function libelle(): string
     {
         return match ($this) {
@@ -104,6 +123,20 @@ enum ActionAudit: string
             self::POINT_VITRINE_VALIDE => 'Validation d\'un point de vitrine',
             self::POINT_VITRINE_ANNULE => 'Annulation d\'un point de vitrine',
             self::ECART_VITRINE => 'Écart de vitrine',
+            self::MAGASIN_PRODUIT_ENREGISTRE => 'Produit du magasin enregistré',
+            self::MAGASIN_EMPLACEMENT_ENREGISTRE => 'Emplacement du magasin enregistré',
+            self::MAGASIN_RECEPTION_RECUE => 'Réception magasin enregistrée',
+            self::MAGASIN_RECEPTION_CONTROLEE => 'Réception magasin contrôlée',
+            self::MAGASIN_RECEPTION_INSPECTEE => 'Réception magasin inspectée',
+            self::MAGASIN_RECEPTION_STOCKEE => 'Réception magasin stockée',
+            self::MAGASIN_RECEPTION_ANNULEE => 'Annulation d\'une réception magasin',
+            self::MAGASIN_SORTIE_ENREGISTREE => 'Sortie magasin enregistrée (brouillon)',
+            self::MAGASIN_SORTIE_VALIDEE => 'Sortie magasin validée',
+            self::MAGASIN_SORTIE_ANNULEE => 'Annulation d\'une sortie magasin',
+            self::MAGASIN_INVENTAIRE_OUVERT => 'Inventaire magasin ouvert',
+            self::MAGASIN_INVENTAIRE_VALIDE => 'Inventaire magasin validé',
+            self::MAGASIN_ECART_INVENTAIRE => 'Écart d\'inventaire magasin',
+            self::MAGASIN_INVENTAIRE_ABANDONNE => 'Inventaire magasin abandonné',
         };
     }
 
@@ -141,6 +174,13 @@ enum ActionAudit: string
             self::POINT_VITRINE_ANNULE,
             // Marchandise sortie de la vitrine sans passer par la caisse, ou l'inverse.
             self::ECART_VITRINE,
+            // Une réception annulée après stockage retire du stock sur la seule
+            // parole de la gérante.
+            self::MAGASIN_RECEPTION_ANNULEE,
+            // Une sortie annulée remet de la marchandise en stock après coup.
+            self::MAGASIN_SORTIE_ANNULEE,
+            // Un inventaire qui corrige le stock du magasin.
+            self::MAGASIN_ECART_INVENTAIRE,
         ], true);
     }
 
@@ -160,6 +200,14 @@ enum ActionAudit: string
             self::DETTE_CREEE, self::DETTE_REMBOURSEE, self::DETTE_ANNULEE => 'Stands et revendeurs',
             self::PRODUCTION_DECLAREE, self::PRODUCTION_ANNULEE,
             self::POINT_VITRINE_VALIDE, self::POINT_VITRINE_ANNULE, self::ECART_VITRINE => 'Production et vitrine',
+            self::MAGASIN_PRODUIT_ENREGISTRE, self::MAGASIN_EMPLACEMENT_ENREGISTRE,
+            self::MAGASIN_RECEPTION_RECUE, self::MAGASIN_RECEPTION_CONTROLEE,
+            self::MAGASIN_RECEPTION_INSPECTEE, self::MAGASIN_RECEPTION_STOCKEE,
+            self::MAGASIN_RECEPTION_ANNULEE,
+            self::MAGASIN_SORTIE_ENREGISTREE, self::MAGASIN_SORTIE_VALIDEE,
+            self::MAGASIN_SORTIE_ANNULEE,
+            self::MAGASIN_INVENTAIRE_OUVERT, self::MAGASIN_INVENTAIRE_VALIDE,
+            self::MAGASIN_ECART_INVENTAIRE, self::MAGASIN_INVENTAIRE_ABANDONNE => 'Magasin',
         };
     }
 }

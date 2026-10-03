@@ -1,0 +1,79 @@
+{% extends 'admin/base.html.twig' %}
+{% import 'admin/_icones.html.twig' as ui %}
+{% import 'admin/_macros.html.twig' as fmt %}
+{% import 'magasin/reception/_frise.html.twig' as rec %}
+
+{# Étape 4 — le stockage, **seule étape qui fait entrer du stock**.
+
+   Le choix de l'emplacement n'apparaît que s'il y a plus d'une zone active ;
+   sinon tout va dans la réserve principale, sans question. La dirigeante
+   (MAGASIN_VOIR_PRIX) peut encore saisir ou corriger le prix d'achat : c'est ici
+   que le coût moyen pondéré est recalculé. #}
+
+{% block page_title %}Stockage — {{ reception.numero }}{% endblock %}
+{% block page_sous_titre %}Étape 4 — rangez l'accepté : il entre alors en stock.{% endblock %}
+
+{% block page_actions %}
+    <a href="{{ path('magasin_reception_show', {id: reception.id}) }}" class="btn btn-fantome">{{ ui.icone('retour') }} Fiche</a>
+{% endblock %}
+
+{% block admin_content %}
+{% set voir_prix = is_granted('MAGASIN_VOIR_PRIX') %}
+{% set choix = emplacements|length > 1 %}
+{{ rec.frise(reception, 'STOCKEE') }}
+{{ rec.erreur(erreur) }}
+
+<form method="post" class="carte apparition max-w-5xl">
+    <input type="hidden" name="_token" value="{{ csrf_token('reception_' ~ reception.id) }}">
+    <div class="carte-corps">
+        <div class="defilement-x">
+        <table class="tableau" id="lignes-stockage">
+            <thead>
+                <tr>
+                    <th>Produit</th>
+                    <th class="num">Accepté</th>
+                    <th class="num">Entre en stock</th>
+                    {% if choix %}<th>Emplacement</th>{% endif %}
+                    {% if voir_prix %}<th class="num">Prix d'achat (FCFA / unité)</th>{% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for ligne in reception.lignes %}
+                    {% set accepte = ligne.qteAcceptee > 0 %}
+                    <tr class="{{ accepte ? '' : 'cellule-douce' }}">
+                        <td class="cellule-principale">{{ ligne.produit.nom }}</td>
+                        <td class="num tabular-nums">{{ rec.qte(ligne.qteAcceptee, ligne) }}</td>
+                        <td class="num tabular-nums">{{ accepte ? magasin_quantite(ligne.produit, ligne.qteAccepteeEnStock) : 'rien' }}</td>
+                        {% if choix %}
+                            <td>
+                                {% if accepte %}
+                                    {% set retenu = saisie is not null ? (saisie[ligne.id] ?? '') : '' %}
+                                    <select name="emplacements[{{ ligne.id }}]" class="champ" aria-label="Emplacement — {{ ligne.produit.nom }}">
+                                        {% for e in emplacements %}
+                                            <option value="{{ e.id }}" {{ retenu == e.id ~ '' ? 'selected' }}>{{ e.libelle }}</option>
+                                        {% endfor %}
+                                    </select>
+                                {% else %}—{% endif %}
+                            </td>
+                        {% endif %}
+                        {% if voir_prix %}
+                            {% set prix = saisie_prix is not null ? (saisie_prix[ligne.id] ?? '') : (ligne.prixUnitaire is not null ? ligne.prixUnitaire // 100 : '') %}
+                            <td class="num"><input name="prix[{{ ligne.id }}]" class="champ w-32 text-right tabular-nums" inputmode="numeric" value="{{ prix }}" aria-label="Prix d'achat — {{ ligne.produit.nom }}"></td>
+                        {% endif %}
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% if not choix %}
+            <p class="aide mt-3">Rangé dans « {{ emplacements|first ? (emplacements|first).libelle : 'Réserve principale' }} ».</p>
+        {% endif %}
+        {% if voir_prix %}
+            <p class="aide mt-1">Le prix est celui de l'unité d'achat (le sac, le carton). Laissé vide, le coût moyen du produit ne bouge pas.</p>
+        {% endif %}
+    </div>
+    <div class="carte-pied">
+        <button class="btn btn-succes btn-lg">{{ ui.icone('valide') }} Stocker — entrer en stock</button>
+    </div>
+</form>
+{% endblock %}

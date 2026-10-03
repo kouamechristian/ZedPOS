@@ -1,0 +1,104 @@
+{# Bon de sortie du magasin, A4, à signer par qui sert et qui reçoit.
+
+   Page autonome en noir et blanc, comme le bon de réception. La quantité est
+   imprimée dans l'unité saisie et en unité de stock (« 3 sacs (150 kg) ») : le
+   boulanger compte des sacs, le stock des kilos. Un brouillon ou une sortie
+   annulée s'imprime barré de son état. Valeur seulement avec MAGASIN_VOIR_PRIX. #}
+{% import 'admin/_macros.html.twig' as fmt %}
+{% import 'magasin/sortie/_sortie.html.twig' as so %}
+{% set voir_prix = is_granted('MAGASIN_VOIR_PRIX') %}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Bon de sortie {{ sortie.numero }}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 12px; color: #000; background: #fff; padding: 12mm; }
+        .entete { display: flex; justify-content: space-between; align-items: flex-start; gap: 8mm; margin-bottom: 8mm; }
+        .boutique { display: flex; align-items: center; gap: 4mm; }
+        .boutique img { max-height: 18mm; max-width: 40mm; object-fit: contain; }
+        .boutique .nom { font-size: 15px; font-weight: 700; }
+        h1 { font-size: 18px; text-align: right; }
+        .numero { text-align: right; font-size: 14px; font-weight: 700; letter-spacing: .03em; }
+        .infos { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3mm; margin-bottom: 6mm; }
+        .infos div { border: 1px solid #999; padding: 2mm 3mm; }
+        .infos span { display: block; font-size: 10px; text-transform: uppercase; color: #444; }
+        .infos strong { font-size: 13px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border-bottom: 1px solid #999; padding: 5px 4px; text-align: left; vertical-align: top; }
+        th { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
+        .droite { text-align: right; font-variant-numeric: tabular-nums; }
+        tfoot td { border-bottom: none; font-weight: 700; padding-top: 8px; }
+        .statut { margin-bottom: 6mm; padding: 3mm; border: 3px double #000; font-size: 16px; font-weight: 800; text-align: center; text-transform: uppercase; }
+        .notes { margin-top: 5mm; }
+        .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 10mm; margin-top: 12mm; }
+        .signature { border-top: 1px solid #000; padding-top: 2mm; min-height: 24mm; }
+        .signature strong { display: block; margin-bottom: 1mm; }
+        @page { size: A4 portrait; margin: 0; }
+        @media print { thead { display: table-header-group; } tr { break-inside: avoid; } .signatures { break-inside: avoid; } }
+    </style>
+</head>
+<body>
+    <div class="entete">
+        <div class="boutique">
+            {% set logo = logo_boutique() %}
+            {% if logo %}<img src="{{ logo }}" alt="" onerror="this.remove()">{% endif %}
+            <div class="nom">{{ nom_boutique() }}</div>
+        </div>
+        <div>
+            <h1>Bon de sortie du magasin</h1>
+            <div class="numero">{{ sortie.numero }}</div>
+        </div>
+    </div>
+
+    {% if sortie.estAnnulee %}
+        <div class="statut">Sortie annulée — sans valeur ({{ sortie.motifAnnulation }})</div>
+    {% elseif sortie.estBrouillon %}
+        <div class="statut">Brouillon — non validé, sans valeur</div>
+    {% endif %}
+
+    <div class="infos">
+        <div><span>Destination</span><strong>{{ sortie.destination.libelle }}</strong></div>
+        <div><span>Motif</span><strong>{{ sortie.motif.libelle }}</strong></div>
+        <div><span>Date</span><strong>{{ sortie.dateSortie|date('d/m/Y') }}</strong></div>
+        <div><span>Demandé par</span><strong>{{ sortie.demandePar ?: '—' }}</strong></div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Produit</th>
+                <th class="droite">Quantité</th>
+                <th class="droite">En stock</th>
+                <th>Emplacement</th>
+                {% if voir_prix %}<th class="droite">Valeur</th>{% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for ligne in sortie.lignes %}
+                <tr>
+                    <td>{{ ligne.produit.nom }}</td>
+                    <td class="droite">{{ so.saisie(ligne) }}</td>
+                    <td class="droite">{{ magasin_quantite(ligne.produit, ligne.quantite) }}</td>
+                    <td>{{ ligne.emplacement.libelle }}</td>
+                    {% if voir_prix %}<td class="droite">{{ ligne.valeur is not null ? fmt.fcfa(ligne.valeur) : '—' }}</td>{% endif %}
+                </tr>
+            {% endfor %}
+        </tbody>
+        {% if voir_prix and sortie.valeur is not null %}
+            <tfoot><tr><td colspan="4" class="droite">Valeur au coût moyen</td><td class="droite">{{ fmt.fcfa(sortie.valeur) }}</td></tr></tfoot>
+        {% endif %}
+    </table>
+
+    <div class="notes">
+        {% if sortie.commentaire %}<p>Commentaire : {{ sortie.commentaire }}</p>{% endif %}
+        <p>Saisi par {{ sortie.creePar.nom }} le {{ sortie.createdAt|date('d/m/Y à H:i') }}{% if sortie.valideeAt %} · validé le {{ sortie.valideeAt|date('d/m/Y à H:i') }}{% endif %}.</p>
+    </div>
+
+    <div class="signatures">
+        <div class="signature"><strong>Servi par</strong><small>{{ sortie.serviePar ? sortie.serviePar.nom ~ ' — ' : '' }}nom et signature</small></div>
+        <div class="signature"><strong>Reçu par</strong><small>{{ sortie.demandePar ? sortie.demandePar ~ ' — ' : '' }}« reçu la marchandise ci-dessus », signature</small></div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,53 @@
+{% extends 'admin/base.html.twig' %}
+{% import 'admin/_macros.html.twig' as fmt %}
+{% import 'admin/_icones.html.twig' as ui %}
+{% import '_pagination.html.twig' as pagination %}
+{% import 'admin/_recherche.html.twig' as recherche %}
+
+{% block page_title %}Emplacements du magasin{% endblock %}
+{% block page_sous_titre %}Les zones de rangement : réserve sèche, chambre froide, étagères.{% endblock %}
+
+{% block page_actions %}
+    {% if is_granted('MAGASIN_REFERENTIEL') %}<a href="{{ path('magasin_emplacement_new') }}" class="btn btn-primaire">{{ ui.icone('plus') }} Nouvel emplacement</a>{% endif %}
+{% endblock %}
+
+{% block admin_content %}
+<turbo-frame id="liste-emplacements-magasin" data-turbo-action="advance">
+
+{{ recherche.barre('magasin_emplacement_index', 'Code ou libellé') }}
+<div class="tableau-conteneur apparition">
+    <div class="defilement-x">
+    <table class="tableau">
+        <thead>
+            <tr>
+                <th>Code</th>
+                <th>Libellé</th>
+                <th>Statut</th>
+                <th class="num">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for emplacement in emplacements.items %}
+                <tr>
+                    <td class="tabular-nums font-medium text-stone-700">{{ emplacement.code }}</td>
+                    <td class="cellule-principale">
+                        {{ emplacement.libelle }}
+                        {% if emplacement.estReserveParDefaut %}<span class="badge badge-ambre ml-1">par défaut</span>{% endif %}
+                    </td>
+                    <td>{{ fmt.badge(emplacement.actif) }}</td>
+                    <td>
+                        <div class="actions-ligne">
+                            {% if is_granted('MAGASIN_REFERENTIEL') %}<a href="{{ path('magasin_emplacement_edit', {id: emplacement.id}) }}" data-turbo-frame="_top" class="btn btn-sm btn-secondaire">{{ ui.icone('modifier') }} Modifier</a>{% endif %}
+                        </div>
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="4" class="cellule-vide">Aucun emplacement.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{{ pagination.barre(emplacements, 'magasin_emplacement_index') }}
+</turbo-frame>
+{% endblock %}

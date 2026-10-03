@@ -153,6 +153,45 @@ class DemoResetTest extends KernelTestCase
         $this->assertSame(1, $traces, 'L\'annulation passe par le vrai chemin métier, donc elle est tracée.');
     }
 
+    // ------------------------------------------------------------- Magasin
+
+    /**
+     * Le magasin de démonstration : sept jours rejoués par les vrais services, de
+     * quoi montrer chaque étape en attente, la levure au seuil, un stock juste, et
+     * le compte magasinier.
+     */
+    public function testLeMagasinDeDemonstrationEstPret(): void
+    {
+        $compter = fn (string $sql): int => (int) $this->connexion->fetchOne($sql);
+
+        $this->assertSame(11, $compter('SELECT COUNT(*) FROM magasin_produit'));
+        $this->assertSame(1, $compter("SELECT COUNT(*) FROM magasin_inventaire WHERE statut = 'VALIDE'"), 'Le stock de départ vient d\'un inventaire.');
+        $this->assertSame(2, $compter("SELECT COUNT(*) FROM magasin_reception WHERE statut = 'STOCKEE'"));
+        $this->assertSame(1, $compter("SELECT COUNT(*) FROM magasin_reception WHERE statut = 'RECUE'"), 'Une réception à contrôler.');
+        $this->assertSame(1, $compter("SELECT COUNT(*) FROM magasin_reception WHERE statut = 'CONTROLEE'"), 'Une réception à inspecter.');
+        $this->assertSame(1, $compter("SELECT COUNT(*) FROM magasin_sortie WHERE statut = 'BROUILLON'"));
+        $this->assertGreaterThanOrEqual(8, $compter("SELECT COUNT(*) FROM magasin_sortie WHERE statut = 'VALIDEE'"));
+        $this->assertSame(1, $compter("SELECT COUNT(*) FROM magasin_ligne_reception WHERE qte_rejetee > 0"), 'Une plaquette d\'œufs rejetée.');
+        $this->assertSame(0, $compter('SELECT COUNT(*) FROM magasin_stock WHERE quantite < 0'));
+
+        // Les mouvements s'étalent sur sept jours, pas sur l'heure du chargement.
+        $this->assertSame(
+            (new \DateTimeImmutable('-7 days'))->format('Y-m-d'),
+            (string) $this->connexion->fetchOne('SELECT DATE(MIN(created_at)) FROM magasin_mouvement'),
+        );
+
+        $this->assertSame([], static::getContainer()->get(\App\Service\Magasin\MagasinStockService::class)->verifier(), 'Stock = somme des mouvements.');
+        $auSeuil = array_map(
+            static fn (array $l): string => $l['produit']->getNom(),
+            static::getContainer()->get(\App\Service\Magasin\AlertesStockMagasin::class)->produitsAuSeuil(),
+        );
+        $this->assertSame(['Levure boulangère'], $auSeuil, 'La bannière d\'alerte a quelque chose à montrer, et rien d\'autre.');
+
+        $magasinier = static::getContainer()->get(UtilisateurRepository::class)->findOneBy(['email' => 'adama.magasin@zedpos.ci']);
+        $this->assertNotNull($magasinier);
+        $this->assertContains('ROLE_MAGASIN', $magasinier->getRoles());
+    }
+
     // ------------------------------------------------------------- Anomalie 2
 
     public function testAnomalieDeuxEcartDeCaisseDeMoins2500(): void

@@ -1,0 +1,102 @@
+{% extends 'admin/base.html.twig' %}
+{% import 'admin/_icones.html.twig' as ui %}
+{% import 'magasin/reception/_frise.html.twig' as rec %}
+
+{# Étape 1 — ce qu'annonce le bon de livraison. Corrigeable tant que le contrôle
+   n'a pas eu lieu. Les lignes s'ajoutent et se retirent sans réseau
+   (`reception_lignes_controller.js`) ; la quantité est dans l'**unité d'achat**
+   du produit (« sac »), rappelée à côté du champ.
+
+   Le prix n'est rendu qu'avec MAGASIN_VOIR_PRIX : sans elle, aucun champ, et une
+   saisie forgée est ignorée par le contrôleur. #}
+
+{% block page_title %}{{ reception ? 'Réception ' ~ reception.numero : 'Nouvelle réception' }}{% endblock %}
+{% block page_sous_titre %}Étape 1 — saisissez ce qu'annonce le bon de livraison.{% endblock %}
+
+{% block page_actions %}
+    <a href="{{ reception ? path('magasin_reception_show', {id: reception.id}) : path('magasin_reception_index') }}" class="btn btn-fantome">{{ ui.icone('retour') }} {{ reception ? 'Fiche' : 'Réceptions' }}</a>
+{% endblock %}
+
+{% block admin_content %}
+{% if reception %}{{ rec.frise(reception, 'RECUE') }}{% endif %}
+{{ rec.erreur(erreur) }}
+
+<form method="post" class="carte apparition max-w-4xl"
+      data-controller="reception-lignes"
+      data-reception-lignes-unites-value="{{ unites|json_encode }}">
+    <input type="hidden" name="_token" value="{{ csrf_token(reception ? 'reception_' ~ reception.id : 'reception_nouvelle') }}">
+    <div class="carte-corps">
+        <div class="grid grid-cols-1 gap-x-5 sm:grid-cols-2">
+            <div>
+                <label class="etiquette" for="fournisseur">Fournisseur</label>
+                <select id="fournisseur" name="fournisseur" class="champ" required>
+                    <option value="">— Choisir —</option>
+                    {% for f in fournisseurs %}
+                        <option value="{{ f.id }}" {{ entete.fournisseur == f.id ~ '' ? 'selected' }}>{{ f.nom }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="etiquette" for="date">Date de réception</label>
+                <input id="date" type="date" name="date" class="champ" value="{{ entete.date }}" max="{{ 'now'|date('Y-m-d') }}" required>
+            </div>
+            <div>
+                <label class="etiquette" for="bon_livraison">N° du bon de livraison</label>
+                <input id="bon_livraison" name="bon_livraison" class="champ" maxlength="50" value="{{ entete.bonLivraison }}">
+            </div>
+            <div>
+                <label class="etiquette" for="commentaire">Commentaire</label>
+                <input id="commentaire" name="commentaire" class="champ" maxlength="255" value="{{ entete.commentaire }}">
+            </div>
+        </div>
+
+        <h2 class="carte-titre mb-2 mt-4">Produits annoncés</h2>
+        <div class="defilement-x">
+        <table class="tableau" id="lignes-annonce">
+            <thead>
+                <tr>
+                    <th>Produit</th>
+                    <th class="num">Quantité annoncée</th>
+                    {% if voir_prix %}<th class="num">Prix d'achat (FCFA / unité)</th>{% endif %}
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody data-reception-lignes-target="corps">
+                {% for ligne in lignes %}
+                    {{ _self.ligne(loop.index0, ligne, produits, unites, voir_prix) }}
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        <template data-reception-lignes-target="modele">{{ _self.ligne('__i__', {produit: '', annoncee: '', prix: ''}, produits, unites, voir_prix) }}</template>
+        <button type="button" class="btn btn-secondaire mt-3" data-action="reception-lignes#ajouter">{{ ui.icone('plus') }} Ajouter un produit</button>
+    </div>
+    <div class="carte-pied">
+        <button class="btn btn-primaire btn-lg">{{ ui.icone('valide') }} {{ reception ? "Enregistrer l'annonce" : 'Enregistrer la réception' }}</button>
+    </div>
+</form>
+{% endblock %}
+
+{% macro ligne(i, ligne, produits, unites, voir_prix) %}
+    {% import 'admin/_icones.html.twig' as ui %}
+    <tr data-reception-lignes-target="ligne">
+        <td>
+            <select name="lignes[{{ i }}][produit]" class="champ" data-action="reception-lignes#changerProduit" aria-label="Produit">
+                <option value="">— Choisir —</option>
+                {% for p in produits %}
+                    <option value="{{ p.id }}" {{ ligne.produit == p.id ~ '' ? 'selected' }}>{{ p.nom }}</option>
+                {% endfor %}
+            </select>
+        </td>
+        <td class="num">
+            <div class="flex items-center justify-end gap-2">
+                <input name="lignes[{{ i }}][annoncee]" class="champ w-28 text-right tabular-nums" inputmode="decimal" value="{{ ligne.annoncee }}" aria-label="Quantité annoncée">
+                <span class="cellule-douce w-40 text-left text-sm" data-unite>{{ unites[ligne.produit] ?? '' }}</span>
+            </div>
+        </td>
+        {% if voir_prix %}
+            <td class="num"><input name="lignes[{{ i }}][prix]" class="champ w-32 text-right tabular-nums" inputmode="numeric" value="{{ ligne.prix ?? '' }}" aria-label="Prix d'achat"></td>
+        {% endif %}
+        <td class="num"><button type="button" class="btn btn-sm btn-fantome" data-action="reception-lignes#retirer" aria-label="Retirer la ligne">{{ ui.icone('supprimer') }}</button></td>
+    </tr>
+{% endmacro %}

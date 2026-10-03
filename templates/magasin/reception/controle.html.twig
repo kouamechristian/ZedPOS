@@ -1,0 +1,70 @@
+{% extends 'admin/base.html.twig' %}
+{% import 'admin/_icones.html.twig' as ui %}
+{% import 'magasin/reception/_frise.html.twig' as rec %}
+
+{# Étape 2 — le comptage. La gérante tape ce qu'elle a réellement compté ; une
+   ligne qui diffère du bon se surligne aussitôt (`reception_controle_controller.js`)
+   et le commentaire devient obligatoire — règle tranchée par l'entité, l'écran ne
+   fait que l'annoncer. #}
+
+{% block page_title %}Contrôle — {{ reception.numero }}{% endblock %}
+{% block page_sous_titre %}Étape 2 — comptez ce qui est livré. {{ reception.fournisseur.nom }}{% if reception.bonLivraison %}, BL {{ reception.bonLivraison }}{% endif %}.{% endblock %}
+
+{% block page_actions %}
+    {% if reception.statut.value == 'RECUE' %}
+        <a href="{{ path('magasin_reception_annonce', {id: reception.id}) }}" class="btn btn-secondaire">{{ ui.icone('modifier') }} Corriger l'annonce</a>
+    {% endif %}
+    <a href="{{ path('magasin_reception_show', {id: reception.id}) }}" class="btn btn-fantome">{{ ui.icone('retour') }} Fiche</a>
+{% endblock %}
+
+{% block admin_content %}
+{{ rec.frise(reception, 'CONTROLEE') }}
+{{ rec.erreur(erreur) }}
+
+<form method="post" class="carte apparition max-w-4xl" data-controller="reception-controle">
+    <input type="hidden" name="_token" value="{{ csrf_token('reception_' ~ reception.id) }}">
+    <div class="carte-corps">
+        <div class="defilement-x">
+        <table class="tableau" id="lignes-controle">
+            <thead>
+                <tr>
+                    <th>Produit</th>
+                    <th class="num">Annoncé</th>
+                    <th class="num">Compté</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ligne in reception.lignes %}
+                    {% set valeur = saisie is not null ? (saisie[ligne.id] ?? '') : rec.champ(ligne.qteComptee) %}
+                    <tr data-reception-controle-target="ligne" data-annoncee="{{ rec.champ(ligne.qteAnnoncee) }}"
+                        {% if ligne.aUnEcartDeComptage %}data-ecart class="bg-amber-50"{% endif %}>
+                        <td class="cellule-principale">{{ ligne.produit.nom }}</td>
+                        <td class="num tabular-nums">{{ rec.qte(ligne.qteAnnoncee, ligne) }}</td>
+                        <td class="num">
+                            <div class="flex items-center justify-end gap-2">
+                                <input name="comptees[{{ ligne.id }}]" class="champ w-28 text-right tabular-nums" inputmode="decimal"
+                                       value="{{ valeur }}"
+                                       data-action="input->reception-controle#verifier" aria-label="Quantité comptée — {{ ligne.produit.nom }}">
+                                <span class="cellule-douce text-sm">{{ ligne.uniteSaisie }}</span>
+                            </div>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        <div class="mt-3">
+            <button type="button" class="btn btn-sm btn-secondaire" data-action="reception-controle#toutConforme">{{ ui.icone('valide') }} Tout est conforme au bon</button>
+        </div>
+
+        <div class="mt-4">
+            <label class="etiquette" for="commentaire">Commentaire du contrôle</label>
+            <textarea id="commentaire" name="commentaire" rows="2" maxlength="255" class="champ">{{ commentaire }}</textarea>
+            <p class="aide" data-reception-controle-target="avis" {% if not reception.aDesEcartsDeComptage %}hidden{% endif %}>Le compté diffère du bon de livraison : expliquez l'écart, c'est obligatoire.</p>
+        </div>
+    </div>
+    <div class="carte-pied">
+        <button class="btn btn-primaire btn-lg">{{ ui.icone('valide') }} Valider le contrôle</button>
+    </div>
+</form>
+{% endblock %}

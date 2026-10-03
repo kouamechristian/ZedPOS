@@ -44,6 +44,7 @@ class RoleRedirectionHandler implements AuthenticationSuccessHandlerInterface
             \in_array(RoleUtilisateur::CAISSIER->value, $roles, true) => 'app_caisse',
             \in_array(RoleUtilisateur::ATELIER->value, $roles, true),
             \in_array(RoleUtilisateur::VITRINE->value, $roles, true) => 'app_atelier',
+            \in_array(RoleUtilisateur::MAGASIN->value, $roles, true) => 'magasin_tableau_de_bord',
             default => 'app_login',
         };
 

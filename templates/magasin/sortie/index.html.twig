@@ -1,0 +1,73 @@
+{% extends 'admin/base.html.twig' %}
+{% import 'admin/_icones.html.twig' as ui %}
+{% import '_pagination.html.twig' as pagination %}
+{% import 'admin/_recherche.html.twig' as recherche %}
+{% import 'magasin/sortie/_sortie.html.twig' as so %}
+
+{# Sorties du magasin, filtrables par statut. Un brouillon n'a rien fait sortir :
+   il attend sa validation. #}
+
+{% block page_title %}Sorties{% endblock %}
+{% block page_sous_titre %}Ce qui quitte le magasin : vers l'atelier, la cuisine, la boutique.{% endblock %}
+
+{% block page_actions %}
+    {% if is_granted('MAGASIN_GERER') %}
+        <a href="{{ path('magasin_sortie_new') }}" class="btn btn-primaire">{{ ui.icone('plus') }} Nouvelle sortie</a>
+    {% endif %}
+{% endblock %}
+
+{% block admin_content %}
+<turbo-frame id="liste-sorties-magasin" data-turbo-action="advance">
+
+{% set requete = app.request.query.all|filter((v, k) => k not in ['page', 'statut']) %}
+<nav class="onglets mb-3" aria-label="Filtrer par statut">
+    <a href="{{ path('magasin_sortie_index', requete) }}" class="onglet" {% if statut is null %}aria-current="page"{% endif %}>Toutes</a>
+    {% for s in statuts %}
+        <a href="{{ path('magasin_sortie_index', requete|merge({statut: s.value})) }}" class="onglet" {% if statut == s %}aria-current="page"{% endif %}>{{ s.libelle }} ({{ comptes[s.value] ?? 0 }})</a>
+    {% endfor %}
+</nav>
+{{ recherche.barre('magasin_sortie_index', 'Numéro, demandeur ou commentaire') }}
+<div class="tableau-conteneur apparition">
+    <div class="defilement-x">
+    <table class="tableau" id="sorties-magasin">
+        <thead>
+            <tr>
+                <th>Numéro</th>
+                <th>Date</th>
+                <th>Destination</th>
+                <th>Motif</th>
+                <th>Demandé par</th>
+                <th>Servi par</th>
+                <th>Statut</th>
+                <th class="num">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for sortie in sorties.items %}
+                <tr>
+                    <td class="cellule-principale"><a href="{{ path('magasin_sortie_show', {id: sortie.id}) }}" data-turbo-frame="_top" class="lien">{{ sortie.numero }}</a></td>
+                    <td class="cellule-douce">{{ sortie.dateSortie|date('d/m/Y') }}</td>
+                    <td>{{ sortie.destination.libelle }}</td>
+                    <td class="cellule-douce">{{ sortie.motif.libelle }}</td>
+                    <td class="cellule-douce">{{ sortie.demandePar ?: '—' }}</td>
+                    <td class="cellule-douce">{{ sortie.serviePar ? sortie.serviePar.nom : '—' }}</td>
+                    <td>{{ so.statut(sortie.statut) }}</td>
+                    <td>
+                        <div class="actions-ligne">
+                            {% if sortie.estBrouillon and is_granted('MAGASIN_GERER') %}
+                                <a href="{{ path('magasin_sortie_edit', {id: sortie.id}) }}" data-turbo-frame="_top" class="btn btn-sm btn-primaire">{{ ui.icone('modifier') }} Reprendre</a>
+                            {% endif %}
+                            <a href="{{ path('magasin_sortie_show', {id: sortie.id}) }}" data-turbo-frame="_top" class="btn btn-sm btn-secondaire">{{ ui.icone('oeil') }} Voir</a>
+                        </div>
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="8" class="cellule-vide">Aucune sortie.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{{ pagination.barre(sorties, 'magasin_sortie_index') }}
+</turbo-frame>
+{% endblock %}

@@ -1,0 +1,75 @@
+{% extends 'admin/base.html.twig' %}
+{% import 'admin/_macros.html.twig' as fmt %}
+{% import 'admin/_icones.html.twig' as ui %}
+{% import '_pagination.html.twig' as pagination %}
+{% import 'admin/_recherche.html.twig' as recherche %}
+{% import 'magasin/_categories.html.twig' as categories_magasin %}
+
+{# Stock actuel du magasin : par produit, en unité d'achat et en unité de stock,
+   détail par emplacement quand il y en a plusieurs. Un produit sous son seuil
+   d'alerte est surligné. La valeur (stock × coût moyen) n'apparaît qu'avec
+   MAGASIN_VOIR_PRIX. #}
+
+{% block page_title %}Stock du magasin{% endblock %}
+{% block page_sous_titre %}Ce qu'il y a en réserve, produit par produit — indépendant du stock de la caisse.{% endblock %}
+
+{% block admin_content %}
+{% set voir_prix = is_granted('MAGASIN_VOIR_PRIX') %}
+<turbo-frame id="tableau-stock-magasin" data-turbo-action="advance">
+
+{{ categories_magasin.filtre('magasin_stock_index', categories, categorie) }}
+{{ recherche.barre('magasin_stock_index', 'Nom ou unité') }}
+<div class="tableau-conteneur apparition">
+    <div class="defilement-x">
+    <table class="tableau" id="stock-magasin">
+        <thead>
+            <tr>
+                <th>Produit</th>
+                <th>Catégorie</th>
+                <th class="num">En stock</th>
+                <th>Par emplacement</th>
+                <th class="num">Seuil</th>
+                {% if voir_prix %}<th class="num">Valeur</th>{% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for produit in produits.items %}
+                {% set total = totaux[produit.id] ?? 0 %}
+                {# Même règle que l'alerte (AlertesStockMagasin) : seuil atteint = stock ≤ seuil. #}
+                {% set sous_seuil = produit.seuilAlerte > 0 and total <= produit.seuilAlerte %}
+                <tr class="{{ sous_seuil ? 'bg-red-50' }}" {% if sous_seuil %}data-sous-seuil{% endif %}>
+                    <td>
+                        <div class="flex items-center gap-2.5">
+                            <span class="h-2 w-2 shrink-0 rounded-full {{ sous_seuil ? 'bg-red-500' : 'bg-green-500' }}"></span>
+                            <a href="{{ path('magasin_fiche_stock', {id: produit.id}) }}" data-turbo-frame="_top" class="cellule-principale lien" title="Fiche de stock">{{ produit.nom }}</a>
+                            {% if not produit.actif %}<span class="badge badge-neutre">inactif</span>{% endif %}
+                        </div>
+                    </td>
+                    <td class="cellule-douce">{{ produit.categorie.libelle }}</td>
+                    <td class="num tabular-nums font-semibold {{ sous_seuil ? 'text-red-700' }}">
+                        {{ magasin_quantite(produit, total) }}
+                        {% if sous_seuil %}<span class="badge badge-rouge ml-1">seuil atteint</span>{% endif %}
+                    </td>
+                    <td class="cellule-douce text-sm">
+                        {% for ligne in detail[produit.id] ?? [] %}
+                            <div>{{ ligne.emplacement.libelle }} : {{ magasin_quantite(produit, ligne.quantite) }}</div>
+                        {% else %}
+                            —
+                        {% endfor %}
+                    </td>
+                    <td class="num tabular-nums cellule-douce">{{ produit.seuilAlerte > 0 ? magasin_quantite(produit, produit.seuilAlerte) : '—' }}</td>
+                    {% if voir_prix %}
+                        {# Millièmes × centimes ÷ 1000, arrondi au centime : en entiers. #}
+                        <td class="num tabular-nums">{{ fmt.fcfa((total * produit.coutMoyen + 500) // 1000) }}</td>
+                    {% endif %}
+                </tr>
+            {% else %}
+                <tr><td colspan="{{ voir_prix ? 6 : 5 }}" class="cellule-vide">Aucun produit au magasin.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{{ pagination.barre(produits, 'magasin_stock_index') }}
+</turbo-frame>
+{% endblock %}

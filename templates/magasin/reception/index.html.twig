@@ -1,0 +1,72 @@
+{% extends 'admin/base.html.twig' %}
+{% import 'admin/_icones.html.twig' as ui %}
+{% import '_pagination.html.twig' as pagination %}
+{% import 'admin/_recherche.html.twig' as recherche %}
+{% import 'magasin/reception/_frise.html.twig' as rec %}
+
+{# Réceptions du magasin, filtrables par statut. La colonne « À faire » dit
+   l'étape suivante : c'est ce que la gérante cherche en ouvrant l'écran. #}
+
+{% block page_title %}Réceptions{% endblock %}
+{% block page_sous_titre %}Livraisons fournisseurs : réception, contrôle, inspection, stockage.{% endblock %}
+
+{% block page_actions %}
+    {% if is_granted('MAGASIN_GERER') %}
+        <a href="{{ path('magasin_reception_new') }}" class="btn btn-primaire">{{ ui.icone('plus') }} Nouvelle réception</a>
+    {% endif %}
+{% endblock %}
+
+{% block admin_content %}
+<turbo-frame id="liste-receptions-magasin" data-turbo-action="advance">
+
+{% set requete = app.request.query.all|filter((v, k) => k not in ['page', 'statut']) %}
+<nav class="onglets mb-3" aria-label="Filtrer par statut">
+    <a href="{{ path('magasin_reception_index', requete) }}" class="onglet" {% if statut is null %}aria-current="page"{% endif %}>Toutes</a>
+    {% for s in statuts %}
+        <a href="{{ path('magasin_reception_index', requete|merge({statut: s.value})) }}" class="onglet" {% if statut == s %}aria-current="page"{% endif %}>{{ s.libelle }} ({{ comptes[s.value] ?? 0 }})</a>
+    {% endfor %}
+</nav>
+{{ recherche.barre('magasin_reception_index', 'Numéro, fournisseur ou bon de livraison') }}
+<div class="tableau-conteneur apparition">
+    <div class="defilement-x">
+    <table class="tableau" id="receptions-magasin">
+        <thead>
+            <tr>
+                <th>Numéro</th>
+                <th>Date</th>
+                <th>Fournisseur</th>
+                <th>Bon de livraison</th>
+                <th>Statut</th>
+                <th>À faire</th>
+                <th class="num">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% set routes = {RECUE: 'magasin_reception_controle', CONTROLEE: 'magasin_reception_inspection', INSPECTEE: 'magasin_reception_stockage'} %}
+            {% for reception in receptions.items %}
+                <tr>
+                    <td class="cellule-principale"><a href="{{ path('magasin_reception_show', {id: reception.id}) }}" data-turbo-frame="_top" class="lien">{{ reception.numero }}</a></td>
+                    <td class="cellule-douce">{{ reception.dateReception|date('d/m/Y') }}</td>
+                    <td>{{ reception.fournisseur.nom }}</td>
+                    <td class="cellule-douce">{{ reception.bonLivraison ?: '—' }}</td>
+                    <td>{{ rec.statut(reception.statut) }}</td>
+                    <td class="cellule-douce">{{ reception.statut.prochaineEtape ?? '—' }}</td>
+                    <td>
+                        <div class="actions-ligne">
+                            {% if routes[reception.statut.value] is defined and is_granted('MAGASIN_GERER') %}
+                                <a href="{{ path(routes[reception.statut.value], {id: reception.id}) }}" data-turbo-frame="_top" class="btn btn-sm btn-primaire">{{ reception.statut.prochaineEtape }}</a>
+                            {% endif %}
+                            <a href="{{ path('magasin_reception_show', {id: reception.id}) }}" data-turbo-frame="_top" class="btn btn-sm btn-secondaire">{{ ui.icone('oeil') }} Voir</a>
+                        </div>
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="7" class="cellule-vide">Aucune réception.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{{ pagination.barre(receptions, 'magasin_reception_index') }}
+</turbo-frame>
+{% endblock %}

@@ -1,0 +1,216 @@
+{% extends 'admin/base.html.twig' %}
+{% import 'admin/_icones.html.twig' as ui %}
+
+{# Tableau de bord du magasin : le plan de traitement en six cartes, dans l'ordre
+   où la marchandise le parcourt — Réception → Contrôle → Inspection → Stockage →
+   Entrées / sorties → Inventaire. Chaque carte donne les chiffres de la journée,
+   par produit et en unité de stock (on n'additionne pas des sacs et des cartons),
+   et mène à sa liste. Lecture seule : le magasinier y a accès.
+
+   Les couleurs suivent les étapes et rien d'autre ; elles ne disent pas « bien »
+   ou « mal ». Ce qui attend est en bas de chaque carte, en gras. #}
+
+{% block page_title %}Tableau de bord du magasin{% endblock %}
+{% block page_sous_titre %}{{ estAujourdhui ? 'Aujourd\'hui' : 'Journée du' }} {{ jour|date('d/m/Y') }} — ce qui est passé à chaque étape, et ce qui attend.{% endblock %}
+
+{% block page_actions %}
+    <form method="get" class="flex items-center gap-2" data-controller="soumission-auto">
+        <a href="{{ path('magasin_tableau_de_bord', {jour: veille|date('Y-m-d')}) }}" class="btn btn-icone btn-fantome" aria-label="Jour précédent">{{ ui.icone('retour', 'h-4 w-4') }}</a>
+        <input type="date" name="jour" value="{{ jour|date('Y-m-d') }}" max="{{ 'now'|date('Y-m-d') }}" class="champ h-10 w-auto"
+               data-action="change->soumission-auto#soumettre" aria-label="Journée">
+        {% if lendemain %}
+            <a href="{{ path('magasin_tableau_de_bord', {jour: lendemain|date('Y-m-d')}) }}" class="btn btn-icone btn-fantome" aria-label="Jour suivant">{{ ui.icone('suivant', 'h-4 w-4') }}</a>
+            <a href="{{ path('magasin_tableau_de_bord') }}" class="btn btn-sm btn-secondaire">Aujourd'hui</a>
+        {% endif %}
+    </form>
+{% endblock %}
+
+{% block admin_content %}
+{% set gerer = is_granted('MAGASIN_GERER') %}
+{% set e = chiffres.etapes %}
+{% set attente = chiffres.receptionsParStatut %}
+
+{% set cartes = [
+    {cle: 'RECUE', numero: 1, titre: 'Réception', couleur: 'sky', icone: 'fournisseurs',
+     resume: e.RECUE.nombre ~ ' réception' ~ (e.RECUE.nombre > 1 ? 's' : '') ~ ' du jour', lignes: e.RECUE.lignes, vide: 'Aucune livraison ce jour.',
+     attente: null, lien: path('magasin_reception_index'), lienLibelle: 'Toutes les réceptions'},
+    {cle: 'CONTROLEE', numero: 2, titre: 'Contrôle', couleur: 'orange', icone: 'recherche',
+     resume: e.CONTROLEE.nombre ~ ' contrôlée' ~ (e.CONTROLEE.nombre > 1 ? 's' : ''), lignes: e.CONTROLEE.lignes, vide: 'Rien de compté ce jour.',
+     attente: attente.RECUE, attenteLibelle: 'à contrôler', lien: path('magasin_reception_index', {statut: 'RECUE'}), lienLibelle: 'À contrôler'},
+    {cle: 'INSPECTEE', numero: 3, titre: 'Inspection', couleur: 'amber', icone: 'oeil',
+     resume: e.INSPECTEE.nombre ~ ' inspectée' ~ (e.INSPECTEE.nombre > 1 ? 's' : ''), lignes: e.INSPECTEE.lignes, rejete: e.INSPECTEE.rejete, vide: 'Rien d\'inspecté ce jour.',
+     attente: attente.CONTROLEE, attenteLibelle: 'à inspecter', lien: path('magasin_reception_index', {statut: 'CONTROLEE'}), lienLibelle: 'À inspecter'},
+    {cle: 'STOCKEE', numero: 4, titre: 'Stockage', couleur: 'emerald', icone: 'stock',
+     resume: e.STOCKEE.nombre ~ ' rangée' ~ (e.STOCKEE.nombre > 1 ? 's' : ''), lignes: e.STOCKEE.lignes, vide: 'Rien de rangé ce jour.',
+     attente: attente.INSPECTEE, attenteLibelle: 'à ranger', lien: path('magasin_reception_index', {statut: 'INSPECTEE'}), lienLibelle: 'À ranger'},
+] %}
+
+<section class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3" id="plan-magasin" aria-label="Plan de traitement du magasin">
+    {% for carte in cartes %}
+        {{ _self.carte(carte, loop.index0) }}
+    {% endfor %}
+
+    {# 5. Entrées / sorties — lues dans les mouvements, nettes des annulations. #}
+    <article class="carte apparition flex flex-col border-t-4 border-t-teal-500" style="--i: 4" data-etape="MOUVEMENTS">
+        <div class="carte-entete">
+            <div class="flex items-center gap-2.5">
+                <span class="flex h-8 w-8 items-center justify-center rounded-full bg-teal-100 text-sm font-bold text-teal-800">5</span>
+                <h2 class="carte-titre">Entrées / sorties</h2>
+            </div>
+            <span class="text-teal-700">{{ ui.icone('pilotage') }}</span>
+        </div>
+        <div class="carte-corps flex-1 space-y-3 text-sm">
+            <div data-mouvement="entrees">
+                <div class="mb-1 font-semibold text-teal-900">Entrées</div>
+                {{ _self.lignes(chiffres.entrees, 'Aucune entrée.') }}
+            </div>
+            <div data-mouvement="sorties">
+                <div class="mb-1 font-semibold text-teal-900">Sorties{% if chiffres.nombreSorties > 0 %} <span class="font-normal text-stone-500">({{ chiffres.nombreSorties }} bon{{ chiffres.nombreSorties > 1 ? 's' }})</span>{% endif %}</div>
+                {{ _self.lignes(chiffres.sorties, 'Aucune sortie.') }}
+            </div>
+        </div>
+        <div class="carte-pied justify-between text-sm">
+            {% set brouillons = chiffres.sortiesParStatut.BROUILLON ?? 0 %}
+            <span>{% if brouillons > 0 %}<strong>{{ brouillons }}</strong> sortie{{ brouillons > 1 ? 's' }} en brouillon{% else %}<span class="text-stone-500">Aucune sortie en attente</span>{% endif %}</span>
+            <span class="flex gap-3">
+                <a href="{{ path('magasin_sortie_index', brouillons > 0 ? {statut: 'BROUILLON'} : {}) }}" class="lien">Sorties</a>
+                <a href="{{ path('magasin_analyse', {periode: 'libre', du: jour|date('Y-m-d'), au: jour|date('Y-m-d')}) }}" class="lien">Analyse</a>
+            </span>
+        </div>
+    </article>
+
+    {# 6. Inventaire — la feuille en cours, ou le dernier inventaire validé. #}
+    <article class="carte apparition flex flex-col border-t-4 border-t-violet-500" style="--i: 5" data-etape="INVENTAIRE">
+        <div class="carte-entete">
+            <div class="flex items-center gap-2.5">
+                <span class="flex h-8 w-8 items-center justify-center rounded-full bg-violet-100 text-sm font-bold text-violet-800">6</span>
+                <h2 class="carte-titre">Inventaire</h2>
+            </div>
+            <span class="text-violet-700">{{ ui.icone('inventaire') }}</span>
+        </div>
+        <div class="carte-corps flex-1 space-y-2 text-sm">
+            {% for inv in chiffres.inventairesEnCours %}
+                <div><a href="{{ path('magasin_inventaire_show', {id: inv.id}) }}" class="lien font-semibold">{{ inv.numero }}</a> en cours — {{ inv.portee }}, ouvert le {{ inv.createdAt|date('d/m/Y') }}.</div>
+            {% else %}
+                <div class="text-stone-500">Aucun inventaire en cours.</div>
+            {% endfor %}
+            {% if chiffres.dernierInventaire %}
+                {% set dernier = chiffres.dernierInventaire %}
+                <div>Dernier validé : <a href="{{ path('magasin_inventaire_show', {id: dernier.id}) }}" class="lien">{{ dernier.numero }}</a>, le {{ dernier.valideAt|date('d/m/Y') }} — {{ dernier.lignesEnEcart|length == 0 ? 'stock juste' : dernier.lignesEnEcart|length ~ ' écart(s)' }}.</div>
+            {% else %}
+                <div class="text-stone-500">Jamais d'inventaire : le premier fera le stock de départ.</div>
+            {% endif %}
+        </div>
+        <div class="carte-pied justify-end text-sm">
+            <a href="{{ path('magasin_inventaire_index') }}" class="lien">Inventaires</a>
+        </div>
+    </article>
+</section>
+
+<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+    <section class="carte apparition" style="--i: 6" id="sous-seuil">
+        <div class="carte-entete">
+            <h2 class="carte-titre">Produits au seuil d'alerte</h2>
+            {% if chiffres.sousSeuil is not empty %}<span class="badge badge-rouge">{{ chiffres.sousSeuil|length }}</span>{% endif %}
+        </div>
+        {% if chiffres.sousSeuil is empty %}
+            <div class="carte-corps text-sm text-stone-500">Aucun produit n'a atteint son seuil.</div>
+        {% else %}
+            <div class="defilement-x">
+            <table class="tableau">
+                <thead><tr><th>Produit</th><th class="num">En stock</th><th class="num">Seuil</th></tr></thead>
+                <tbody>
+                    {% for ligne in chiffres.sousSeuil|slice(0, 10) %}
+                        <tr class="bg-red-50">
+                            <td class="cellule-principale">{{ ligne.produit.nom }}</td>
+                            <td class="num tabular-nums">{{ magasin_quantite(ligne.produit, ligne.quantite) }}</td>
+                            <td class="num tabular-nums cellule-douce">{{ magasin_quantite(ligne.produit, ligne.produit.seuilAlerte) }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            </div>
+            <div class="carte-pied justify-end text-sm"><a href="{{ path('magasin_stock_index') }}" class="lien">Voir tout le stock</a></div>
+        {% endif %}
+    </section>
+
+    <section class="carte apparition" style="--i: 7" id="en-attente">
+        <div class="carte-entete"><h2 class="carte-titre">En attente</h2></div>
+        <ul class="carte-corps space-y-2 text-sm">
+            {% for statut, libelle in {RECUE: 'réception(s) à contrôler', CONTROLEE: 'réception(s) à inspecter', INSPECTEE: 'réception(s) à ranger'} %}
+                <li class="flex items-center justify-between gap-3">
+                    <span><strong class="tabular-nums">{{ attente[statut] ?? 0 }}</strong> {{ libelle }}</span>
+                    {% if (attente[statut] ?? 0) > 0 %}<a href="{{ path('magasin_reception_index', {statut: statut}) }}" class="lien">Voir</a>{% endif %}
+                </li>
+            {% endfor %}
+            <li class="flex items-center justify-between gap-3">
+                <span><strong class="tabular-nums">{{ chiffres.sortiesParStatut.BROUILLON ?? 0 }}</strong> sortie(s) en brouillon</span>
+                {% if (chiffres.sortiesParStatut.BROUILLON ?? 0) > 0 %}<a href="{{ path('magasin_sortie_index', {statut: 'BROUILLON'}) }}" class="lien">Voir</a>{% endif %}
+            </li>
+        </ul>
+        {% if gerer %}
+            <div class="carte-pied flex-wrap">
+                <a href="{{ path('magasin_reception_new') }}" class="btn btn-primaire">{{ ui.icone('plus') }} Nouvelle réception</a>
+                <a href="{{ path('magasin_sortie_new') }}" class="btn btn-secondaire">{{ ui.icone('plus') }} Nouvelle sortie</a>
+            </div>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}
+
+{# Une carte d'étape de réception. Les classes de couleur sont écrites en entier
+   ci-dessous (et non composées) : Tailwind ne compile que ce qu'il lit tel quel. #}
+{% macro carte(carte, i) %}
+    {% import 'admin/_icones.html.twig' as ui %}
+    {% set teintes = {
+        sky: {bord: 'border-t-sky-500', pastille: 'bg-sky-100 text-sky-800', icone: 'text-sky-700', texte: 'text-sky-900'},
+        orange: {bord: 'border-t-orange-500', pastille: 'bg-orange-100 text-orange-800', icone: 'text-orange-700', texte: 'text-orange-900'},
+        amber: {bord: 'border-t-amber-500', pastille: 'bg-amber-100 text-amber-800', icone: 'text-amber-700', texte: 'text-amber-900'},
+        emerald: {bord: 'border-t-emerald-500', pastille: 'bg-emerald-100 text-emerald-800', icone: 'text-emerald-700', texte: 'text-emerald-900'},
+    } %}
+    {% set t = teintes[carte.couleur] %}
+    <article class="carte apparition flex flex-col border-t-4 {{ t.bord }}" style="--i: {{ i }}" data-etape="{{ carte.cle }}">
+        <div class="carte-entete">
+            <div class="flex items-center gap-2.5">
+                <span class="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold {{ t.pastille }}">{{ carte.numero }}</span>
+                <h2 class="carte-titre">{{ carte.titre }}</h2>
+            </div>
+            <span class="{{ t.icone }}">{{ ui.icone(carte.icone) }}</span>
+        </div>
+        <div class="carte-corps flex-1 space-y-2 text-sm">
+            <div class="font-semibold {{ t.texte }}">{{ carte.resume }}</div>
+            {{ _self.lignes(carte.lignes, carte.vide) }}
+            {% if carte.rejete is defined and carte.rejete is not empty %}
+                <div class="pt-1 text-red-800" data-rejete>
+                    <div class="font-semibold">Rejeté</div>
+                    {{ _self.lignes(carte.rejete, '') }}
+                </div>
+            {% endif %}
+        </div>
+        <div class="carte-pied justify-between text-sm">
+            {% if carte.attente is not null %}
+                <span data-attente>{% if carte.attente > 0 %}<strong>{{ carte.attente }}</strong> {{ carte.attenteLibelle }}{% else %}<span class="text-stone-500">Rien {{ carte.attenteLibelle }}</span>{% endif %}</span>
+            {% else %}
+                <span></span>
+            {% endif %}
+            <a href="{{ carte.lien }}" class="lien">{{ carte.lienLibelle }}</a>
+        </div>
+    </article>
+{% endmacro %}
+
+{# Quantités par produit : « Farine de blé — 20 sacs (1 000 kg) ». Cinq au plus. #}
+{% macro lignes(lignes, vide) %}
+    {% if lignes is empty %}
+        {% if vide %}<p class="text-stone-500">{{ vide }}</p>{% endif %}
+    {% else %}
+        <ul class="space-y-1">
+            {% for ligne in lignes|slice(0, 5) %}
+                <li class="flex items-baseline justify-between gap-3">
+                    <span class="min-w-0 truncate">{{ ligne.produit.nom }}</span>
+                    <span class="shrink-0 tabular-nums font-medium">{{ magasin_quantite(ligne.produit, ligne.quantite) }}</span>
+                </li>
+            {% endfor %}
+            {% if lignes|length > 5 %}<li class="text-stone-500">et {{ lignes|length - 5 }} autre(s)</li>{% endif %}
+        </ul>
+    {% endif %}
+{% endmacro %}
