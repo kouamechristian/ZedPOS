@@ -829,9 +829,18 @@ les noms sont condensés) et interdit la mise en cache de `sw.js`.
 ### Rapport de journée par caissière (`/admin/ventes/rapport`)
 
 Bouton **« Rapport de journée »** sur `/admin/ventes`. La gérante choisit une
-**journée** et une **caissière** (ou toute l'équipe), relit ce qui est sorti du
-comptoir **rangé par famille**, et rapproche le total du bas de page des espèces
-en tiroir. Le **PDF** est ce qui reste au classeur ou part à la dirigeante.
+**caisse** (`?session=`) — la caisse ouverte, ou une caisse clôturée (sélecteur
+en deux groupes, 60 plus récentes) —, relit ce qui en est sorti **rangé par
+famille**, et rapproche le total du bas de page des espèces en tiroir. Le
+**PDF** est ce qui reste au classeur ou part à la dirigeante.
+
+- **Filtre par caisse, plus par journée ni par caissière** (décision de
+  l'exploitante) : `RapportVentesJournee::pourSession()` lit toutes les ventes
+  de la session, quelle que soit l'heure — une caisse qui passe minuit ne se
+  coupe pas en deux, et le total se rapproche du Z de cette caisse.
+- Sans `session` (ou identifiant inconnu) : la caisse ouverte, à défaut la
+  dernière clôturée (`ChiffreCaisseService::courant()`), comme au pilotage.
+  `pour(jour, caissier)` subsiste côté service mais n'a plus d'écran.
 
 **Lecture seule** : deux routes GET (`RapportVenteController`), et il ne doit
 jamais en être ajouté d'écriture — un rapport relit ce que la caisse a produit,
@@ -870,16 +879,11 @@ les lignes ne servent qu'à ventiler.
   payé en espèces sans faire l'appoint : le règlement enregistré est la **somme
   tendue**, pas le total (voir « Interface de caisse tactile »). C'est écrit sous
   le tableau, sinon on cherche l'erreur.
-- Le sélecteur **ne propose que les caissières ayant encaissé ce jour-là** :
-  proposer toute l'équipe reviendrait à proposer des rapports vides. Celle qui
-  est retenue y figure toujours, même sans vente, sinon le filtre disparaîtrait
-  de l'écran en se croyant appliqué.
-- Une **date illisible retombe sur aujourd'hui** et un **identifiant de caissière
-  inconnu** sur toute l'équipe : un lien périmé n'immobilise pas un écran de
-  gestion, même parti pris que la pagination.
-- Le nom du fichier porte la journée et la caissière
-  (`ventes_2026-09-12_Fatou-Traoré.pdf`) : un dossier de fins de journée se
-  classe sinon sur douze fichiers appelés « rapport.pdf ».
+- La caisse retenue figure toujours dans le sélecteur, même hors des plus
+  récentes, sinon le filtre disparaîtrait de l'écran en se croyant appliqué.
+- Le nom du fichier porte la date d'ouverture, la caissière et la caisse
+  (`ventes_2026-09-12_Fatou Traoré_caisse-42.pdf`) : un dossier de fins de
+  journée se classe sinon sur douze fichiers appelés « rapport.pdf ».
 
 **Le PDF est rendu côté serveur par Dompdf** (`App\Service\GenerateurPdf`, seul
 endroit du projet où il est instancié), et non par la fenêtre d'impression du
@@ -908,8 +912,9 @@ Le lien vers le PDF porte `data-turbo="false"` : Turbo attend du HTML, le fichie
 ne descendrait pas.
 
 Couverture : `RapportVentesTest` (somme des familles = total, remises, ticket
-annulé exclu mais annoncé, filtre par caissière, prix multiple, date illisible,
-sortie PDF, caissier refusé), plus `/admin/ventes/rapport` dans `AdminSmokeTest`.
+annulé exclu mais annoncé, filtre par caisse, caisse passant minuit, caisse
+ouverte par défaut, sélecteur ouvertes / clôturées, prix multiple, caisse
+inconnue, sortie PDF, caissier refusé), plus `/admin/ventes/rapport` dans `AdminSmokeTest`.
 
 ### Import du catalogue (`/admin/articles/importer`)
 

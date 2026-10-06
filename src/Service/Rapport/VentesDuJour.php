@@ -2,6 +2,7 @@
 
 namespace App\Service\Rapport;
 
+use App\Entity\SessionCaisse;
 use App\Entity\Utilisateur;
 
 /**
@@ -27,6 +28,7 @@ final readonly class VentesDuJour
      * @param list<FamilleVendue>    $familles      ventilation, dans l'ordre de la caisse
      * @param list<ReglementVentile> $reglements    ventilation par mode de règlement
      * @param ?Utilisateur           $caissier      caissière retenue, ou null pour toute l'équipe
+     * @param ?SessionCaisse         $session       caisse retenue, ou null pour un rapport à la journée
      * @param int                    $tickets       tickets validés
      * @param int                    $annulations   tickets annulés (exclus de tous les montants)
      * @param int                    $montantAnnule montant des tickets annulés, en centimes
@@ -34,6 +36,7 @@ final readonly class VentesDuJour
     public function __construct(
         public \DateTimeImmutable $jour,
         public ?Utilisateur $caissier,
+        public ?SessionCaisse $session,
         public array $familles,
         public array $reglements,
         public int $brutTtc,

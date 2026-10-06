@@ -197,40 +197,75 @@ class RapportVentesTest extends WebTestCase
         $this->assertSelectorTextContains('body', 'annulé');
     }
 
-    public function testLeFiltreParCaissiereIsoleReellementSesVentes(): void
+
+    public function testLeFiltreParCaisseIsoleReellementSesVentes(): void
     {
         $this->vendre($this->sessionFatou, $this->baguette, 15000);
         $this->vendre($this->sessionYao, $this->jus, 50000);
 
-        $toutes = $this->rapports()->pour(new \DateTimeImmutable('today'));
-        $this->assertSame(65000, $toutes->totalTtc);
-
-        $deFatou = $this->rapports()->pour(new \DateTimeImmutable('today'), $this->fatou);
+        $deFatou = $this->rapports()->pourSession($this->sessionFatou);
         $this->assertSame(1, $deFatou->tickets);
         $this->assertSame(15000, $deFatou->totalTtc);
         $this->assertCount(1, $deFatou->familles);
         $this->assertSame('Pains', $deFatou->familles[0]->nom);
         $this->assertSame('Fatou Traoré', $deFatou->libelleCaissier());
 
-        $crawler = $this->client->request('GET', '/admin/ventes/rapport?caissier='.$this->fatou->getId());
+        $crawler = $this->client->request('GET', '/admin/ventes/rapport?session='.$this->sessionFatou->getId());
         $this->assertResponseIsSuccessful();
         $this->assertStringNotContainsString('Jus de bissap', $crawler->filter('body')->text());
+
+        $crawler = $this->client->request('GET', '/admin/ventes/rapport?session='.$this->sessionYao->getId());
+        $this->assertStringContainsString('Jus de bissap', $crawler->filter('body')->text());
+        $this->assertStringNotContainsString('Baguette', $crawler->filter('body')->text());
     }
 
     /**
-     * Le sélecteur ne propose que les caissières ayant encaissé ce jour-là :
-     * proposer toute l'équipe reviendrait à proposer des rapports vides.
+     * Une caisse se lit en entier, quelle que soit l'heure de ses ventes : une
+     * caisse qui passe minuit ne se coupe pas en deux rapports.
      */
-    public function testLeSelecteurNeProposeQueLesCaissieresDeLaJournee(): void
+    public function testUneCaisseSeLitEnEntierMemeAuDelaDeMinuit(): void
+    {
+        $this->vendre($this->sessionFatou, $this->baguette, 15000)->dater(new \DateTimeImmutable('-1 day 23:30'));
+        $this->vendre($this->sessionFatou, $this->croissant, 25000);
+        $this->em->flush();
+
+        $rapport = $this->rapports()->pourSession($this->sessionFatou);
+        $this->assertSame(2, $rapport->tickets);
+        $this->assertSame(40000, $rapport->totalTtc);
+    }
+
+    /** Sans caisse demandée, la caisse ouverte s'affiche. */
+    public function testParDefautLaCaisseOuverteEstRetenue(): void
     {
         $this->vendre($this->sessionFatou, $this->baguette, 15000);
 
         $crawler = $this->client->request('GET', '/admin/ventes/rapport');
-        $options = $crawler->filter('select[name="caissier"] option')->extract(['_text']);
-        $options = array_map('trim', $options);
+        $this->assertResponseIsSuccessful();
+        $selection = $crawler->filter('select[name="session"] option[selected]');
+        $this->assertSame((string) $this->sessionFatou->getId(), $selection->attr('value'));
+        $this->assertSelectorTextContains('body', 'ouverte');
+    }
 
-        $this->assertContains('Fatou Traoré', $options);
-        $this->assertNotContains('Yao Kouassi', $options);
+    /**
+     * Le sélecteur range les caisses en ouvertes et clôturées : la gérante relit
+     * aussi bien la caisse en cours qu'une caisse déjà passée au Z.
+     */
+    public function testLeSelecteurProposeLesCaissesOuvertesEtCloturees(): void
+    {
+        $this->vendre($this->sessionYao, $this->jus, 50000);
+        $this->sessionYao->cloturer(0, 0);
+        $this->em->flush();
+
+        $crawler = $this->client->request('GET', '/admin/ventes/rapport');
+
+        $ouvertes = $crawler->filter('optgroup[label="Caisse ouverte"] option')->extract(['value']);
+        $cloturees = $crawler->filter('optgroup[label="Caisses clôturées"] option')->extract(['value']);
+        $this->assertSame([(string) $this->sessionFatou->getId()], $ouvertes);
+        $this->assertSame([(string) $this->sessionYao->getId()], $cloturees);
+
+        $crawler = $this->client->request('GET', '/admin/ventes/rapport?session='.$this->sessionYao->getId());
+        $this->assertSelectorTextContains('body', 'Clôturée');
+        $this->assertStringContainsString('Jus de bissap', $crawler->filter('body')->text());
     }
 
     /**
@@ -249,26 +284,28 @@ class RapportVentesTest extends WebTestCase
         $this->assertSame(35000, $rapport->familles[0]->articles[0]->montant);
     }
 
-    public function testUneJourneeSansVenteNeCasseRien(): void
+    public function testUneCaisseSansVenteNeCasseRien(): void
     {
-        $this->client->request('GET', '/admin/ventes/rapport?jour=2020-01-01');
+        $this->client->request('GET', '/admin/ventes/rapport?session='.$this->sessionYao->getId());
         $this->assertResponseIsSuccessful();
         $this->assertSelectorTextContains('body', 'Aucune vente');
     }
 
-    /** Une date illisible ne renvoie pas une erreur : elle retombe sur aujourd'hui. */
-    public function testUneDateIllisibleRetombeSurAujourdHui(): void
+    /** Une caisse illisible ou inconnue ne renvoie pas une erreur : elle retombe sur la caisse ouverte. */
+    public function testUneCaisseInconnueRetombeSurLaCaisseOuverte(): void
     {
-        $this->client->request('GET', '/admin/ventes/rapport?jour=pas-une-date');
-        $this->assertResponseIsSuccessful();
-        $this->assertSelectorTextContains('body', (new \DateTimeImmutable('today'))->format('d/m/Y'));
+        foreach (['pas-un-id', '999999'] as $session) {
+            $crawler = $this->client->request('GET', '/admin/ventes/rapport?session='.$session);
+            $this->assertResponseIsSuccessful();
+            $this->assertSame((string) $this->sessionFatou->getId(), $crawler->filter('select[name="session"] option[selected]')->attr('value'));
+        }
     }
 
     public function testLeRapportSortEnPdf(): void
     {
         $this->vendre($this->sessionFatou, $this->baguette, 15000, 2000);
 
-        $this->client->request('GET', '/admin/ventes/rapport.pdf?caissier='.$this->fatou->getId());
+        $this->client->request('GET', '/admin/ventes/rapport.pdf?session='.$this->sessionFatou->getId());
 
         $this->assertResponseIsSuccessful();
         $this->assertResponseHeaderSame('Content-Type', 'application/pdf');

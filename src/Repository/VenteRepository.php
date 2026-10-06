@@ -235,6 +235,32 @@ class VenteRepository extends ServiceEntityRepository
     }
 
     /**
+     * Ventes d'une caisse (session), annulées comprises, avec lignes, articles,
+     * familles et règlements joints d'avance — mêmes raisons que
+     * {@see self::duJourAvecLignes()}.
+     *
+     * Sert au rapport des ventes filtré par caisse : une caisse ouverte la veille
+     * au soir et clôturée le matin ne se coupe pas en deux journées.
+     *
+     * @return list<Vente>
+     */
+    public function deSessionAvecLignes(SessionCaisse $session): array
+    {
+        return $this->createQueryBuilder('v')
+            ->join('v.sessionCaisse', 's')->addSelect('s')
+            ->join('s.utilisateur', 'u')->addSelect('u')
+            ->leftJoin('v.lignes', 'l')->addSelect('l')
+            ->leftJoin('l.article', 'a')->addSelect('a')
+            ->leftJoin('a.familleProduit', 'f')->addSelect('f')
+            ->leftJoin('v.reglements', 'r')->addSelect('r')
+            ->andWhere('v.sessionCaisse = :session')->setParameter('session', $session)
+            ->orderBy('v.createdAt', 'ASC')
+            ->addOrderBy('v.id', 'ASC')
+            ->getQuery()
+            ->getResult();
+    }
+
+    /**
      * Caissières ayant encaissé au moins un ticket dans la journée, par ordre
      * alphabétique.
      *

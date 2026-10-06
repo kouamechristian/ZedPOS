@@ -16,7 +16,7 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Rapport des ventes du {{ rapport.jour|date('d/m/Y') }}</title>
+    <title>Rapport des ventes — caisse de {{ session.utilisateur.nom }}</title>
     <style>
         /* DejaVu Sans : la police embarquée par Dompdf qui porte les accents.
            Sans elle, « Pâté » sort « P?t? » sur un document qu'on classe. */
@@ -112,7 +112,8 @@
         <td>
             <h1>Rapport des ventes</h1>
             <div class="sous-titre">
-                Journée du {{ rapport.jour|date('d/m/Y') }}<br>
+                Caisse ouverte le {{ session.ouvertureAt|date('d/m/Y à H:i') }}<br>
+                {{ session.estOuverte ? "Encore ouverte — chiffres à l'heure d'édition" : 'Clôturée le ' ~ session.clotureAt|date('d/m/Y à H:i') }}<br>
                 {{ rapport.libelleCaissier }}
             </div>
         </td>
@@ -138,7 +139,7 @@
 {% endif %}
 
 {% if rapport.estVide %}
-    <div class="avis">Aucune vente n'a été encaissée ce jour-là.</div>
+    <div class="avis">Aucune vente n'a été encaissée sur cette caisse.</div>
 {% else %}
 
     {% for famille in rapport.familles %}
@@ -245,7 +246,7 @@
 
 <div class="pied">
     <span class="page"></span>
-    {{ boutique }} — rapport des ventes du {{ rapport.jour|date('d/m/Y') }}
+    {{ boutique }} — rapport des ventes, caisse de {{ session.utilisateur.nom }} du {{ session.ouvertureAt|date('d/m/Y') }}
     · édité le {{ edite_le|date('d/m/Y à H:i') }}{{ edite_par ? ' par ' ~ edite_par }}
 </div>
 

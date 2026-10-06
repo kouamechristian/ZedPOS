@@ -2,7 +2,9 @@
 
 namespace App\Service\Rapport;
 
+use App\Entity\SessionCaisse;
 use App\Entity\Utilisateur;
+use App\Entity\Vente;
 use App\Repository\VenteRepository;
 
 /**
@@ -31,7 +33,28 @@ class RapportVentesJournee
 
     public function pour(\DateTimeImmutable $jour, ?Utilisateur $caissier = null): VentesDuJour
     {
-        $ventes = $this->ventes->duJourAvecLignes($jour, $caissier);
+        return $this->ventiler($this->ventes->duJourAvecLignes($jour, $caissier), $jour, $caissier);
+    }
+
+    /**
+     * Rapport d'une caisse (session), ouverte ou clôturée : toutes ses ventes,
+     * quelle que soit l'heure — une caisse qui passe minuit reste une caisse.
+     */
+    public function pourSession(SessionCaisse $session): VentesDuJour
+    {
+        return $this->ventiler(
+            $this->ventes->deSessionAvecLignes($session),
+            $session->getOuvertureAt()->setTime(0, 0),
+            $session->getUtilisateur(),
+            $session,
+        );
+    }
+
+    /**
+     * @param list<Vente> $ventes
+     */
+    private function ventiler(array $ventes, \DateTimeImmutable $jour, ?Utilisateur $caissier, ?SessionCaisse $session = null): VentesDuJour
+    {
 
         /** @var array<string, array{position: int, nom: string, articles: array<string, array{nom: string, quantite: int, prix: ?int, plusieursPrix: bool, montant: int}>}> $familles */
         $familles = [];
@@ -104,6 +127,7 @@ class RapportVentesJournee
         return new VentesDuJour(
             jour: $jour,
             caissier: $caissier,
+            session: $session,
             familles: $this->rangerFamilles($familles),
             reglements: $this->rangerReglements($reglements),
             brutTtc: $brutTtc,
