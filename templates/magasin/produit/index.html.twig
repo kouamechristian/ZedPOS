@@ -13,7 +13,7 @@
 {% block page_sous_titre %}Matières, emballages et fournitures tenus au magasin, avec leur unité d'achat.{% endblock %}
 
 {% block page_actions %}
-    {% if is_granted('MAGASIN_REFERENTIEL') %}<a href="{{ path('magasin_produit_new') }}" class="btn btn-primaire">{{ ui.icone('plus') }} Nouveau produit</a>{% endif %}
+    {% if is_granted('MAGASIN_PRODUIT_CREER') %}<a href="{{ path('magasin_produit_new') }}" class="btn btn-primaire">{{ ui.icone('plus') }} Nouveau produit</a>{% endif %}
 {% endblock %}
 
 {% block admin_content %}

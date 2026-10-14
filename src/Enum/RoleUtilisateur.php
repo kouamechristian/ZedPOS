@@ -13,9 +13,10 @@ namespace App\Enum;
  * numérique comme le caissier. Ils n'ouvrent que l'espace `/atelier` et n'y
  * lisent que des quantités : ni prix, ni écart.
  *
- * MAGASIN (magasinier) est autonome comme le comptable, et comme lui **en lecture
- * seule** : il n'ouvre que `/magasin`, où il consulte réceptions, sorties et stock
- * sans pouvoir agir (`MAGASIN_VOIR`). Les gestes — recevoir, sortir, corriger —
+ * MAGASIN (magasinier) est autonome comme le comptable : il n'ouvre que
+ * `/magasin`, où il enregistre réceptions, sorties et inventaires
+ * (`MAGASIN_GERER`) et crée les produits nouveaux (`MAGASIN_PRODUIT_CREER`).
+ * Modifier un produit, les emplacements, les prix et un inventaire avec écart
  * restent à la gérante et à la dirigeante. Connexion par mot de passe.
  */
 enum RoleUtilisateur: string
@@ -45,7 +46,7 @@ enum RoleUtilisateur: string
             self::CAISSIER => 'Caissier',
             self::ATELIER => 'Boulanger / Pâtissier',
             self::VITRINE => 'Vendeuse',
-            self::MAGASIN => 'Magasinier (consultation)',
+            self::MAGASIN => 'Magasinier',
         };
     }
 

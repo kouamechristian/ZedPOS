@@ -298,26 +298,36 @@ class InventaireMagasinTest extends WebTestCase
         $this->assertSame('vingt', $this->client->getCrawler()->filter('input[name="comptes['.$ligne.'][quantite]"]')->attr('value'));
     }
 
-    public function testLeMagasinierConsulteSansPouvoirCompter(): void
+    /**
+     * Le magasinier compte et enregistre — c'est lui qui a la marchandise sous les
+     * yeux — mais un écart reste à la dirigeante, comme pour la gérante.
+     */
+    public function testLeMagasinierCompteMaisUnEcartRevientALaDirigeante(): void
     {
-        $inventaire = $this->service->ouvrir(null, $this->gerante);
+        $this->entrer($this->farine, 1_000_000);
         $magasinier = (new Utilisateur('kouadio@test.ci', 'Kouadio'))->setRoles([RoleUtilisateur::MAGASIN->value])->setMotDePasse('x');
         $this->em->persist($magasinier);
         $this->em->flush();
         $this->client->loginUser($magasinier);
 
-        foreach (['/magasin/inventaires', '/magasin/inventaires/'.$inventaire->getId(), '/magasin/inventaires/'.$inventaire->getId().'/feuille'] as $url) {
-            $this->client->request('GET', $url);
-            $this->assertResponseIsSuccessful($url);
-        }
-        $page = $this->client->request('GET', '/magasin/inventaires/'.$inventaire->getId());
-        $this->assertCount(0, $page->filter('input[name^="comptes"]'));
-        $this->assertStringNotContainsString('Valider l\'inventaire', $page->filter('main')->text());
+        $page = $this->client->request('GET', '/magasin/inventaires');
+        $this->client->request('POST', '/magasin/inventaires/ouvrir', ['_token' => $page->filter('input[name="_token"]')->attr('value')]);
+        $inventaire = $this->em->getRepository(MagasinInventaire::class)->findOneBy([]);
+        $id = $inventaire->getId();
+        $this->assertResponseRedirects("/magasin/inventaires/$id", 303);
+        $ligne = $this->ligne($inventaire, $this->farine)->getId();
 
-        foreach (['/magasin/inventaires/ouvrir', '/magasin/inventaires/'.$inventaire->getId(), '/magasin/inventaires/'.$inventaire->getId().'/abandonner'] as $url) {
-            $this->client->request('POST', $url);
-            $this->assertResponseStatusCodeSame(403, 'POST '.$url);
-        }
+        $page = $this->client->request('GET', "/magasin/inventaires/$id");
+        $this->assertCount(1, $page->filter('input[name="comptes['.$ligne.'][quantite]"]'));
+        $this->assertStringNotContainsString('Valeur de l\'écart', $page->filter('main')->text(), 'Aucun montant pour le magasinier.');
+
+        $jeton = $page->filter('form input[name="_token"]')->attr('value');
+        $this->client->request('POST', "/magasin/inventaires/$id", ['_token' => $jeton, 'action' => 'valider', 'commentaire' => 'Deux sacs éventrés',
+            'comptes' => [$ligne => ['quantite' => '18', 'unite' => 'achat']]]);
+        $page = $this->client->followRedirect();
+        $this->assertStringContainsString('revient à la dirigeante', $page->text());
+        $this->assertSame('18', $page->filter('input[name="comptes['.$ligne.'][quantite]"]')->attr('value'), 'Le comptage est gardé.');
+        $this->assertSame('20 sacs (1 000 kg)', $this->stockFarine(), 'Le stock n\'a pas bougé.');
     }
 
     public function testLAjustementSeLitALAnalyseEtSurLaFicheDeStock(): void

@@ -15,13 +15,17 @@ de leur arrivée jusqu'à leur départ vers l'atelier ou la boutique.
 | | Magasinier | Gérante | Dirigeante |
 |---|---|---|---|
 | Voir le stock, les réceptions, les sorties, l'analyse | oui | oui | oui |
-| Recevoir une livraison, faire une sortie | non | oui | oui |
-| Créer un produit, un emplacement | non | oui | oui |
+| Recevoir une livraison, faire une sortie, compter un inventaire | oui | oui | oui |
+| Créer un produit | oui | oui | oui |
+| Modifier un produit, créer un emplacement | non | oui | oui |
 | Voir et saisir les **prix d'achat**, voir les valeurs | non | non | oui |
 | Valider un inventaire qui a un **écart** | non | non | oui |
 
 Le magasinier se connecte avec son e-mail et son mot de passe sur la page de
 connexion habituelle. Il arrive directement sur le tableau de bord du magasin.
+Il enregistre les livraisons, les sorties et les comptages, et peut créer un
+produit qui arrive pour la première fois — le tout sans voir aucun prix ;
+si un inventaire fait apparaître un écart, c'est la dirigeante qui le valide.
 
 ---
 

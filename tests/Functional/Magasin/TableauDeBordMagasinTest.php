@@ -165,7 +165,7 @@ class TableauDeBordMagasinTest extends WebTestCase
         $this->assertStringContainsString('20 sacs (1 000 kg)', $this->carte($page, 'RECUE'));
     }
 
-    public function testLeMagasinierLitLeTableauSansBoutonDAction(): void
+    public function testLeMagasinierTrouveSesActionsSurLeTableau(): void
     {
         $magasinier = (new Utilisateur('kouadio@test.ci', 'Kouadio'))->setRoles([RoleUtilisateur::MAGASIN->value])->setMotDePasse('x');
         $this->em->persist($magasinier);
@@ -174,10 +174,7 @@ class TableauDeBordMagasinTest extends WebTestCase
         $this->client->loginUser($magasinier);
         $page = $this->client->request('GET', '/magasin');
         $this->assertResponseIsSuccessful();
-        $this->assertStringNotContainsString('Nouvelle réception', $page->filter('main')->text());
-        $this->assertStringNotContainsString('Nouvelle sortie', $page->filter('main')->text());
-
-        $this->client->loginUser($this->gerante);
-        $this->assertStringContainsString('Nouvelle réception', $this->client->request('GET', '/magasin')->filter('main')->text());
+        $this->assertStringContainsString('Nouvelle réception', $page->filter('main')->text());
+        $this->assertStringContainsString('Nouvelle sortie', $page->filter('main')->text());
     }
 }

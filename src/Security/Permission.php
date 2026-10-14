@@ -144,17 +144,28 @@ final class Permission
 
     /**
      * Consulter le magasin : stock, réceptions, sorties, bons imprimables. La
-     * gérante, la dirigeante et le magasinier (ROLE_MAGASIN), qui n'a que celle-ci.
+     * gérante, la dirigeante et le magasinier (ROLE_MAGASIN).
      */
     public const MAGASIN_VOIR = 'MAGASIN_VOIR';
 
     /**
      * Tenir le magasin : réceptions et leurs étapes, sorties, comptage d'inventaire.
-     * La gérante et la dirigeante — **jamais le magasinier**, qui consulte seulement.
+     * La gérante, la dirigeante et le magasinier.
      */
     public const MAGASIN_GERER = 'MAGASIN_GERER';
 
-    /** Créer et modifier les produits et les emplacements du magasin. La gérante et la dirigeante. */
+    /**
+     * Créer un produit du magasin. La gérante, la dirigeante et le magasinier :
+     * une livraison arrive avec un article nouveau, il faut pouvoir l'inscrire
+     * sans attendre. Le formulaire ne porte aucun prix.
+     */
+    public const MAGASIN_PRODUIT_CREER = 'MAGASIN_PRODUIT_CREER';
+
+    /**
+     * Modifier les produits, créer et modifier les emplacements du magasin. La
+     * gérante et la dirigeante — pas le magasinier : renommer un produit ou changer
+     * la taille de son sac réécrit la lecture de tout son historique.
+     */
     public const MAGASIN_REFERENTIEL = 'MAGASIN_REFERENTIEL';
 
     /**

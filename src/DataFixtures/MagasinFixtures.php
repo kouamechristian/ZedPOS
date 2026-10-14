@@ -40,7 +40,7 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  * mouvements : les services datent tout de « maintenant ». Le journal d'audit,
  * lui, garde l'heure réelle du chargement — il ne se réécrit pas.
  *
- * Un compte **magasinier** (consultation seule) est créé sur une base de
+ * Un compte **magasinier** (réceptions, sorties, inventaires, sans prix) est créé sur une base de
  * démonstration fraîche, jamais par-dessus des comptes conservés
  * (`app:demo:reset --garder-utilisateurs`).
  */

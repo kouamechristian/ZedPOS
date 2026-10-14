@@ -9,18 +9,22 @@ use App\Enum\Magasin\CategorieProduitMagasin;
 use App\Enum\Magasin\DestinationSortieMagasin;
 use App\Enum\Magasin\MotifSortieMagasin;
 use App\Enum\RoleUtilisateur;
+use App\Security\Permission;
 use App\Security\RoleRedirectionHandler;
 use App\Service\Magasin\ReceptionMagasinService;
 use App\Service\Magasin\SortieMagasinService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
+use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
+use Symfony\Component\Security\Core\Authorization\AuthorizationCheckerInterface;
 
 /**
- * Le magasinier (ROLE_MAGASIN) consulte le magasin et rien d'autre : il lit les
- * listes, les fiches et les bons, n'a aucun bouton d'action, et chaque geste lui
- * est refusé même en forgeant l'adresse. Le reste du back-office lui est fermé.
- * Seules la gérante et la dirigeante agissent.
+ * Le magasinier (ROLE_MAGASIN) enregistre au magasin : réceptions, sorties,
+ * inventaires, et crée les produits nouveaux. Il ne modifie pas un produit
+ * existant ni les emplacements, ne voit aucun prix, et un inventaire avec écart
+ * reste à la dirigeante. Le reste du back-office lui est fermé.
  */
 class MagasinierAccesTest extends WebTestCase
 {
@@ -63,6 +67,22 @@ class MagasinierAccesTest extends WebTestCase
         $this->assertFalse(RoleUtilisateur::MAGASIN->utiliseCodePin(), 'Connexion par mot de passe, comme le comptable.');
     }
 
+    /** Ses permissions, telles que le voter les accorde. */
+    public function testSesPermissions(): void
+    {
+        // Le voter interroge `Security`, qui lit le jeton de la session : on l'y pose.
+        static::getContainer()->get(TokenStorageInterface::class)
+            ->setToken(new UsernamePasswordToken($this->magasinier, 'main', $this->magasinier->getRoles()));
+        $droits = static::getContainer()->get(AuthorizationCheckerInterface::class);
+
+        $this->assertTrue($droits->isGranted(Permission::MAGASIN_VOIR));
+        $this->assertTrue($droits->isGranted(Permission::MAGASIN_GERER));
+        $this->assertTrue($droits->isGranted(Permission::MAGASIN_PRODUIT_CREER));
+        $this->assertFalse($droits->isGranted(Permission::MAGASIN_REFERENTIEL));
+        $this->assertFalse($droits->isGranted(Permission::MAGASIN_VOIR_PRIX));
+        $this->assertFalse($droits->isGranted(Permission::MAGASIN_VALIDER_ECART));
+    }
+
     public function testLeMagasinierConsulteToutLeMagasin(): void
     {
         $this->client->loginUser($this->magasinier);
@@ -84,57 +104,81 @@ class MagasinierAccesTest extends WebTestCase
         }
     }
 
-    public function testLeMagasinierNAAucunBoutonDAction(): void
+    public function testLeMagasinierEnregistreReceptionsEtSorties(): void
     {
         $this->client->loginUser($this->magasinier);
 
         $pages = [
             '/magasin/receptions' => ['Nouvelle réception'],
-            "/magasin/receptions/{$this->reception}" => ['Annuler cette réception', 'À faire →'],
-            '/magasin/sorties' => ['Nouvelle sortie', 'Reprendre'],
-            "/magasin/sorties/{$this->sortie}" => ['Valider la sortie', 'Annuler cette sortie', 'Modifier'],
-            '/magasin/produits' => ['Nouveau produit', 'Modifier'],
-            '/magasin/emplacements' => ['Nouvel emplacement', 'Modifier'],
+            '/magasin/sorties' => ['Nouvelle sortie'],
+            "/magasin/sorties/{$this->sortie}" => ['Valider la sortie'],
         ];
-        foreach ($pages as $url => $interdits) {
+        foreach ($pages as $url => $attendus) {
+            $texte = $this->client->request('GET', $url)->filter('main')->text();
+            foreach ($attendus as $libelle) {
+                $this->assertStringContainsString($libelle, $texte, "« $libelle » doit apparaître sur $url");
+            }
+        }
+        $this->assertGreaterThan(0, $this->client->request('GET', '/magasin/receptions')->filter('main a[href$="/controle"]')->count());
+
+        foreach ([
+            '/magasin/receptions/nouvelle',
+            "/magasin/receptions/{$this->reception}/controle",
+            '/magasin/sorties/nouvelle',
+            "/magasin/sorties/{$this->sortie}/modifier",
+        ] as $url) {
+            $this->client->request('GET', $url);
+            $this->assertResponseIsSuccessful('Saisie : '.$url);
+        }
+    }
+
+    /** Il enregistre, mais sans un seul prix : le prix d'achat reste à la dirigeante. */
+    public function testAucunPrixNApparaitDansSesSaisies(): void
+    {
+        $this->client->loginUser($this->magasinier);
+
+        $texte = $this->client->request('GET', '/magasin/receptions/nouvelle')->filter('main')->text();
+        $this->assertStringNotContainsString('Prix d\'achat', $texte);
+        $this->assertCount(0, $this->client->getCrawler()->filter('input[name*="[prix]"]'));
+    }
+
+    /** Un article qui arrive pour la première fois : le magasinier l'inscrit lui-même. */
+    public function testLeMagasinierCreeUnProduit(): void
+    {
+        $this->client->loginUser($this->magasinier);
+
+        $page = $this->client->request('GET', '/magasin/produits');
+        $this->assertStringContainsString('Nouveau produit', $page->filter('main')->text());
+
+        $form = $this->client->request('GET', '/magasin/produits/nouveau')->selectButton('Enregistrer')->form();
+        $this->assertStringNotContainsString('Coût', $this->client->getCrawler()->filter('main')->text(), 'Aucun prix dans le formulaire.');
+        $this->client->submit($form, [
+            'produit[nom]' => 'Sucre en poudre',
+            'produit[uniteStock]' => 'kg',
+        ]);
+        $this->assertResponseRedirects('/magasin/produits', 303);
+
+        $sucre = $this->em->getRepository(MagasinProduit::class)->findOneBy(['nom' => 'Sucre en poudre']);
+        $this->assertNotNull($sucre);
+        $trace = $this->em->getRepository(\App\Entity\JournalAudit::class)->findOneBy(['entiteId' => $sucre->getId(), 'entite' => 'MagasinProduit']);
+        $this->assertNotNull($trace, 'La création est tracée au journal d\'audit.');
+    }
+
+    /** Modifier un produit et gérer les emplacements restent à la gérante, même en forgeant l'adresse. */
+    public function testLeReferentielExistantLuiResteFerme(): void
+    {
+        $this->client->loginUser($this->magasinier);
+        $farine = $this->em->getRepository(MagasinProduit::class)->findOneBy(['nom' => 'Farine de blé']);
+
+        foreach (['/magasin/produits' => ['Modifier'], '/magasin/emplacements' => ['Nouvel emplacement', 'Modifier']] as $url => $interdits) {
             $texte = $this->client->request('GET', $url)->filter('main')->text();
             foreach ($interdits as $libelle) {
                 $this->assertStringNotContainsString($libelle, $texte, "« $libelle » ne doit pas apparaître sur $url");
             }
         }
-        $this->assertCount(0, $this->client->request('GET', "/magasin/sorties/{$this->sortie}")->filter('main form'));
-        // « Contrôle » reste lisible dans la colonne « À faire » : c'est le lien vers l'étape qui disparaît.
-        $this->assertCount(0, $this->client->request('GET', '/magasin/receptions')->filter('main a[href$="/controle"]'));
-    }
-
-    /** Même en forgeant l'adresse, chaque geste est refusé — avant tout jeton CSRF. */
-    public function testChaqueGesteLuiEstRefuse(): void
-    {
-        $this->client->loginUser($this->magasinier);
-
-        $gets = [
-            '/magasin/receptions/nouvelle',
-            "/magasin/receptions/{$this->reception}/annonce",
-            "/magasin/receptions/{$this->reception}/controle",
-            '/magasin/sorties/nouvelle',
-            "/magasin/sorties/{$this->sortie}/modifier",
-            '/magasin/produits/nouveau',
-            '/magasin/emplacements/nouveau',
-        ];
-        foreach ($gets as $url) {
+        foreach (["/magasin/produits/{$farine->getId()}/modifier", '/magasin/emplacements/nouveau'] as $url) {
             $this->client->request('GET', $url);
             $this->assertResponseStatusCodeSame(403, 'GET '.$url);
-        }
-
-        $posts = [
-            "/magasin/receptions/{$this->reception}/controle",
-            "/magasin/receptions/{$this->reception}/annuler",
-            "/magasin/sorties/{$this->sortie}/valider",
-            "/magasin/sorties/{$this->sortie}/annuler",
-        ];
-        foreach ($posts as $url) {
-            $this->client->request('POST', $url, ['motif' => 'essai']);
-            $this->assertResponseStatusCodeSame(403, 'POST '.$url);
         }
     }
 

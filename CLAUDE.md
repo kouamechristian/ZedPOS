@@ -129,10 +129,13 @@ base est vide, et plus rien n'y mène ensuite.
   `ROLE_COMPTABLE` est autonome. `ROLE_ATELIER` (boulanger, pâtissier) et
   `ROLE_VITRINE` (vendeuse) n'ouvrent que `/atelier` — le gérant en hérite, voir
   « Production et vitrine ». `ROLE_MAGASIN` (magasinier) est autonome comme le
-  comptable : il n'ouvre que `/magasin`, **en lecture seule** (`MAGASIN_VOIR`),
-  se connecte par mot de passe et arrive sur le tableau de bord `/magasin` ; recevoir, sortir
-  et corriger restent à la gérante et à la dirigeante (`MAGASIN_GERER`,
-  `MagasinVoter`). Son menu ne montre que la section « Magasin » : toute autre
+  comptable : il n'ouvre que `/magasin`, se connecte par mot de passe et arrive
+  sur le tableau de bord `/magasin`. Il **enregistre** réceptions, sorties et
+  inventaires (`MAGASIN_GERER`, `MagasinVoter`) et **crée les produits**
+  nouveaux (`MAGASIN_PRODUIT_CREER`) — décisions de l'exploitante ; modifier un
+  produit existant, les emplacements, les prix et un inventaire avec écart
+  restent à la gérante et à la dirigeante, et ses écrans n'affichent aucun
+  montant. Son menu ne montre que la section « Magasin » : toute autre
   entrée du back-office porte au minimum `role: 'ROLE_GERANT'`
   (`MagasinierAccesTest`). Voir l'enum `App\Enum\RoleUtilisateur`.
   **Alertes de seuil du magasin** (`AlertesStockMagasin`, seuil atteint = stock
@@ -2418,8 +2421,9 @@ Saisies lues sans flottant (`SaisieQuantite`, pendant JS `assets/magasin/quantit
 | Permission | Magasinier | Gérante | Dirigeante |
 |---|---|---|---|
 | `MAGASIN_VOIR` (tout consulter, imprimer, PDF) | oui | oui | oui |
-| `MAGASIN_GERER` (réceptions, sorties, inventaires) | non | oui | oui |
-| `MAGASIN_REFERENTIEL` (produits, emplacements) | non | oui | oui |
+| `MAGASIN_GERER` (réceptions, sorties, inventaires) | **oui** | oui | oui |
+| `MAGASIN_PRODUIT_CREER` (créer un produit, sans prix) | **oui** | oui | oui |
+| `MAGASIN_REFERENTIEL` (modifier un produit, emplacements) | non | oui | oui |
 | `MAGASIN_VOIR_PRIX` (prix d'achat, CMP, valeurs) | non | non | oui |
 | `MAGASIN_VALIDER_ECART` (inventaire avec écart) | non | non | oui |
 
@@ -2882,7 +2886,7 @@ Comptes créés (mots de passe de démo, à ne pas utiliser en production) :
 | Comptable | `cabinet@zedpos.ci` | mot de passe `comptable123` |
 | Caissier | `fatou.traore@zedpos.ci` | code PIN `1234` |
 | Caissier | `yao.kouassi@zedpos.ci` | code PIN `5678` |
-| Magasinier (consultation) | `adama.magasin@zedpos.ci` | mot de passe `magasin123` |
+| Magasinier | `adama.magasin@zedpos.ci` | mot de passe `magasin123` |
 
 ---
 

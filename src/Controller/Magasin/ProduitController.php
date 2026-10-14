@@ -52,7 +52,7 @@ class ProduitController extends AbstractController
     }
 
     #[Route('/nouveau', name: 'magasin_produit_new', methods: ['GET', 'POST'])]
-    #[IsGranted(Permission::MAGASIN_REFERENTIEL)]
+    #[IsGranted(Permission::MAGASIN_PRODUIT_CREER)]
     public function nouveau(Request $request): Response
     {
         $produit = new MagasinProduit('', CategorieProduitMagasin::MATIERE, '');

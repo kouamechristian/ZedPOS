@@ -44,7 +44,7 @@ l'étape 6.
 | Comptable | `cabinet@zedpos.ci` | `comptable123` | `/comptabilite` |
 | Caissière | Fatou Traoré | PIN **1234** | `/caisse` |
 | Caissier | Yao Kouassi | PIN **5678** | `/caisse` |
-| Magasinier (consultation) | `adama.magasin@zedpos.ci` | `magasin123` | `/magasin` |
+| Magasinier | `adama.magasin@zedpos.ci` | `magasin123` | `/magasin` |
 
 ### Préparer les deux écrans
 
