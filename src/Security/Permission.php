@@ -162,9 +162,16 @@ final class Permission
     public const MAGASIN_PRODUIT_CREER = 'MAGASIN_PRODUIT_CREER';
 
     /**
-     * Modifier les produits, créer et modifier les emplacements du magasin. La
-     * gérante et la dirigeante — pas le magasinier : renommer un produit ou changer
-     * la taille de son sac réécrit la lecture de tout son historique.
+     * Modifier un produit existant du magasin (nom, catégorie, unités, seuil,
+     * fournisseur, activation). La gérante, la dirigeante et le magasinier —
+     * décision de l'exploitante. Le formulaire ne porte aucun prix, et chaque
+     * modification est tracée au journal d'audit avec l'état avant / après.
+     */
+    public const MAGASIN_PRODUIT_MODIFIER = 'MAGASIN_PRODUIT_MODIFIER';
+
+    /**
+     * Créer et modifier les emplacements du magasin. La gérante et la dirigeante
+     * — pas le magasinier. (Les produits relèvent de MAGASIN_PRODUIT_MODIFIER.)
      */
     public const MAGASIN_REFERENTIEL = 'MAGASIN_REFERENTIEL';
 

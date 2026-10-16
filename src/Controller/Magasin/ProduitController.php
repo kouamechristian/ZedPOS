@@ -73,7 +73,7 @@ class ProduitController extends AbstractController
     }
 
     #[Route('/{id}/modifier', name: 'magasin_produit_edit', methods: ['GET', 'POST'], requirements: ['id' => '\d+'])]
-    #[IsGranted(Permission::MAGASIN_REFERENTIEL)]
+    #[IsGranted(Permission::MAGASIN_PRODUIT_MODIFIER)]
     public function modifier(Request $request, MagasinProduit $produit): Response
     {
         $avant = $this->etat($produit);

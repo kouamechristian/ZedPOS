@@ -131,9 +131,10 @@ base est vide, et plus rien n'y mène ensuite.
   « Production et vitrine ». `ROLE_MAGASIN` (magasinier) est autonome comme le
   comptable : il n'ouvre que `/magasin`, se connecte par mot de passe et arrive
   sur le tableau de bord `/magasin`. Il **enregistre** réceptions, sorties et
-  inventaires (`MAGASIN_GERER`, `MagasinVoter`) et **crée les produits**
-  nouveaux (`MAGASIN_PRODUIT_CREER`) — décisions de l'exploitante ; modifier un
-  produit existant, les emplacements, les prix et un inventaire avec écart
+  inventaires (`MAGASIN_GERER`, `MagasinVoter`), **crée et modifie les
+  produits** (`MAGASIN_PRODUIT_CREER`, `MAGASIN_PRODUIT_MODIFIER` — formulaire
+  sans prix, modification tracée) — décisions de l'exploitante ; les
+  emplacements, les prix et un inventaire avec écart
   restent à la gérante et à la dirigeante, et ses écrans n'affichent aucun
   montant. Son menu ne montre que la section « Magasin » : toute autre
   entrée du back-office porte au minimum `role: 'ROLE_GERANT'`
@@ -2423,7 +2424,8 @@ Saisies lues sans flottant (`SaisieQuantite`, pendant JS `assets/magasin/quantit
 | `MAGASIN_VOIR` (tout consulter, imprimer, PDF) | oui | oui | oui |
 | `MAGASIN_GERER` (réceptions, sorties, inventaires) | **oui** | oui | oui |
 | `MAGASIN_PRODUIT_CREER` (créer un produit, sans prix) | **oui** | oui | oui |
-| `MAGASIN_REFERENTIEL` (modifier un produit, emplacements) | non | oui | oui |
+| `MAGASIN_PRODUIT_MODIFIER` (modifier un produit, sans prix) | **oui** | oui | oui |
+| `MAGASIN_REFERENTIEL` (emplacements) | non | oui | oui |
 | `MAGASIN_VOIR_PRIX` (prix d'achat, CMP, valeurs) | non | non | oui |
 | `MAGASIN_VALIDER_ECART` (inventaire avec écart) | non | non | oui |
 

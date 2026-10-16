@@ -15,8 +15,8 @@ namespace App\Enum;
  *
  * MAGASIN (magasinier) est autonome comme le comptable : il n'ouvre que
  * `/magasin`, où il enregistre réceptions, sorties et inventaires
- * (`MAGASIN_GERER`) et crée les produits nouveaux (`MAGASIN_PRODUIT_CREER`).
- * Modifier un produit, les emplacements, les prix et un inventaire avec écart
+ * (`MAGASIN_GERER`), crée et modifie les produits (`MAGASIN_PRODUIT_CREER`,
+ * `MAGASIN_PRODUIT_MODIFIER`). Les emplacements, les prix et un inventaire avec écart
  * restent à la gérante et à la dirigeante. Connexion par mot de passe.
  */
 enum RoleUtilisateur: string

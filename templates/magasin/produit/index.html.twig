@@ -55,7 +55,7 @@
                     <td>{{ fmt.badge(produit.actif) }}</td>
                     <td>
                         <div class="actions-ligne">
-                            {% if is_granted('MAGASIN_REFERENTIEL') %}<a href="{{ path('magasin_produit_edit', {id: produit.id}) }}" data-turbo-frame="_top" class="btn btn-sm btn-secondaire">{{ ui.icone('modifier') }} Modifier</a>{% endif %}
+                            {% if is_granted('MAGASIN_PRODUIT_MODIFIER') %}<a href="{{ path('magasin_produit_edit', {id: produit.id}) }}" data-turbo-frame="_top" class="btn btn-sm btn-secondaire">{{ ui.icone('modifier') }} Modifier</a>{% endif %}
                         </div>
                     </td>
                 </tr>

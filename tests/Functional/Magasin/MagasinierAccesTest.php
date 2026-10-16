@@ -78,6 +78,7 @@ class MagasinierAccesTest extends WebTestCase
         $this->assertTrue($droits->isGranted(Permission::MAGASIN_VOIR));
         $this->assertTrue($droits->isGranted(Permission::MAGASIN_GERER));
         $this->assertTrue($droits->isGranted(Permission::MAGASIN_PRODUIT_CREER));
+        $this->assertTrue($droits->isGranted(Permission::MAGASIN_PRODUIT_MODIFIER));
         $this->assertFalse($droits->isGranted(Permission::MAGASIN_REFERENTIEL));
         $this->assertFalse($droits->isGranted(Permission::MAGASIN_VOIR_PRIX));
         $this->assertFalse($droits->isGranted(Permission::MAGASIN_VALIDER_ECART));
@@ -164,22 +165,37 @@ class MagasinierAccesTest extends WebTestCase
         $this->assertNotNull($trace, 'La création est tracée au journal d\'audit.');
     }
 
-    /** Modifier un produit et gérer les emplacements restent à la gérante, même en forgeant l'adresse. */
-    public function testLeReferentielExistantLuiResteFerme(): void
+    /** Il modifie un produit existant — sans prix, et la modification est tracée. */
+    public function testLeMagasinierModifieUnProduit(): void
     {
         $this->client->loginUser($this->magasinier);
         $farine = $this->em->getRepository(MagasinProduit::class)->findOneBy(['nom' => 'Farine de blé']);
+        $id = $farine->getId();
 
-        foreach (['/magasin/produits' => ['Modifier'], '/magasin/emplacements' => ['Nouvel emplacement', 'Modifier']] as $url => $interdits) {
-            $texte = $this->client->request('GET', $url)->filter('main')->text();
-            foreach ($interdits as $libelle) {
-                $this->assertStringNotContainsString($libelle, $texte, "« $libelle » ne doit pas apparaître sur $url");
-            }
+        $this->assertStringContainsString('Modifier', $this->client->request('GET', '/magasin/produits')->filter('main')->text());
+
+        $form = $this->client->request('GET', "/magasin/produits/{$id}/modifier")->selectButton('Enregistrer')->form();
+        $this->assertStringNotContainsString('Coût', $this->client->getCrawler()->filter('main')->text(), 'Aucun prix dans le formulaire.');
+        $this->client->submit($form, ['produit[nom]' => 'Farine de blé T55']);
+        $this->assertResponseRedirects('/magasin/produits', 303);
+
+        $this->em->clear();
+        $this->assertSame('Farine de blé T55', $this->em->getRepository(MagasinProduit::class)->find($id)->getNom());
+        $traces = $this->em->getRepository(\App\Entity\JournalAudit::class)->findBy(['entiteId' => $id, 'entite' => 'MagasinProduit']);
+        $this->assertNotEmpty($traces, 'La modification est tracée au journal d\'audit.');
+    }
+
+    /** Gérer les emplacements reste à la gérante, même en forgeant l'adresse. */
+    public function testLesEmplacementsLuiRestentFermes(): void
+    {
+        $this->client->loginUser($this->magasinier);
+
+        $texte = $this->client->request('GET', '/magasin/emplacements')->filter('main')->text();
+        foreach (['Nouvel emplacement', 'Modifier'] as $libelle) {
+            $this->assertStringNotContainsString($libelle, $texte, "« $libelle » ne doit pas apparaître sur /magasin/emplacements");
         }
-        foreach (["/magasin/produits/{$farine->getId()}/modifier", '/magasin/emplacements/nouveau'] as $url) {
-            $this->client->request('GET', $url);
-            $this->assertResponseStatusCodeSame(403, 'GET '.$url);
-        }
+        $this->client->request('GET', '/magasin/emplacements/nouveau');
+        $this->assertResponseStatusCodeSame(403);
     }
 
     public function testLeMenuNeMontreQueLeMagasin(): void
